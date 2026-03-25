@@ -678,8 +678,10 @@ class TestCategory:
 
     def test_system_category_not_deletable(self, user):
         """System categories raise ProtectedError when deleted."""
+        from django.db.models import ProtectedError
+
         category = baker.make("finances.Category", user=user, name="Custeio", is_system=True)
-        with pytest.raises(Exception):
+        with pytest.raises(ProtectedError):
             category.delete()
 
     def test_ordering_by_name(self, user):
@@ -2031,7 +2033,7 @@ Expected: all 9 tests pass.
 uv run pytest src/backend/ -v
 ```
 
-Expected: all tests across all test files pass (Category: 7, PaymentMethod: 6, Income: 5, Billing: 8, Entry: 10, SystemicExpense: 6, InstallmentPlan: 9 = ~51 tests).
+Expected: all tests across all test files pass (Category: 7, PaymentMethod: 6, Income: 5, Billing: 8, Entry: 9, SystemicExpense: 6, InstallmentPlan: 9 = 50 tests).
 
 - [ ] **Step 6: Commit**
 
