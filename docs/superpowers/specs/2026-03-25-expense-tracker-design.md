@@ -104,6 +104,7 @@ On creation, generates `num_installments` Entry rows with:
 - `installment_plan=self`
 - Sequential billing months starting from computed billing_month
 - `amount=installment_amount`
+- **Rounding:** If `total_amount` is not evenly divisible by `num_installments`, the remainder is added to the last installment. E.g., R$ 100.00 / 3 = R$ 33.33 + R$ 33.33 + R$ 33.34.
 
 ### SystemicExpense
 | Field | Type | Notes |
@@ -112,6 +113,7 @@ On creation, generates `num_installments` Entry rows with:
 | user | FK → User | |
 | name | str | "Enel", "Unimed - Amanda" |
 | category | FK → Category | |
+| payment_method | FK → PaymentMethod, nullable | Default payment method; can be overridden per-entry |
 | default_amount | Decimal | Typical monthly value |
 | is_active | bool | |
 | created_at | datetime | Auto |
