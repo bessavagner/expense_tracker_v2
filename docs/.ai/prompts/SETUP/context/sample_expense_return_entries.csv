@@ -1,0 +1,136 @@
+data,valor,descrição,categoria,forma
+01/03/2026,"R$ 42,00",Heineken - bebida,Álcool,Pix
+01/03/2026,"R$ 14,00",Disk Bebida - coca cola e salgadinho,Lanche,Pix
+01/03/2026,"R$ 15,00",Angélica - eisenbahn,Álcool,Pix
+01/03/2026,"R$ 10,00",Angélica - ruffles,Lanche,Pix
+01/03/2026,"R$ 45,00",Angélica - armadilha e veneno para insetos,Casa,Pix
+01/03/2026,"R$ 17,00",Angélica - linguiça,Alimentação,Pix
+01/03/2026,"R$ 16,00",Posto Único - stella gold,Álcool,Crédito C6
+01/03/2026,"30,5",Posto Único - refri e isotônico,Alimentação,Crédito C6
+01/03/2026,"R$ 25,00",Posto Único - sorvete,Lanche,Crédito C6
+01/03/2026,"R$ 52,90",Rei do Sushi,Alimentação,Pix
+01/03/2026,"R$ 52,17",Cosmos - almoço,Alimentação,Crédito C6
+01/03/2026,"R$ 50,00",Mayke - cabo USB-C,Outros,Crédito C6
+01/03/2026,"R$ 52,00",Liane Cell - carregador,Outros,Crédito C6
+02/03/2026,"R$ 38,96",Pague Menos - zerolac e bebidas proteicas,Farmácia,Crédito C6
+02/03/2026,"R$ 338,50",Aniversário da Amanda,Lazer,Pix
+02/03/2026,"R$ 19,98",Central Cosmus - caldo e café da manhã,Alimentação,Crédito C6
+03/03/2026,"R$ 119,61",Supermercado Cosmos - compras diversas,Alimentação,Crédito C6
+03/03/2026,"R$ 115,00",Posto São Cristóvão - gasolina,Combustível,Crédito C6
+03/03/2026,"R$ 134,90","Mercado Pago - suplementos (vitamina D3, long jack, feno grego)",Esporte,Pix
+03/03/2026,"-R$ 226,21",Google Cloud - estorno - Fernando,Serviços,Pix
+04/03/2026,"R$ 2.744,00",Celular - Vagner,Trabalho,Pix
+04/03/2026,"R$ 66,15",Empório Sertões - self service e coca cola,Alimentação,Pix
+04/03/2026,"R$ 9,87",Supermercado Cosmos - coca cola e schin,Lanche,Pix
+04/03/2026,"R$ 68,00",Liane Cell - capinha e película,Outros,Pix
+05/03/2026,"R$ 71,88",Mercado Livre - Capa De Couro Para Edge 60 Pro Motorola,Outros,Pix
+05/03/2026,"R$ 63,25","Rotisseria Empório Sertões - self service, coca-cola",Alimentação,Pix
+05/03/2026,"R$ 65,04","Supermercado Cosmos - chocolates, café, refrigerantes, energéticos",Alimentação,Pix
+05/03/2026,"R$ 89,80","Casa do Feijão Verde - espetinhos, baião, batata, suco",Alimentação,Crédito Santander
+05/03/2026,"R$ 23,50","Casa do Feijão Verde - eisenbahn, stella",Álcool,Crédito Santander
+06/03/2026,"R$ 59,10",Zé Delivery - Stella Pure Gold 350ml x10,Álcool,Pix
+06/03/2026,"R$ 38,99",Karatius Pizza - iFood,Alimentação,Crédito Santander
+07/03/2026,"R$ 88,00",PET Shop Companhia - ração para os gatos,Pets,Crédito Santander
+07/03/2026,"R$ 306,82",Supermercado Cosmos - mercantil,Alimentação,Crédito Santander
+07/03/2026,"R$ 21,78","Supermercado Cosmos - papel higiênico, papel toalha",Higiene,Crédito Santander
+07/03/2026,"R$ 22,80","Supermercado Cosmos - batata lays x3, baconzitos",Lanche,Crédito Santander
+07/03/2026,"R$ 37,33",Rotisseria Empório Sertões - self service almoço,Alimentação,Crédito Santander
+07/03/2026,"R$ 63,12",Sertão Beer - Stella Pure Gold 350ml x12,Álcool,Crédito Santander
+08/03/2026,"R$ 31,99",iFood - almoço,Alimentação,Crédito Santander
+08/03/2026,"R$ 82,37","Tayane Araujo - linguiça, baião, espeto, sanduíche, coca-cola, suco",Alimentação,Crédito Santander
+08/03/2026,"R$ 120,10","Pague Menos - diclofenaco, loratamed, fexofenadina, repelente x2",Farmácia,Crédito Santander
+08/03/2026,"R$ 52,49","Pague Menos - creme hidratante facial, pastilha",Higiene,Crédito Santander
+08/03/2026,"R$ 13,49",Pague Menos - isotônico Sorox,Alimentação,Crédito Santander
+09/03/2026,"R$ 121,00",Posto São Cristóvão,Combustível,Crédito Santander
+09/03/2026,"R$ 35,97","Hiper Nacional - polpa, refrigerantes, biscoitos, patê, doce",Alimentação,Crédito Santander
+09/03/2026,"R$ 18,44","Hiper Nacional - lava roupa, detergente",Limpeza,Crédito Santander
+09/03/2026,"R$ 8,50","Mercadinho Mario - coca-cola, lanche",Lanche,Pix
+09/03/2026,"R$ 20,00","Posto Único - energético, lanche",Lanche,Pix
+09/03/2026,"R$ 62,90","Rotisseria Empório Sertões - sushi, caldo, água, suco",Alimentação,Crédito Santander
+09/03/2026,"R$ 13,84","Supermercado Cosmos - pão integral, Schweppes",Alimentação,Pix
+09/03/2026,"R$ 74,00",Shopping do Lar - lençol,Casa,Crédito Santander
+09/03/2026,"R$ 25,00","Lojão do Real - rodo de pia, balde, porta sabão",Limpeza,Crédito Santander
+09/03/2026,"R$ 45,00",Lojão das Redes - tapetes x3,Casa,Crédito Santander
+09/03/2026,"R$ 200,00",Oficina Framek - óleo do carro,Carro,Pix
+10/03/2026,"R$ 19,98",Rotisseria Empório Sertões - caldo,Alimentação,Pix
+10/03/2026,"R$ 11,25",Supermercado Cosmos - batata palha e.chip,Lanche,Pix
+10/03/2026,"R$ 24,14",Supermercado Cosmos - requeijão lactolivre - manteiga Betânia,Alimentação,Pix
+10/03/2026,"R$ 9,50",Padaria São Francisco - pães,Alimentação,Pix
+10/03/2026,"R$ 47,99",Karatius Pizza - iFood,Alimentação,Crédito Santander
+11/03/2026,"R$ 37,95",Hiper Nacional - energético - refrigerantes - iogurte,Alimentação,Crédito Santander
+11/03/2026,"R$ 57,93",Americanas - chocolates e bombons - evento no terceiro ano,Lanche,Crédito Santander
+11/03/2026,"R$ 56,90",Mercado Livre - almofada travesseiro grávida,Casa,Crédito Santander
+11/03/2026,"R$ 305,86",Mercado Livre - cama pet x2 - shampoo Micodine,Pets,Crédito Santander
+11/03/2026,"R$ 43,77",Mercado Livre - taurina 1000mg,Saúde,Crédito Santander
+11/03/2026,"R$ 11,00",Cantina do IFCE - tapioca - ovo - suco,Alimentação,Pix
+12/03/2026,"R$ 88,75",Casa do Feijão Verde - espetinhos - baião - batata - suco,Alimentação,Crédito Santander
+12/03/2026,"R$ 13,00",Casa do Feijão Verde - eisenbahn,Álcool,Crédito Santander
+13/03/2026,"R$ 69,55",Rotisseria Empório Sertões - self service - coca-cola,Alimentação,Crédito Santander
+13/03/2026,"R$ 32,36",Supermercado Cosmos - energético - refrigerantes - biscoitos - doce - wafer,Alimentação,Crédito Santander
+13/03/2026,"R$ 37,57",Rotisseria Empório Sertões - sushi - caldo x2,Alimentação,Pix
+13/03/2026,"R$ 77,00",Casa do Feijão Verde - filé com fritas - arroz - espetinhos de frango x2,Alimentação,Crédito Santander
+14/03/2026,"R$ 14,50",Papelaria Arco Íris - grampos para saco do aspirador,Casa,Pix
+14/03/2026,"R$ 63,12",Sertão Beer - Stella Pure Gold 350ml x12,Álcool,Pix
+14/03/2026,"R$ 38,00",Posto Único - Pringles - Ruffles - Gatorade x2,Lanche,Pix
+14/03/2026,"R$ 13,00",Posto Único - cigarro,Álcool,Pix
+14/03/2026,"R$ 58,00",Disk Bebidas - skol - stella gold - mangueira,Álcool,Pix
+14/03/2026,"R$ 20,00",Banlek - fotos Open 26.3,Esporte,Pix
+14/03/2026,"R$ 97,00",Mercadinho Mario - carnes,Lazer,Pix
+14/03/2026,"R$ 26,00",Disk Bebidas - stella gold,Álcool,Pix
+15/03/2026,"R$ 68,99",Galeto Mania - iFood,Alimentação,Crédito Santander
+15/03/2026,"R$ 31,76",Maria Pitanga - sorvete - açaí,Lanche,Pix
+15/03/2026,"R$ 41,48",Pague Menos - Meclin Jet - pomada Massageol,Farmácia,Crédito Santander
+16/03/2026,"R$ 120,92",Hiper Nacional - refrigerantes - queijos - tomate - molho - pão - temperos,Alimentação,Crédito Santander
+16/03/2026,"R$ 13,90",Hiper Nacional - energéticos x2,Lanche,Crédito Santander
+16/03/2026,"R$ 40,00",Barbearia Invictus - corte de cabelo,Estética,Pix
+16/03/2026,"R$ 19,98",Rotisseria Empório Sertões - caldo grande x2,Alimentação,Pix
+16/03/2026,"R$ 79,90",Boutique Rosa - Linha Confy,Roupa,Crédito C6
+16/03/2026,"R$ 55,29",Anthropic - créditos Claude,Serviços,Crédito C6
+16/03/2026,"R$ 150,00",Amanda,Outros,Pix
+17/03/2026,"R$ 25,74",Galeto Mania - iFood,Alimentação,Crédito Santander
+17/03/2026,"R$ 54,90",Amazon - Dux Nutrition Cafeína 90 cápsulas,Esporte,Crédito C6
+17/03/2026,"-R$ 150,00",Amanda - reembolso,Outros,Pix
+17/03/2026,"-R$ 40,00",Afonso - reembolso cervejas,Álcool,Pix
+17/03/2026,"-R$ 42,00",Afonso - reembolso carnes,Lazer,Pix
+17/03/2026,"R$ 10,00",Salgados,Lanche,Pix
+17/03/2026,"R$ 50,89",Mercado Livre - ZMA,Esporte,Pix
+18/03/2026,"R$ 10,00",Posto Único - café,Alimentação,Pix
+18/03/2026,"R$ 3,50",Padaria São Francisco - pães,Alimentação,Pix
+18/03/2026,"R$ 15,00",Universo Baby - roupa,Roupa,Pix
+18/03/2026,"R$ 43,90",Bambu Food Garden - strogonoff de filé,Alimentação,Pix
+18/03/2026,"R$ 39,80",Bambu Food Garden - Heineken 600ml x2,Álcool,Pix
+18/03/2026,"R$ 12,04",Mateus Supermercados - biscoito - Red Bull,Lanche,Pix
+18/03/2026,"R$ 47,92",Mateus Supermercados - Stella Pure Gold x8,Álcool,Pix
+18/03/2026,"R$ 23,98",Mateus Supermercados - batata Lays - Ruffles,Lanche,Pix
+18/03/2026,"R$ 5,00",Cantina do IFCE - empada,Lanche,Pix
+18/03/2026,"R$ 66,90",Chef do Sushi - sushi,Lanche,Pix
+19/03/2026,"R$ 20,60",Sabor da Família - almoço,Alimentação,Pix
+19/03/2026,"R$ 38,57",Rotisseria Empório Sertões - sushi - caldo pequeno - creme de galinha,Alimentação,Pix
+19/03/2026,"R$ 9,99",Rotisseria Empório Sertões - caldo grande,Alimentação,Pix
+19/03/2026,"R$ 151,50",Amazon - GranPlus ração cães adultos,Pets,Pix
+20/03/2026,"R$ 399,42",Hiper Nacional - mercantil,Alimentação,Pix
+20/03/2026,"R$ 46,10",Hiper Nacional - rações Champ e Friskies,Pets,Pix
+20/03/2026,"R$ 84,82",Hiper Nacional - limpeza e higiene doméstica,Limpeza,Pix
+20/03/2026,"R$ 62,00",Mourão Autopeças - tampa reservatório radiador,Carro,Pix
+20/03/2026,"R$ 11,41",Supermercado Cosmos - cup noodles - mortadela x2,Alimentação,Pix
+20/03/2026,"R$ 10,49",Supermercado Cosmos - Monster Energy,Lanche,Pix
+20/03/2026,"R$ 10,00",Frutaria o Marquinhos - milho,Alimentação,Pix
+20/03/2026,"R$ 131,00",W Posto de Fronteiras,Combustível,Crédito C6
+20/03/2026,"R$ 63,12",Zé Delivery - Stella Pure Gold 350ml x12,Álcool,Pix
+20/03/2026,"R$ 22,00",Disk Bebidas - cerveja - cachaça,Álcool,Pix
+20/03/2026,"R$ 7,00",Disk Bebidas - coca-cola,Lanche,Pix
+21/03/2026,"R$ 13,00",Posto Único - cigarro,Álcool,Pix
+21/03/2026,"R$ 24,00",Posto Único - batatas - isotônico,Lanche,Pix
+21/03/2026,"R$ 78,96",Hiper Nacional - coxa - linguiça x3,Alimentação,Pix
+21/03/2026,"R$ 11,45",Hiper Nacional - batata Lays,Lanche,Pix
+21/03/2026,"R$ 11,58",Hiper Nacional - Powerade x2,Alimentação,Pix
+21/03/2026,"R$ 12,00",Frango Churrasco e Cia - baião,Alimentação,Pix
+22/03/2026,"R$ 129,70",Bambu Food Garden - camarão milanesa - filé grelhado - milk shake,Alimentação,Pix
+22/03/2026,"R$ 19,90",Bambu Food Garden - Heineken 600ml,Álcool,Pix
+23/03/2026,"R$ 177,92",Mercado Livre - camisas sociais x2 - camisetas banda x2,Roupa,Pix
+24/03/2026,"R$ 55,87",Rotisseria Empório Sertões - self service,Alimentação,Crédito C6
+24/03/2026,"R$ 36,40",Supermercado Cosmos - refrigerantes - energéticos x2 - mortadela x2,Alimentação,Crédito C6
+24/03/2026,"R$ 8,57",Chocolates Finos Crateús - trufa - tablete dark milk,Lanche,Pix
+24/03/2026,"R$ 12,00",Floricultura Rayanne - flor,Outros,Crédito C6
+24/03/2026,"R$ 7,00",R Posto e Conveniência Venâncios - Gatorade,Lanche,Pix
+25/03/2026,"R$ 167,00",Mercado Livre - meias,Esporte,Crédito C6
