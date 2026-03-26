@@ -1,0 +1,24 @@
+[run]
+source = src/backend
+branch = True
+omit =
+    */migrations/*
+    */tests/*
+    src/backend/config/settings.py
+    src/backend/config/wsgi.py
+    src/backend/config/asgi.py
+    src/backend/manage.py
+
+[report]
+fail_under = 80
+show_missing = True
+skip_covered = True
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if TYPE_CHECKING:
+    if __name__ == .__main__.:
+    raise NotImplementedError
+
+[html]
+directory = htmlcov

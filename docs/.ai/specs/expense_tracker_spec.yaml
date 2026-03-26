@@ -1,0 +1,20 @@
+project:
+  name: "Expense Tracker"
+  slug: "expense-tracker"
+  language: "pt-br"
+  timezone: "America/Sao_Paulo"
+
+professional:
+  name: "Expense Tracker"
+  title: "Personal Finance Manager"
+
+brand:
+  daisyui_theme: "light"
+
+sections:
+  hero: false
+  about: false
+  services: false
+  testimonials: false
+  contact: false
+  cta: false

@@ -1,1 +1,38 @@
+# Docker
+docker-compose.override.yml
+
+# Superpowers
 .superpowers/
+
+# Django
+db.sqlite3
+src/backend/staticfiles/
+src/backend/mediafiles/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+*.egg-info/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+
+# Tools
+.pytest_cache/
+.ruff_cache/
+.django_tailwind_cli/
