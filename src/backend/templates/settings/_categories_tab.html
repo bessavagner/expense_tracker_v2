@@ -1,0 +1,49 @@
+<div class="overflow-x-auto">
+<table class="table table-sm">
+    <thead>
+        <tr><th>Nome</th><th>Teto</th><th>Sistema</th><th></th></tr>
+    </thead>
+    <tbody>
+        {% for cat in categories %}
+        <tr>
+            <td>{{ cat.name }}</td>
+            <td>
+                <form hx-post="{% url 'finances:settings_cat_edit' cat.id %}"
+                      hx-target="#settings-content"
+                      hx-swap="innerHTML"
+                      class="flex gap-1 items-center">
+                    {% csrf_token %}
+                    <input type="number" name="budget_ceiling" value="{{ cat.budget_ceiling }}" step="0.01"
+                           class="input input-bordered input-xs w-24"
+                           hx-trigger="change"
+                           hx-post="{% url 'finances:settings_cat_edit' cat.id %}"
+                           hx-include="closest form"
+                           hx-target="#settings-content"
+                           hx-swap="innerHTML">
+                </form>
+            </td>
+            <td>{% if cat.is_system %}<span class="badge badge-sm">🔒</span>{% endif %}</td>
+            <td>
+                {% if not cat.is_system %}
+                <button class="btn btn-ghost btn-xs text-error"
+                        hx-delete="{% url 'finances:settings_cat_delete' cat.id %}"
+                        hx-target="#settings-content"
+                        hx-swap="innerHTML"
+                        hx-confirm="Excluir categoria {{ cat.name }}?">🗑️</button>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+
+<form hx-post="{% url 'finances:settings_cat_create' %}"
+      hx-target="#settings-content"
+      hx-swap="innerHTML"
+      class="flex gap-2 mt-4 items-end">
+    {% csrf_token %}
+    {{ form.name }}
+    {{ form.budget_ceiling }}
+    <button type="submit" class="btn btn-sm btn-accent">Adicionar</button>
+</form>

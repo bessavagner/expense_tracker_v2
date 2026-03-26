@@ -1,0 +1,34 @@
+<div class="overflow-x-auto">
+<table class="table table-sm">
+    <thead>
+        <tr><th>Nome</th><th>Tipo</th><th>Fechamento</th><th>Ativo</th></tr>
+    </thead>
+    <tbody>
+        {% for pm in payment_methods %}
+        <tr>
+            <td>{{ pm.name }}</td>
+            <td><span class="badge badge-sm">{{ pm.get_type_display }}</span></td>
+            <td>{% if pm.closing_day %}Dia {{ pm.closing_day }}{% else %}—{% endif %}</td>
+            <td>
+                <input type="checkbox" class="toggle toggle-sm toggle-accent"
+                       {% if pm.is_active %}checked{% endif %}
+                       hx-patch="{% url 'finances:settings_pm_toggle' pm.id %}"
+                       hx-target="#settings-content"
+                       hx-swap="innerHTML">
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+
+<form hx-post="{% url 'finances:settings_pm_create' %}"
+      hx-target="#settings-content"
+      hx-swap="innerHTML"
+      class="flex gap-2 mt-4 items-end">
+    {% csrf_token %}
+    {{ form.name }}
+    {{ form.type }}
+    {{ form.closing_day }}
+    <button type="submit" class="btn btn-sm btn-accent">Adicionar</button>
+</form>

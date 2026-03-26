@@ -5,7 +5,7 @@
             <li><a href="#">Dashboard</a></li>
             <li><a href="{% url 'finances:entries' %}" class="{% if request.resolver_match.url_name and 'entries' in request.resolver_match.url_name %}active{% endif %}">Entradas</a></li>
             <li><a href="{% url 'finances:consolidated' %}" class="{% if request.resolver_match.url_name and 'consolidated' in request.resolver_match.url_name %}active{% endif %}">Consolidado</a></li>
-            <li><a href="#">Configurações</a></li>
+            <li><a href="{% url 'finances:settings' %}" class="{% if request.resolver_match.url_name and 'settings' in request.resolver_match.url_name %}active{% endif %}">Configurações</a></li>
         </ul>
     </div>
     <div class="flex-none gap-2">

@@ -1,0 +1,37 @@
+<div class="overflow-x-auto">
+<table class="table table-sm">
+    <thead>
+        <tr><th>Nome</th><th>Categoria</th><th>Valor Padrão</th><th>Pagamento</th><th>Ativo</th><th></th></tr>
+    </thead>
+    <tbody>
+        {% for s in systemics %}
+        <tr>
+            <td>{{ s.name }}</td>
+            <td><span class="badge badge-sm">{{ s.category.name }}</span></td>
+            <td>R$ {{ s.default_amount }}</td>
+            <td>{{ s.payment_method.name|default:"—" }}</td>
+            <td>
+                <input type="checkbox" class="toggle toggle-sm toggle-accent"
+                       {% if s.is_active %}checked{% endif %}
+                       hx-patch="{% url 'finances:settings_systemic_toggle' s.id %}"
+                       hx-target="#settings-content"
+                       hx-swap="innerHTML">
+            </td>
+            <td></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+
+<form hx-post="{% url 'finances:settings_systemic_create' %}"
+      hx-target="#settings-content"
+      hx-swap="innerHTML"
+      class="flex gap-2 mt-4 items-end">
+    {% csrf_token %}
+    {{ form.name }}
+    {{ form.category }}
+    {{ form.default_amount }}
+    {{ form.payment_method }}
+    <button type="submit" class="btn btn-sm btn-accent">Adicionar</button>
+</form>

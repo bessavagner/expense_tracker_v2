@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Configurações{% endblock %}
+
+{% block content %}
+<h2 class="text-2xl font-bold mb-4">Configurações</h2>
+
+<div class="tabs tabs-bordered mb-4">
+    <a class="tab tab-active" id="tab-income"
+       hx-get="{% url 'finances:settings_income' %}"
+       hx-target="#settings-content"
+       hx-swap="innerHTML"
+       @click="document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('tab-active')); this.classList.add('tab-active')">Renda</a>
+    <a class="tab" id="tab-systemics"
+       hx-get="{% url 'finances:settings_systemics' %}"
+       hx-target="#settings-content"
+       hx-swap="innerHTML"
+       @click="document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('tab-active')); this.classList.add('tab-active')">Gastos Sistemáticos</a>
+    <a class="tab" id="tab-pm"
+       hx-get="{% url 'finances:settings_payment_methods' %}"
+       hx-target="#settings-content"
+       hx-swap="innerHTML"
+       @click="document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('tab-active')); this.classList.add('tab-active')">Formas de Pagamento</a>
+    <a class="tab" id="tab-cats"
+       hx-get="{% url 'finances:settings_categories' %}"
+       hx-target="#settings-content"
+       hx-swap="innerHTML"
+       @click="document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('tab-active')); this.classList.add('tab-active')">Categorias</a>
+</div>
+
+<div id="settings-content"
+     hx-get="{% url 'finances:settings_income' %}"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+</div>
+{% endblock %}
