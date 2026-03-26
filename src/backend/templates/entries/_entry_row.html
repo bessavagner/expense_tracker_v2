@@ -1,0 +1,27 @@
+{% url 'finances:entry_edit' entry.id as edit_url %}
+{% url 'finances:entry_delete' entry.id as delete_url %}
+<tr id="entry-{{ entry.id }}" class="{% if entry.amount < 0 %}text-success{% endif %} {% if entry.entry_type == 'systemic' %}bg-base-200{% endif %}">
+    <td>{{ entry.date|date:"d/m" }}</td>
+    <td>R$ {{ entry.amount }}</td>
+    <td>{{ entry.description }}</td>
+    <td><span class="badge badge-sm">{{ entry.category.name }}</span></td>
+    <td>{{ entry.payment_method.name }}</td>
+    <td>{{ entry.billing_month|date:"M" }}</td>
+    <td>
+        {% if entry.entry_type == 'regular' %}
+        {% if edit_url %}
+        <button class="btn btn-ghost btn-xs"
+                hx-get="{{ edit_url }}"
+                hx-target="#entry-{{ entry.id }}"
+                hx-swap="outerHTML">✏️</button>
+        {% endif %}
+        {% if delete_url %}
+        <button class="btn btn-ghost btn-xs text-error"
+                hx-delete="{{ delete_url }}"
+                hx-target="#entry-{{ entry.id }}"
+                hx-swap="outerHTML swap:1s"
+                hx-confirm="Excluir esta entrada?">🗑️</button>
+        {% endif %}
+        {% endif %}
+    </td>
+</tr>

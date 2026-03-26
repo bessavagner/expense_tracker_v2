@@ -1,0 +1,45 @@
+<h3 class="font-bold text-lg mb-4">Nova Entrada</h3>
+
+<div x-data="{ mode: 'regular' }" class="space-y-4">
+    <!-- Mode toggle -->
+    <div class="tabs tabs-boxed">
+        <a class="tab" :class="mode === 'regular' && 'tab-active'" @click="mode = 'regular'">Regular</a>
+        <a class="tab" :class="mode === 'installment' && 'tab-active'" @click="mode = 'installment'">Parcelamento</a>
+    </div>
+
+    <!-- Regular entry form -->
+    <form x-show="mode === 'regular'"
+          hx-post="{% url 'finances:entry_modal' %}"
+          hx-target="#entry-modal-content"
+          hx-swap="innerHTML"
+          class="space-y-3">
+        {% csrf_token %}
+        <input type="hidden" name="entry_mode" value="regular">
+        {% for field in entry_form %}
+        <div class="form-control">
+            <label class="label"><span class="label-text">{{ field.label }}</span></label>
+            {{ field }}
+            {% if field.errors %}<span class="text-error text-sm">{{ field.errors.0 }}</span>{% endif %}
+        </div>
+        {% endfor %}
+        <button type="submit" class="btn btn-accent w-full">Salvar</button>
+    </form>
+
+    <!-- Installment form -->
+    <form x-show="mode === 'installment'"
+          hx-post="{% url 'finances:entry_modal' %}"
+          hx-target="#entry-modal-content"
+          hx-swap="innerHTML"
+          class="space-y-3">
+        {% csrf_token %}
+        <input type="hidden" name="entry_mode" value="installment">
+        {% for field in installment_form %}
+        <div class="form-control">
+            <label class="label"><span class="label-text">{{ field.label }}</span></label>
+            {{ field }}
+            {% if field.errors %}<span class="text-error text-sm">{{ field.errors.0 }}</span>{% endif %}
+        </div>
+        {% endfor %}
+        <button type="submit" class="btn btn-accent w-full">Criar Parcelamento</button>
+    </form>
+</div>

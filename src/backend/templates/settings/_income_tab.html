@@ -1,0 +1,36 @@
+<div class="overflow-x-auto">
+<table class="table table-sm">
+    <thead>
+        <tr><th>Nome</th><th>Valor</th><th>Mês</th><th>Recorrente</th><th></th></tr>
+    </thead>
+    <tbody>
+        {% for income in incomes %}
+        <tr>
+            <td>{{ income.name }}</td>
+            <td>R$ {{ income.amount }}</td>
+            <td>{{ income.month|date:"m/Y" }}</td>
+            <td>{% if income.is_recurring %}<span class="badge badge-sm badge-accent">Sim</span>{% endif %}</td>
+            <td>
+                <button class="btn btn-ghost btn-xs"
+                        hx-get="{% url 'finances:settings_income_edit' income.id %}"
+                        hx-target="#settings-content"
+                        hx-swap="innerHTML">✏️</button>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+
+<!-- Add form -->
+<form hx-post="{% url 'finances:settings_income_create' %}"
+      hx-target="#settings-content"
+      hx-swap="innerHTML"
+      class="flex gap-2 mt-4 items-end">
+    {% csrf_token %}
+    {{ form.name }}
+    {{ form.amount }}
+    {{ form.month }}
+    <label class="flex items-center gap-1"><span class="text-sm">Recorrente</span>{{ form.is_recurring }}</label>
+    <button type="submit" class="btn btn-sm btn-accent">Adicionar</button>
+</form>
