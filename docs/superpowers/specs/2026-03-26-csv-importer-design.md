@@ -40,11 +40,16 @@ System auto-detects columns by matching header names (case-insensitive, accent-i
 | category | `categoria` |
 | payment_method | `forma`, `forma de pagamento` |
 
-**Installments — additional required columns:**
-| Target Field | Auto-detect headers |
-|-------------|-------------------|
-| num_installments | `parcelas` |
-| installment_amount | `valor_parcela`, `valor parcela` |
+**Installments — required columns:**
+| Target Field | Auto-detect headers | Notes |
+|-------------|-------------------|-------|
+| date | `data` | Purchase date |
+| total_amount | `valor` | Maps to `InstallmentPlan.total_amount` (NOT `Entry.amount`) |
+| description | `descrição`, `descricao`, `desc` | |
+| category | `categoria` | |
+| payment_method | `forma`, `forma de pagamento` | |
+| num_installments | `parcelas` | |
+| installment_amount | `valor_parcela`, `valor parcela` | Per-installment value |
 
 Shows the mapping as dropdowns. User can correct any mismatched column. Confirms to proceed.
 
@@ -54,7 +59,7 @@ Shows a table of parsed rows with row-level status:
 
 **Status indicators:**
 - **OK** — row is valid and ready to import
-- **Warning: Duplicate** — matches an existing entry (same date + amount + description). User can toggle skip/include.
+- **Warning: Duplicate** — for regular entries: matches an existing Entry (same date + amount + description). For installments: matches an existing InstallmentPlan (same date + total_amount + description). User can toggle skip/include.
 - **Warning: Unmatched category** — category name not found. User maps to existing category via dropdown or creates new.
 - **Warning: Unmatched payment method** — same as above for payment methods.
 - **Error** — invalid data (missing required field, unparseable date/amount). Row is excluded.
@@ -71,13 +76,16 @@ Shows summary:
 
 User clicks "Importar". System:
 1. Creates any new categories/payment methods
-2. For regular entries: bulk creates `Entry` rows (billing month computed automatically via `Entry.save()`)
+2. For regular entries: pre-computes `billing_month` for each entry using `compute_billing_month()`, then bulk creates `Entry` rows. Note: `bulk_create` does NOT call `Entry.save()`, so billing month must be computed explicitly before insertion.
 3. For installments: creates `InstallmentPlan` for each row + calls `generate_entries()`
 4. All within a single database transaction
 
 Shows success message with final count.
 
 ## Data Parsing
+
+### CSV Encoding
+UTF-8 assumed (Google Sheets default). If decoding fails, show a clear error message suggesting the user re-export as UTF-8.
 
 ### Date Format
 Brazilian standard: `dd/mm/yyyy` (e.g., `01/03/2026`)

@@ -298,7 +298,7 @@ One-time migration from Google Sheets
 - CSV upload with format detection
 - Column mapping UI
 - Preview + validation before bulk import
-- Handles regular entries, installments, and systemics
+- Handles regular entries and installments (systemics managed via Settings tab)
 
 ### Sub-Project 4: Dashboard
 React islands + interactive visualizations
