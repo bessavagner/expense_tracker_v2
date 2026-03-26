@@ -1,0 +1,34 @@
+<!-- Inline entry form -->
+{% include "entries/_inline_entry_form.html" %}
+
+<!-- Entries table -->
+<div class="overflow-x-auto">
+<table class="table table-sm">
+    <thead>
+        <tr>
+            <th>Data</th>
+            <th>Valor</th>
+            <th>Descrição</th>
+            <th>Categoria</th>
+            <th>Forma</th>
+            <th>Fatura</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody id="entries-tbody">
+        {% for entry in entries %}
+        {% include "entries/_entry_row.html" %}
+        {% empty %}
+        <tr><td colspan="7" class="text-center opacity-60">Nenhuma entrada neste mês.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+
+<!-- Summary -->
+<div class="flex gap-6 mt-4 text-sm opacity-70">
+    <span>Total gastos: <strong class="text-error">R$ {{ summary.total_expenses }}</strong></span>
+    <span>Total retornos: <strong class="text-success">R$ {{ summary.total_returns }}</strong></span>
+    <span>Líquido: <strong>R$ {{ summary.net }}</strong></span>
+    <span>Entradas: <strong>{{ summary.entry_count }}</strong></span>
+</div>

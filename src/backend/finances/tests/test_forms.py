@@ -1,9 +1,8 @@
+
 import pytest
-from datetime import date
-from decimal import Decimal
 from model_bakery import baker
 
-from finances.forms import EntryForm, InstallmentForm, IncomeForm, SystemicExpenseForm
+from finances.forms import EntryForm, IncomeForm, InstallmentForm, SystemicExpenseForm
 
 
 @pytest.mark.django_db
