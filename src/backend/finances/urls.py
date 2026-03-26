@@ -44,7 +44,11 @@ urlpatterns = [
     path("entries/modal/", EntryModalView.as_view(), name="entry_modal"),
     # Consolidated
     path("consolidated/", ConsolidatedView.as_view(), name="consolidated"),
-    path("consolidated/systemics/", ConsolidatedSystemicsView.as_view(), name="consolidated_systemics"),
+    path(
+        "consolidated/systemics/",
+        ConsolidatedSystemicsView.as_view(),
+        name="consolidated_systemics",
+    ),
     path(
         "consolidated/detail/<uuid:category_id>/<int:year>/<int:month>/",
         CategoryDetailView.as_view(),
@@ -54,17 +58,51 @@ urlpatterns = [
     path("settings/", SettingsView.as_view(), name="settings"),
     path("settings/income/", IncomeTabView.as_view(), name="settings_income"),
     path("settings/income/create/", IncomeCreateView.as_view(), name="settings_income_create"),
-    path("settings/income/<uuid:pk>/edit/", IncomeUpdateView.as_view(), name="settings_income_edit"),
+    path(
+        "settings/income/<uuid:pk>/edit/", IncomeUpdateView.as_view(), name="settings_income_edit"
+    ),
     path("settings/systemics/", SystemicsTabView.as_view(), name="settings_systemics"),
-    path("settings/systemics/create/", SystemicCreateView.as_view(), name="settings_systemic_create"),
-    path("settings/systemics/<uuid:pk>/edit/", SystemicEditView.as_view(), name="settings_systemic_edit"),
-    path("settings/systemics/<uuid:pk>/toggle/", SystemicToggleView.as_view(), name="settings_systemic_toggle"),
-    path("settings/payment-methods/", PaymentMethodsTabView.as_view(), name="settings_payment_methods"),
-    path("settings/payment-methods/create/", PaymentMethodCreateView.as_view(), name="settings_pm_create"),
-    path("settings/payment-methods/<uuid:pk>/edit/", PaymentMethodEditView.as_view(), name="settings_pm_edit"),
-    path("settings/payment-methods/<uuid:pk>/toggle/", PaymentMethodToggleView.as_view(), name="settings_pm_toggle"),
+    path(
+        "settings/systemics/create/", SystemicCreateView.as_view(), name="settings_systemic_create"
+    ),
+    path(
+        "settings/systemics/<uuid:pk>/edit/",
+        SystemicEditView.as_view(),
+        name="settings_systemic_edit",
+    ),
+    path(
+        "settings/systemics/<uuid:pk>/toggle/",
+        SystemicToggleView.as_view(),
+        name="settings_systemic_toggle",
+    ),
+    path(
+        "settings/payment-methods/",
+        PaymentMethodsTabView.as_view(),
+        name="settings_payment_methods",
+    ),
+    path(
+        "settings/payment-methods/create/",
+        PaymentMethodCreateView.as_view(),
+        name="settings_pm_create",
+    ),
+    path(
+        "settings/payment-methods/<uuid:pk>/edit/",
+        PaymentMethodEditView.as_view(),
+        name="settings_pm_edit",
+    ),
+    path(
+        "settings/payment-methods/<uuid:pk>/toggle/",
+        PaymentMethodToggleView.as_view(),
+        name="settings_pm_toggle",
+    ),
     path("settings/categories/", CategoriesTabView.as_view(), name="settings_categories"),
     path("settings/categories/create/", CategoryCreateView.as_view(), name="settings_cat_create"),
-    path("settings/categories/<uuid:pk>/edit/", CategoryEditView.as_view(), name="settings_cat_edit"),
-    path("settings/categories/<uuid:pk>/delete/", CategoryDeleteView.as_view(), name="settings_cat_delete"),
+    path(
+        "settings/categories/<uuid:pk>/edit/", CategoryEditView.as_view(), name="settings_cat_edit"
+    ),
+    path(
+        "settings/categories/<uuid:pk>/delete/",
+        CategoryDeleteView.as_view(),
+        name="settings_cat_delete",
+    ),
 ]

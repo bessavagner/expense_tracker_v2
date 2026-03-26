@@ -56,9 +56,7 @@ class TestEntryListView:
         assert "entries/entries_page.html" in [t.name for t in response.templates]
 
     def test_htmx_returns_fragment(self, logged_client, sample_entries):
-        response = logged_client.get(
-            "/entries/2026/3/", HTTP_HX_REQUEST="true"
-        )
+        response = logged_client.get("/entries/2026/3/", HTTP_HX_REQUEST="true")
         assert response.status_code == 200
         assert "entries/_entries_table.html" in [t.name for t in response.templates]
 
@@ -130,6 +128,7 @@ class TestEntryCreateView:
         )
         assert response.status_code == 200
         from finances.models import Entry
+
         assert Entry.objects.filter(user=user, description="Test inline").exists()
 
     def test_create_entry_invalid_returns_form(self, logged_client, user):
@@ -155,9 +154,7 @@ class TestEntryUpdateView:
             payment_method=pm,
             billing_month=date(2026, 3, 1),
         )
-        response = logged_client.get(
-            f"/entries/{entry.id}/edit/", HTTP_HX_REQUEST="true"
-        )
+        response = logged_client.get(f"/entries/{entry.id}/edit/", HTTP_HX_REQUEST="true")
         assert response.status_code == 200
         assert "entries/_entry_edit_row.html" in [t.name for t in response.templates]
 
@@ -216,11 +213,10 @@ class TestEntryDeleteView:
             payment_method=pm,
             billing_month=date(2026, 3, 1),
         )
-        response = logged_client.delete(
-            f"/entries/{entry.id}/delete/", HTTP_HX_REQUEST="true"
-        )
+        response = logged_client.delete(f"/entries/{entry.id}/delete/", HTTP_HX_REQUEST="true")
         assert response.status_code == 200
         from finances.models import Entry
+
         assert not Entry.objects.filter(id=entry.id).exists()
 
     def test_cannot_delete_other_user_entry(self, logged_client, other_user):

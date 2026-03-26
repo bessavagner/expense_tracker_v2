@@ -15,19 +15,55 @@ def logged_client(user):
 
 @pytest.fixture
 def consolidated_data(user):
-    cat_food = baker.make("finances.Category", user=user, name="Alimentação", budget_ceiling=Decimal("1300.00"))
-    cat_fuel = baker.make("finances.Category", user=user, name="Combustível", budget_ceiling=Decimal("460.00"))
+    cat_food = baker.make(
+        "finances.Category", user=user, name="Alimentação", budget_ceiling=Decimal("1300.00")
+    )
+    cat_fuel = baker.make(
+        "finances.Category", user=user, name="Combustível", budget_ceiling=Decimal("460.00")
+    )
     pix = baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")
     # March entries
-    baker.make("finances.Entry", user=user, date=date(2026, 3, 5), amount=Decimal("500.00"),
-               category=cat_food, payment_method=pix, billing_month=date(2026, 3, 1), entry_type="regular")
-    baker.make("finances.Entry", user=user, date=date(2026, 3, 10), amount=Decimal("800.00"),
-               category=cat_food, payment_method=pix, billing_month=date(2026, 3, 1), entry_type="regular")
-    baker.make("finances.Entry", user=user, date=date(2026, 3, 15), amount=Decimal("200.00"),
-               category=cat_fuel, payment_method=pix, billing_month=date(2026, 3, 1), entry_type="regular")
+    baker.make(
+        "finances.Entry",
+        user=user,
+        date=date(2026, 3, 5),
+        amount=Decimal("500.00"),
+        category=cat_food,
+        payment_method=pix,
+        billing_month=date(2026, 3, 1),
+        entry_type="regular",
+    )
+    baker.make(
+        "finances.Entry",
+        user=user,
+        date=date(2026, 3, 10),
+        amount=Decimal("800.00"),
+        category=cat_food,
+        payment_method=pix,
+        billing_month=date(2026, 3, 1),
+        entry_type="regular",
+    )
+    baker.make(
+        "finances.Entry",
+        user=user,
+        date=date(2026, 3, 15),
+        amount=Decimal("200.00"),
+        category=cat_fuel,
+        payment_method=pix,
+        billing_month=date(2026, 3, 1),
+        entry_type="regular",
+    )
     # Feb entry
-    baker.make("finances.Entry", user=user, date=date(2026, 2, 10), amount=Decimal("100.00"),
-               category=cat_food, payment_method=pix, billing_month=date(2026, 2, 1), entry_type="regular")
+    baker.make(
+        "finances.Entry",
+        user=user,
+        date=date(2026, 2, 10),
+        amount=Decimal("100.00"),
+        category=cat_food,
+        payment_method=pix,
+        billing_month=date(2026, 2, 1),
+        entry_type="regular",
+    )
     return {"cat_food": cat_food, "cat_fuel": cat_fuel}
 
 
@@ -56,8 +92,16 @@ class TestConsolidatedView:
     def test_systemics_tab(self, logged_client, user):
         cat = baker.make("finances.Category", user=user, name="Custeio", is_system=True)
         pix = baker.make("finances.PaymentMethod", user=user, type="pix")
-        baker.make("finances.Entry", user=user, date=date(2026, 3, 1), amount=Decimal("460.00"),
-                   category=cat, payment_method=pix, billing_month=date(2026, 3, 1), entry_type="systemic")
+        baker.make(
+            "finances.Entry",
+            user=user,
+            date=date(2026, 3, 1),
+            amount=Decimal("460.00"),
+            category=cat,
+            payment_method=pix,
+            billing_month=date(2026, 3, 1),
+            entry_type="systemic",
+        )
         response = logged_client.get("/consolidated/systemics/?year=2026")
         assert response.status_code == 200
 

@@ -30,11 +30,17 @@ class TestIncomeTab:
     def test_create_income(self, logged_client, user):
         response = logged_client.post(
             "/settings/income/create/",
-            data={"name": "Salário", "amount": "7854.23", "month": "2026-03-01", "is_recurring": True},
+            data={
+                "name": "Salário",
+                "amount": "7854.23",
+                "month": "2026-03-01",
+                "is_recurring": True,
+            },
             HTTP_HX_REQUEST="true",
         )
         assert response.status_code == 200
         from finances.models import Income
+
         assert Income.objects.filter(user=user, name="Salário").exists()
 
     def test_edit_income(self, logged_client, user):
@@ -60,11 +66,17 @@ class TestSystemicsTab:
         pm = baker.make("finances.PaymentMethod", user=user, type="pix")
         response = logged_client.post(
             "/settings/systemics/create/",
-            data={"name": "Enel", "category": str(cat.id), "payment_method": str(pm.id), "default_amount": "460.00"},
+            data={
+                "name": "Enel",
+                "category": str(cat.id),
+                "payment_method": str(pm.id),
+                "default_amount": "460.00",
+            },
             HTTP_HX_REQUEST="true",
         )
         assert response.status_code == 200
         from finances.models import SystemicExpense
+
         assert SystemicExpense.objects.filter(user=user, name="Enel").exists()
 
     def test_toggle_systemic_active(self, logged_client, user):
@@ -94,6 +106,7 @@ class TestPaymentMethodsTab:
         )
         assert response.status_code == 200
         from finances.models import PaymentMethod
+
         assert PaymentMethod.objects.filter(user=user, name="Crédito Teste").exists()
 
     def test_toggle_pm_active(self, logged_client, user):
@@ -122,6 +135,7 @@ class TestCategoriesTab:
         )
         assert response.status_code == 200
         from finances.models import Category
+
         assert Category.objects.filter(user=user, name="Nova Cat").exists()
 
     def test_edit_category_budget(self, logged_client, user):
@@ -143,4 +157,5 @@ class TestCategoriesTab:
         )
         assert response.status_code == 400
         from finances.models import Category
+
         assert Category.objects.filter(id=cat.id).exists()

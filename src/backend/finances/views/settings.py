@@ -74,7 +74,9 @@ class IncomeUpdateView(HtmxLoginRequiredMixin, View):
         }
         html = render_to_string("settings/_income_tab.html", context, request=request)
         response = HttpResponse(html)
-        response["HX-Trigger"] = '{"showToast": {"message": "Renda atualizada!", "type": "success"}}'
+        response["HX-Trigger"] = (
+            '{"showToast": {"message": "Renda atualizada!", "type": "success"}}'
+        )
         return response
 
 
@@ -250,7 +252,9 @@ class CategoryCreateView(HtmxLoginRequiredMixin, View):
         }
         html = render_to_string("settings/_categories_tab.html", context, request=request)
         response = HttpResponse(html)
-        response["HX-Trigger"] = '{"showToast": {"message": "Categoria criada!", "type": "success"}}'
+        response["HX-Trigger"] = (
+            '{"showToast": {"message": "Categoria criada!", "type": "success"}}'
+        )
         return response
 
 
