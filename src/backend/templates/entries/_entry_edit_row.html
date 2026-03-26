@@ -1,0 +1,21 @@
+<tr id="entry-{{ object.id }}" class="bg-warning/10">
+    <form hx-post="{% url 'finances:entry_edit' object.id %}"
+          hx-target="#entry-{{ object.id }}"
+          hx-swap="outerHTML">
+        {% csrf_token %}
+        <td>{{ form.date }}</td>
+        <td>{{ form.amount }}</td>
+        <td>{{ form.description }}</td>
+        <td>{{ form.category }}</td>
+        <td>{{ form.payment_method }}</td>
+        <td></td>
+        <td>
+            <button type="submit" class="btn btn-xs btn-success">✓</button>
+            <button type="button" class="btn btn-xs btn-ghost"
+                    hx-get="{% url 'finances:entry_edit' object.id %}"
+                    hx-target="#entry-{{ object.id }}"
+                    hx-swap="outerHTML"
+                    onclick="location.reload()">✕</button>
+        </td>
+    </form>
+</tr>

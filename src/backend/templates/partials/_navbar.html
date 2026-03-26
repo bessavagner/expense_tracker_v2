@@ -10,7 +10,7 @@
     </div>
     <div class="flex-none gap-2">
         <button class="btn btn-sm btn-accent"
-                hx-get="#"
+                hx-get="{% url 'finances:entry_modal' %}"
                 hx-target="#entry-modal-content"
                 hx-swap="innerHTML"
                 onclick="document.getElementById('entry-modal').showModal()">

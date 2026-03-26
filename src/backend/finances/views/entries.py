@@ -1,11 +1,14 @@
+import json
 from datetime import date
 from decimal import Decimal
 
+from django.http import Http404, HttpResponse
 from django.shortcuts import redirect
+from django.template.loader import render_to_string
 from django.views import View
-from django.views.generic import ListView
+from django.views.generic import ListView, UpdateView
 
-from finances.forms import EntryForm
+from finances.forms import EntryForm, InstallmentForm
 from finances.models import Entry
 from finances.views.mixins import HtmxLoginRequiredMixin
 
@@ -62,3 +65,121 @@ class EntryListView(HtmxLoginRequiredMixin, ListView):
         context["form"] = EntryForm(user=self.request.user)
 
         return context
+
+
+class EntryCreateView(HtmxLoginRequiredMixin, View):
+    """Create entry from inline form."""
+
+    def post(self, request):
+        form = EntryForm(request.POST, user=request.user)
+        if form.is_valid():
+            entry = form.save(commit=False)
+            entry.user = request.user
+            entry.save()
+            html = render_to_string("entries/_entry_row.html", {"entry": entry}, request=request)
+            response = HttpResponse(html)
+            response["HX-Trigger"] = (
+                '{"showToast": {"message": "Entrada criada!", "type": "success"}}'
+            )
+            return response
+        # Invalid form: return form with errors
+        html = render_to_string("entries/_inline_entry_form.html", {"form": form}, request=request)
+        return HttpResponse(html)
+
+
+class EntryUpdateView(HtmxLoginRequiredMixin, UpdateView):
+    """Edit entry inline."""
+
+    model = Entry
+    form_class = EntryForm
+    template_name = "entries/_entry_edit_row.html"
+    htmx_template_name = "entries/_entry_edit_row.html"
+
+    def get_queryset(self):
+        return Entry.objects.filter(user=self.request.user)
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["user"] = self.request.user
+        return kwargs
+
+    def form_valid(self, form):
+        entry = form.save()
+        html = render_to_string("entries/_entry_row.html", {"entry": entry}, request=self.request)
+        response = HttpResponse(html)
+        response["HX-Trigger"] = (
+            '{"showToast": {"message": "Entrada atualizada!", "type": "success"}}'
+        )
+        return response
+
+
+class EntryDeleteView(HtmxLoginRequiredMixin, View):
+    """Delete entry."""
+
+    def delete(self, request, pk):
+        entry = Entry.objects.filter(user=request.user, pk=pk).first()
+        if not entry:
+            raise Http404
+        entry.delete()
+        response = HttpResponse("")
+        response["HX-Trigger"] = (
+            '{"showToast": {"message": "Entrada excluída!", "type": "success"}}'
+        )
+        return response
+
+
+class EntryModalView(HtmxLoginRequiredMixin, View):
+    """Serve modal form and handle both regular and installment creation."""
+
+    def get(self, request):
+        context = {
+            "entry_form": EntryForm(user=request.user),
+            "installment_form": InstallmentForm(user=request.user),
+        }
+        html = render_to_string("partials/_modal_entry_form.html", context, request=request)
+        return HttpResponse(html)
+
+    def post(self, request):
+        entry_mode = request.POST.get("entry_mode", "regular")
+
+        if entry_mode == "installment":
+            form = InstallmentForm(request.POST, user=request.user)
+            if form.is_valid():
+                plan = form.save(commit=False)
+                plan.user = request.user
+                plan.save()
+                plan.generate_entries()
+                response = HttpResponse("")
+                trigger = json.dumps(
+                    {
+                        "showToast": {
+                            "message": (
+                                f"Parcelamento criado com {plan.num_installments} parcelas!"
+                            ),
+                            "type": "success",
+                        }
+                    }
+                )
+                response["HX-Trigger"] = trigger
+                return response
+        else:
+            form = EntryForm(request.POST, user=request.user)
+            if form.is_valid():
+                entry = form.save(commit=False)
+                entry.user = request.user
+                entry.save()
+                response = HttpResponse("")
+                response["HX-Trigger"] = (
+                    '{"showToast": {"message": "Entrada criada!", "type": "success"}}'
+                )
+                return response
+
+        context = {
+            "entry_form": (EntryForm(user=request.user) if entry_mode == "installment" else form),
+            "installment_form": (
+                form if entry_mode == "installment" else InstallmentForm(user=request.user)
+            ),
+            "errors": True,
+        }
+        html = render_to_string("partials/_modal_entry_form.html", context, request=request)
+        return HttpResponse(html)

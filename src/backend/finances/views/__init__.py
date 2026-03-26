@@ -1,3 +1,17 @@
-from finances.views.entries import EntryListView, EntryRedirectView
+from finances.views.entries import (
+    EntryCreateView,
+    EntryDeleteView,
+    EntryListView,
+    EntryModalView,
+    EntryRedirectView,
+    EntryUpdateView,
+)
 
-__all__ = ["EntryListView", "EntryRedirectView"]
+__all__ = [
+    "EntryCreateView",
+    "EntryDeleteView",
+    "EntryListView",
+    "EntryModalView",
+    "EntryRedirectView",
+    "EntryUpdateView",
+]
