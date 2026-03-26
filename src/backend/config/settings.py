@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "django_tailwind_cli",
     # Local apps
     "core",
+    "finances",
 ]
 
 MIDDLEWARE = [
