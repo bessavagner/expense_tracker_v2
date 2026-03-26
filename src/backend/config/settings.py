@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     # Third-party
     "django_tailwind_cli",
+    "django_htmx",
     # Local apps
     "core",
     "finances",
@@ -34,6 +35,7 @@ MIDDLEWARE = [
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.locale.LocaleMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "django_htmx.middleware.HtmxMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -111,3 +113,5 @@ TAILWIND_CLI_SRC_CSS = "static/css/tailwind.css"
 TAILWIND_CLI_DIST_CSS = "css/tailwind.css"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+LOGIN_URL = "/admin/login/"

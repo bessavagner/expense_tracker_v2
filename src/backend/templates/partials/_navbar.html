@@ -1,0 +1,17 @@
+<nav class="navbar bg-neutral text-neutral-content">
+    <div class="flex-1 gap-2">
+        <a href="/" class="btn btn-ghost text-xl">Expense Tracker</a>
+        <ul class="menu menu-horizontal px-1 gap-1">
+            <li><a href="#">Dashboard</a></li>
+            <li><a href="#">Entradas</a></li>
+            <li><a href="#">Consolidado</a></li>
+            <li><a href="#">Configurações</a></li>
+        </ul>
+    </div>
+    <div class="flex-none gap-2">
+        <button class="btn btn-sm btn-accent">
+            + Nova Entrada
+        </button>
+        <span class="text-sm opacity-70">{{ request.user.username }}</span>
+    </div>
+</nav>

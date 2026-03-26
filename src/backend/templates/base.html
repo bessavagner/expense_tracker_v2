@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Expense Tracker{% endblock %}</title>
+    {% load django_tailwind_cli %}
+    {% tailwind_css %}
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js"></script>
+</head>
+<body class="min-h-screen bg-base-200" x-data="{ showToast: false, toastMessage: '', toastType: 'success' }"
+      @show-toast.window="showToast = true; toastMessage = $event.detail.message; toastType = $event.detail.type || 'success'; setTimeout(() => showToast = false, 3000)">
+
+    {% include "partials/_navbar.html" %}
+
+    <div class="flex">
+        <!-- Main content -->
+        <main class="flex-1 p-4">
+            {% block content %}{% endblock %}
+        </main>
+
+        <!-- Chat placeholder -->
+        <aside class="w-16 bg-base-300 min-h-[calc(100vh-4rem)] flex flex-col items-center pt-4 gap-2">
+            <div class="w-10 h-10 bg-neutral text-neutral-content rounded-full flex items-center justify-center text-lg">
+                💬
+            </div>
+            <span class="text-xs opacity-60 [writing-mode:vertical-rl]">Chat</span>
+        </aside>
+    </div>
+
+    {% include "partials/_toast.html" %}
+
+    <!-- Modal container for entry form -->
+    <dialog id="entry-modal" class="modal">
+        <div class="modal-box w-11/12 max-w-lg" id="entry-modal-content">
+            <!-- Content loaded via HTMX -->
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+</body>
+</html>
