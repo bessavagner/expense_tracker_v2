@@ -1,0 +1,25 @@
+<div class="card bg-base-100 shadow-sm">
+    <div class="card-body text-center">
+        <h3 class="card-title justify-center text-2xl mb-4">Importação concluída!</h3>
+
+        <div class="stats shadow mb-6">
+            <div class="stat">
+                <div class="stat-title">Importados</div>
+                <div class="stat-value text-success">{{ created_count }}</div>
+            </div>
+            <div class="stat">
+                <div class="stat-title">Pulados</div>
+                <div class="stat-value text-warning">{{ skipped_count }}</div>
+            </div>
+            <div class="stat">
+                <div class="stat-title">Erros</div>
+                <div class="stat-value text-error">{{ error_count }}</div>
+            </div>
+        </div>
+
+        <div class="flex gap-2 justify-center">
+            <a href="{% url 'finances:entries' %}" class="btn btn-accent">Ver entradas</a>
+            <a href="{% url 'finances:import_upload' %}" class="btn btn-ghost">Importar outro arquivo</a>
+        </div>
+    </div>
+</div>

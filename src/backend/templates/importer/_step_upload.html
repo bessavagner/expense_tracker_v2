@@ -1,0 +1,25 @@
+<div class="card bg-base-100 shadow-sm">
+    <div class="card-body">
+        <h3 class="card-title">1. Selecione o arquivo CSV</h3>
+
+        {% if error %}
+        <div class="alert alert-error mb-4">{{ error }}</div>
+        {% endif %}
+
+        <form method="post" enctype="multipart/form-data" action="{% url 'finances:import_upload' %}">
+            {% csrf_token %}
+            <div class="form-control mb-4">
+                <label class="label"><span class="label-text">Tipo de importação</span></label>
+                <select name="import_type" class="select select-bordered">
+                    <option value="regular">Entradas regulares</option>
+                    <option value="installment">Parcelamentos</option>
+                </select>
+            </div>
+            <div class="form-control mb-4">
+                <label class="label"><span class="label-text">Arquivo CSV</span></label>
+                <input type="file" name="file" accept=".csv" class="file-input file-input-bordered w-full" required>
+            </div>
+            <button type="submit" class="btn btn-accent">Próximo →</button>
+        </form>
+    </div>
+</div>

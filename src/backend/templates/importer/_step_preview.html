@@ -1,0 +1,108 @@
+{% load finance_filters %}
+<div class="card bg-base-100 shadow-sm">
+    <div class="card-body">
+        <h3 class="card-title">3. Preview</h3>
+
+        <!-- Summary badges -->
+        <div class="flex gap-2 mb-4">
+            <span class="badge badge-success">{{ ok_count }} OK</span>
+            {% if dup_count %}<span class="badge badge-warning">{{ dup_count }} Duplicados</span>{% endif %}
+            {% if err_count %}<span class="badge badge-error">{{ err_count }} Erros</span>{% endif %}
+        </div>
+
+        <!-- Unmatched categories resolution -->
+        {% if unmatched_categories %}
+        <div class="alert alert-warning mb-4">
+            <div>
+                <h4 class="font-bold">Categorias não encontradas</h4>
+                <form method="post" action="{% url 'finances:import_preview' %}">
+                    {% csrf_token %}
+                    {% for name in unmatched_categories %}
+                    <div class="flex items-center gap-2 mt-2">
+                        <span class="font-medium">{{ name }}</span>
+                        <span>→</span>
+                        <select name="cat_resolve_{{ name }}" class="select select-bordered select-sm">
+                            <option value="__new__">Criar nova</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat.id }}">{{ cat.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endfor %}
+                    <button type="submit" class="btn btn-sm btn-warning mt-2">Aplicar</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Unmatched payment methods resolution -->
+        {% if unmatched_pms %}
+        <div class="alert alert-warning mb-4">
+            <div>
+                <h4 class="font-bold">Formas de pagamento não encontradas</h4>
+                <form method="post" action="{% url 'finances:import_preview' %}">
+                    {% csrf_token %}
+                    {% for name in unmatched_pms %}
+                    <div class="flex items-center gap-2 mt-2">
+                        <span class="font-medium">{{ name }}</span>
+                        <span>→</span>
+                        <select name="pm_resolve_{{ name }}" class="select select-bordered select-sm">
+                            <option value="__new__">Criar nova (Pix)</option>
+                            {% for pm in payment_methods %}
+                            <option value="{{ pm.id }}">{{ pm.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endfor %}
+                    <button type="submit" class="btn btn-sm btn-warning mt-2">Aplicar</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Rows table -->
+        <div class="overflow-x-auto">
+        <table class="table table-sm">
+            <thead>
+                <tr><th>#</th><th>Status</th><th>Data</th><th>Valor</th><th>Descrição</th><th>Categoria</th><th>Forma</th>
+                {% if import_type == "installment" %}<th>Parcelas</th>{% endif %}
+                <th>Pular</th></tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr class="{% if row.status == 'error' %}bg-error/10{% elif row.status == 'duplicate' %}bg-warning/10{% endif %}">
+                    <td>{{ row.line }}</td>
+                    <td>
+                        {% if row.status == "ok" %}<span class="badge badge-sm badge-success">OK</span>
+                        {% elif row.status == "duplicate" %}<span class="badge badge-sm badge-warning">Dup</span>
+                        {% elif row.status == "error" %}<span class="badge badge-sm badge-error" title="{{ row.error }}">Erro</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ row.date|default:"—" }}</td>
+                    <td>{% with amt=row|get_item:"amount" tot=row|get_item:"total_amount" %}{{ amt|default:tot|default:"—" }}{% endwith %}</td>
+                    <td>{{ row.description|default:"—" }}</td>
+                    <td>{{ row.category|default:"—" }}</td>
+                    <td>{{ row.payment_method|default:"—" }}</td>
+                    {% if import_type == "installment" %}<td>{{ row.num_installments|default:"—" }}x</td>{% endif %}
+                    <td>
+                        {% if row.status != "error" %}
+                        <input type="checkbox" class="checkbox checkbox-sm"
+                               name="skip_{{ forloop.counter0 }}"
+                               {% if forloop.counter0 in skip_indices %}checked{% endif %}>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+
+        <div class="flex gap-2 mt-4">
+            <a href="{% url 'finances:import_map' %}" class="btn btn-ghost">← Voltar</a>
+            <form method="post" action="{% url 'finances:import_execute' %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-accent">Importar {{ ok_count }} entradas →</button>
+            </form>
+        </div>
+    </div>
+</div>
