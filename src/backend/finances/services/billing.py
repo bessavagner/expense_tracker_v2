@@ -1,5 +1,7 @@
 from datetime import date
 
+from finances.models.payment_method import PaymentType
+
 
 def compute_billing_month(
     entry_date: date,
@@ -8,7 +10,7 @@ def compute_billing_month(
 ) -> date:
     first_of_month = entry_date.replace(day=1)
 
-    if payment_type != "credit_card" or closing_day is None:
+    if payment_type != PaymentType.CREDIT_CARD or closing_day is None:
         return first_of_month
 
     if entry_date.day > closing_day:

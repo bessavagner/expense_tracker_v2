@@ -2,7 +2,7 @@ import uuid
 from datetime import date
 
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 
 from finances.services.billing import compute_billing_month
 
@@ -34,8 +34,12 @@ class InstallmentPlan(models.Model):
     def __str__(self):
         return f"{self.description} ({self.num_installments}x)"
 
+    @transaction.atomic
     def generate_entries(self) -> list:
         from finances.models.entry import Entry, EntryType
+
+        if self.entries.exists():
+            raise ValueError("Entries already generated for this installment plan.")
 
         billing_month = compute_billing_month(
             self.date,

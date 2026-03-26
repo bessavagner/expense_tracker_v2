@@ -164,6 +164,25 @@ class TestEntry:
         dates = list(Entry.objects.filter(user=user).values_list("date", flat=True))
         assert dates == sorted(dates, reverse=True)
 
+    def test_billing_month_recomputed_on_date_update(self, user, category, credit_card_c6):
+        from finances.models import Entry
+
+        entry = Entry(
+            user=user,
+            date=date(2026, 3, 20),
+            amount=Decimal("50.00"),
+            description="Test",
+            category=category,
+            payment_method=credit_card_c6,
+            entry_type=EntryType.REGULAR,
+        )
+        entry.save()
+        assert entry.billing_month == date(2026, 3, 1)
+        # Update date to after closing day
+        entry.date = date(2026, 3, 26)
+        entry.save()
+        assert entry.billing_month == date(2026, 4, 1)
+
     def test_entry_type_choices(self):
         assert EntryType.REGULAR == "regular"
         assert EntryType.INSTALLMENT == "installment"

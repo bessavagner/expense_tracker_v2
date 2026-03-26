@@ -1,6 +1,7 @@
 import uuid
 
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 
@@ -22,6 +23,7 @@ class PaymentMethod(models.Model):
     closing_day = models.PositiveSmallIntegerField(
         null=True,
         blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(31)],
         help_text="Dia de fechamento da fatura (apenas cartão de crédito)",
     )
     is_active = models.BooleanField(default=True)

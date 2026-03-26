@@ -180,3 +180,20 @@ class TestInstallmentPlan:
         )
         plan.generate_entries()
         assert Entry.objects.filter(installment_plan=plan).count() == 3
+
+    def test_generate_entries_raises_on_double_call(self, user, category, credit_card):
+        from finances.models import InstallmentPlan
+
+        plan = InstallmentPlan.objects.create(
+            user=user,
+            date=date(2025, 12, 1),
+            description="notebook",
+            category=category,
+            payment_method=credit_card,
+            total_amount=Decimal("600.00"),
+            num_installments=3,
+            installment_amount=Decimal("200.00"),
+        )
+        plan.generate_entries()
+        with pytest.raises(ValueError, match="already generated"):
+            plan.generate_entries()

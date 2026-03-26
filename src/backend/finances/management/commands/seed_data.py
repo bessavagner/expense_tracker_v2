@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from core.models import CustomUser
 from finances.models import Category, PaymentMethod
@@ -52,7 +52,10 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         username = options["user"]
-        user = CustomUser.objects.get(username=username)
+        try:
+            user = CustomUser.objects.get(username=username)
+        except CustomUser.DoesNotExist as e:
+            raise CommandError(f"User '{username}' does not exist.") from e
         cat_created = 0
         for name, ceiling, is_system in CATEGORIES:
             _, created = Category.objects.get_or_create(
