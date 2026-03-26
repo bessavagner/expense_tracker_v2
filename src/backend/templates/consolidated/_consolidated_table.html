@@ -1,0 +1,39 @@
+{% load finance_filters %}
+<div class="overflow-x-auto">
+<table class="table table-sm table-pin-rows">
+    <thead>
+        <tr>
+            <th>Categoria</th>
+            {% for m in months %}
+            <th class="text-right">{{ m|stringformat:"02d" }}/{{ current_year }}</th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in aggregation %}
+        <tr>
+            <td class="font-medium">{{ row.category__name }}</td>
+            {% for m in months %}
+            <td class="text-right cursor-pointer hover:bg-base-200 {% if row.budget_status|get_item:m == 'danger' %}text-error font-bold{% elif row.budget_status|get_item:m == 'warning' %}text-warning font-bold{% endif %}"
+                hx-get="{% url 'finances:category_detail' row.category__id current_year m %}"
+                hx-target="#detail-{{ row.category__id }}-{{ m }}"
+                hx-swap="innerHTML">
+                {% if row.months|get_item:m %}R$ {{ row.months|get_item:m }}{% else %}—{% endif %}
+            </td>
+            {% endfor %}
+        </tr>
+        {% for m in months %}
+        <tr id="detail-{{ row.category__id }}-{{ m }}" style="display:none;"></tr>
+        {% endfor %}
+        {% endfor %}
+    </tbody>
+    <tfoot>
+        <tr class="font-bold">
+            <td>Total</td>
+            {% for m in months %}
+            <td class="text-right">R$ {{ column_totals|get_item:m }}</td>
+            {% endfor %}
+        </tr>
+    </tfoot>
+</table>
+</div>

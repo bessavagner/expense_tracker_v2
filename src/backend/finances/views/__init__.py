@@ -1,3 +1,8 @@
+from finances.views.consolidated import (
+    CategoryDetailView,
+    ConsolidatedSystemicsView,
+    ConsolidatedView,
+)
 from finances.views.entries import (
     EntryCreateView,
     EntryDeleteView,
@@ -8,6 +13,9 @@ from finances.views.entries import (
 )
 
 __all__ = [
+    "CategoryDetailView",
+    "ConsolidatedSystemicsView",
+    "ConsolidatedView",
     "EntryCreateView",
     "EntryDeleteView",
     "EntryListView",

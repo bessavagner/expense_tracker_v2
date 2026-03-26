@@ -4,7 +4,7 @@
         <ul class="menu menu-horizontal px-1 gap-1">
             <li><a href="#">Dashboard</a></li>
             <li><a href="{% url 'finances:entries' %}" class="{% if request.resolver_match.url_name and 'entries' in request.resolver_match.url_name %}active{% endif %}">Entradas</a></li>
-            <li><a href="#">Consolidado</a></li>
+            <li><a href="{% url 'finances:consolidated' %}" class="{% if request.resolver_match.url_name and 'consolidated' in request.resolver_match.url_name %}active{% endif %}">Consolidado</a></li>
             <li><a href="#">Configurações</a></li>
         </ul>
     </div>

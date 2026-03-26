@@ -1,0 +1,14 @@
+<td colspan="13" class="bg-base-200 p-0">
+    <table class="table table-xs">
+        {% for entry in entries %}
+        <tr>
+            <td>{{ entry.date|date:"d/m" }}</td>
+            <td>{{ entry.description }}</td>
+            <td class="text-right">R$ {{ entry.amount }}</td>
+            <td>{{ entry.payment_method.name }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4" class="text-center opacity-60">Sem entradas.</td></tr>
+        {% endfor %}
+    </table>
+</td>
