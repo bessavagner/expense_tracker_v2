@@ -1,0 +1,42 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: debug-statements
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.4
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/adamchainz/django-upgrade
+    rev: "1.30.0"
+    hooks:
+      - id: django-upgrade
+        args: [--target-version, "6.0"]
+
+  - repo: local
+    hooks:
+      - id: django-tests
+        name: Django Tests
+        entry: uv run pytest src/backend/ -v --tb=short
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+      - id: coverage-check
+        name: Coverage Check (>= 80%)
+        entry: bash -c 'uv run coverage run -m pytest src/backend/ && uv run coverage report --fail-under=80'
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
