@@ -13,6 +13,12 @@ from finances.views.entries import (
     EntryRedirectView,
     EntryUpdateView,
 )
+from finances.views.importer import (
+    ImportExecuteView,
+    ImportMappingView,
+    ImportPreviewView,
+    ImportUploadView,
+)
 from finances.views.settings import (
     CategoriesTabView,
     CategoryCreateView,
@@ -105,4 +111,9 @@ urlpatterns = [
         CategoryDeleteView.as_view(),
         name="settings_cat_delete",
     ),
+    # Import
+    path("import/", ImportUploadView.as_view(), name="import_upload"),
+    path("import/map/", ImportMappingView.as_view(), name="import_map"),
+    path("import/preview/", ImportPreviewView.as_view(), name="import_preview"),
+    path("import/execute/", ImportExecuteView.as_view(), name="import_execute"),
 ]

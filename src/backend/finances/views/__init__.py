@@ -11,6 +11,12 @@ from finances.views.entries import (
     EntryRedirectView,
     EntryUpdateView,
 )
+from finances.views.importer import (
+    ImportExecuteView,
+    ImportMappingView,
+    ImportPreviewView,
+    ImportUploadView,
+)
 from finances.views.settings import (
     CategoriesTabView,
     CategoryCreateView,
@@ -32,6 +38,10 @@ from finances.views.settings import (
 
 __all__ = [
     "CategoriesTabView",
+    "ImportExecuteView",
+    "ImportMappingView",
+    "ImportPreviewView",
+    "ImportUploadView",
     "CategoryCreateView",
     "CategoryDeleteView",
     "CategoryDetailView",

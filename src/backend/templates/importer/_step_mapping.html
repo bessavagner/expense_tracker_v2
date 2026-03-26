@@ -1,0 +1,34 @@
+{% load finance_filters %}
+<div class="card bg-base-100 shadow-sm">
+    <div class="card-body">
+        <h3 class="card-title">2. Mapeamento de colunas</h3>
+        <p class="text-sm opacity-70 mb-4">Verifique se as colunas foram detectadas corretamente.</p>
+
+        <form method="post" action="{% url 'finances:import_map' %}">
+            {% csrf_token %}
+            <div class="overflow-x-auto">
+            <table class="table table-sm">
+                <thead><tr><th>Campo</th><th>Coluna CSV</th></tr></thead>
+                <tbody>
+                    {% for field in fields %}
+                    <tr>
+                        <td class="font-medium">{{ field }}</td>
+                        <td>
+                            <select name="{{ field }}" class="select select-bordered select-sm">
+                                {% for i, h in headers_indexed %}
+                                <option value="{{ i }}" {% if mapping|get_item:field == i %}selected{% endif %}>{{ h }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+            <div class="flex gap-2 mt-4">
+                <a href="{% url 'finances:import_upload' %}" class="btn btn-ghost">← Voltar</a>
+                <button type="submit" class="btn btn-accent">Próximo →</button>
+            </div>
+        </form>
+    </div>
+</div>
