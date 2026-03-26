@@ -38,9 +38,9 @@ All pages extend this template. Contains:
 - **Month tabs:** 12 month buttons + year dropdown. Active month highlighted. HTMX: `hx-get="/entries/2026/3/"` swaps table, no full reload.
 - **Inline entry form:** always-visible green row at top of table. Fields: date, amount, description, category (select), payment method (select). Submit via `hx-post="/entries/create/"` → adds row, clears form, updates summary.
 - **Entries table:** columns: Data, Valor, Descricao, Categoria, Forma, Fatura (billing month).
-  - Regular entries: normal display
-  - Installment entries: description shows "(2/10)" suffix, non-editable individually
-  - Systemic entries: distinct background, linked to SystemicExpense
+  - Regular entries: normal display, click to edit inline
+  - Installment entries: description shows "(2/10)" suffix, click shows read-only detail with link to parent plan. Not editable inline (edit the InstallmentPlan via Admin for now).
+  - Systemic entries: distinct background (light gray). Click to edit amount only (description and category inherited from SystemicExpense source). Editing updates the Entry, not the SystemicExpense definition.
   - Refunds: green text (negative amounts)
   - Row click → `hx-get="/entries/<id>/edit/"` replaces row with editable inline form
   - Delete: trash icon on hover, `hx-delete` with confirmation
@@ -73,13 +73,20 @@ Triggered by "Nova Entrada" button in navbar. Available from any page.
 
 **Summary row:** column totals per month at the bottom.
 
-**Period selector:** year dropdown, shows 12 months at a time.
+**Period selector:** year dropdown, always shows Jan-Dec of the selected year (not rolling window).
 
 ### 5. Settings Page
 
 **URL:** `/settings/`
 
-**Three tabs:** Renda | Formas de Pagamento | Categorias. HTMX tab switching.
+**Four tabs:** Renda | Gastos Sistemáticos | Formas de Pagamento | Categorias. HTMX tab switching.
+
+**Gastos Sistemáticos tab:**
+- Table: name, category, default amount, payment method, active toggle
+- Inline add for new systemic expenses
+- Inline edit for default_amount and payment_method
+- Toggle is_active via `hx-patch`
+- Cannot delete if entries reference it → toast error
 
 **Renda tab:**
 - Table: name, amount, month, recurring flag, recurrence_start, recurrence_end
@@ -124,6 +131,7 @@ templates/
 └── settings/
     ├── settings_page.html       # Full page with tabs
     ├── _income_tab.html         # Income tab content
+    ├── _systemics_tab.html      # Systemic expenses tab content
     ├── _payment_methods_tab.html
     └── _categories_tab.html
 ```
@@ -143,6 +151,10 @@ templates/
 
 /settings/                           → settings page (default: income tab)
 /settings/income/                    → income tab content (HTMX fragment)
+/settings/systemics/                 → systemic expenses tab content (HTMX fragment)
+/settings/systemics/create/          → create systemic expense (POST)
+/settings/systemics/<id>/edit/       → edit systemic expense (POST)
+/settings/systemics/<id>/toggle/     → toggle active status (PATCH)
 /settings/payment-methods/           → payment methods tab content (HTMX fragment)
 /settings/categories/                → categories tab content (HTMX fragment)
 /settings/income/create/             → create income (POST)
