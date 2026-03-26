@@ -6,6 +6,12 @@ from finances.models.payment_method import PaymentMethod, PaymentType
 from finances.models.systemic_expense import SystemicExpense
 
 __all__ = [
-    "Category", "Entry", "EntryType", "Income",
-    "InstallmentPlan", "PaymentMethod", "PaymentType", "SystemicExpense",
+    "Category",
+    "Entry",
+    "EntryType",
+    "Income",
+    "InstallmentPlan",
+    "PaymentMethod",
+    "PaymentType",
+    "SystemicExpense",
 ]

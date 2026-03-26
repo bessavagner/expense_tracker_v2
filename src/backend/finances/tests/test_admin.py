@@ -1,11 +1,20 @@
-import pytest
 from django.contrib.admin.sites import AdminSite
+
 from finances.admin import (
-    CategoryAdmin, EntryAdmin, IncomeAdmin,
-    InstallmentPlanAdmin, PaymentMethodAdmin, SystemicExpenseAdmin,
+    CategoryAdmin,
+    EntryAdmin,
+    IncomeAdmin,
+    InstallmentPlanAdmin,
+    PaymentMethodAdmin,
+    SystemicExpenseAdmin,
 )
 from finances.models import (
-    Category, Entry, Income, InstallmentPlan, PaymentMethod, SystemicExpense,
+    Category,
+    Entry,
+    Income,
+    InstallmentPlan,
+    PaymentMethod,
+    SystemicExpense,
 )
 
 

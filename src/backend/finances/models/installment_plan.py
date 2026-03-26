@@ -1,17 +1,25 @@
 import uuid
 from datetime import date
+
 from django.conf import settings
 from django.db import models
+
 from finances.services.billing import compute_billing_month
 
 
 class InstallmentPlan(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="installment_plans")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="installment_plans"
+    )
     date = models.DateField()
     description = models.CharField(max_length=500)
-    category = models.ForeignKey("finances.Category", on_delete=models.PROTECT, related_name="installment_plans")
-    payment_method = models.ForeignKey("finances.PaymentMethod", on_delete=models.PROTECT, related_name="installment_plans")
+    category = models.ForeignKey(
+        "finances.Category", on_delete=models.PROTECT, related_name="installment_plans"
+    )
+    payment_method = models.ForeignKey(
+        "finances.PaymentMethod", on_delete=models.PROTECT, related_name="installment_plans"
+    )
     total_amount = models.DecimalField(max_digits=12, decimal_places=2)
     num_installments = models.PositiveIntegerField()
     installment_amount = models.DecimalField(max_digits=12, decimal_places=2)
@@ -28,8 +36,11 @@ class InstallmentPlan(models.Model):
 
     def generate_entries(self) -> list:
         from finances.models.entry import Entry, EntryType
+
         billing_month = compute_billing_month(
-            self.date, self.payment_method.type, self.payment_method.closing_day,
+            self.date,
+            self.payment_method.type,
+            self.payment_method.closing_day,
         )
         entries = []
         for i in range(self.num_installments):
@@ -38,11 +49,16 @@ class InstallmentPlan(models.Model):
             else:
                 amount = self.installment_amount
             entry = Entry(
-                user=self.user, date=self.date, amount=amount,
+                user=self.user,
+                date=self.date,
+                amount=amount,
                 description=f"{self.description} ({i + 1}/{self.num_installments})",
-                category=self.category, payment_method=self.payment_method,
-                entry_type=EntryType.INSTALLMENT, billing_month=billing_month,
-                billing_month_override=True, installment_plan=self,
+                category=self.category,
+                payment_method=self.payment_method,
+                entry_type=EntryType.INSTALLMENT,
+                billing_month=billing_month,
+                billing_month_override=True,
+                installment_plan=self,
             )
             entries.append(entry)
             if billing_month.month == 12:

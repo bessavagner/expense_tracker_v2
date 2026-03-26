@@ -1,5 +1,7 @@
 from decimal import Decimal
+
 from django.core.management.base import BaseCommand
+
 from core.models import CustomUser
 from finances.models import Category, PaymentMethod
 
@@ -54,7 +56,8 @@ class Command(BaseCommand):
         cat_created = 0
         for name, ceiling, is_system in CATEGORIES:
             _, created = Category.objects.get_or_create(
-                user=user, name=name,
+                user=user,
+                name=name,
                 defaults={"budget_ceiling": ceiling, "is_system": is_system},
             )
             if created:
@@ -62,7 +65,8 @@ class Command(BaseCommand):
         pm_created = 0
         for name, pm_type, closing_day in PAYMENT_METHODS:
             _, created = PaymentMethod.objects.get_or_create(
-                user=user, name=name,
+                user=user,
+                name=name,
                 defaults={"type": pm_type, "closing_day": closing_day},
             )
             if created:

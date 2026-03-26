@@ -1,5 +1,6 @@
 import pytest
 from django.core.management import call_command
+
 from finances.models import Category, PaymentMethod
 
 

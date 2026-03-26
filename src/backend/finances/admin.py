@@ -1,6 +1,12 @@
 from django.contrib import admin
+
 from finances.models import (
-    Category, Entry, Income, InstallmentPlan, PaymentMethod, SystemicExpense,
+    Category,
+    Entry,
+    Income,
+    InstallmentPlan,
+    PaymentMethod,
+    SystemicExpense,
 )
 
 
@@ -29,7 +35,15 @@ class IncomeAdmin(admin.ModelAdmin):
 
 @admin.register(Entry)
 class EntryAdmin(admin.ModelAdmin):
-    list_display = ("date", "description", "amount", "category", "payment_method", "entry_type", "billing_month")
+    list_display = (
+        "date",
+        "description",
+        "amount",
+        "category",
+        "payment_method",
+        "entry_type",
+        "billing_month",
+    )
     list_filter = ("entry_type", "category", "payment_method", "billing_month")
     search_fields = ("description",)
     ordering = ("-date",)
@@ -38,7 +52,14 @@ class EntryAdmin(admin.ModelAdmin):
 
 @admin.register(InstallmentPlan)
 class InstallmentPlanAdmin(admin.ModelAdmin):
-    list_display = ("description", "total_amount", "num_installments", "installment_amount", "payment_method", "date")
+    list_display = (
+        "description",
+        "total_amount",
+        "num_installments",
+        "installment_amount",
+        "payment_method",
+        "date",
+    )
     list_filter = ("payment_method", "category")
     search_fields = ("description",)
     ordering = ("-date",)
