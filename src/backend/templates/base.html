@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Expense Tracker{% endblock %}</title>
     {% load tailwind_cli %}
+    {% load static %}
     {% tailwind_css %}
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script defer src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js"></script>
@@ -20,12 +21,9 @@
             {% block content %}{% endblock %}
         </main>
 
-        <!-- Chat placeholder -->
-        <aside class="w-16 bg-base-300 min-h-[calc(100vh-4rem)] flex flex-col items-center pt-4 gap-2">
-            <div class="w-10 h-10 bg-neutral text-neutral-content rounded-full flex items-center justify-center text-lg">
-                💬
-            </div>
-            <span class="text-xs opacity-60 [writing-mode:vertical-rl]">Chat</span>
+        <!-- Chat widget (React island) -->
+        <aside class="min-h-[calc(100vh-4rem)] flex flex-col items-center pt-4">
+            <div data-react-component="ChatWidget" data-api-url="/api/assistant/"></div>
         </aside>
     </div>
 
@@ -38,5 +36,7 @@
         </div>
         <form method="dialog" class="modal-backdrop"><button>close</button></form>
     </dialog>
+
+    <script type="module" src="{% static 'frontend/mount.js' %}"></script>
 </body>
 </html>
