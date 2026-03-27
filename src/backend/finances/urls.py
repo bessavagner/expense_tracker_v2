@@ -5,6 +5,7 @@ from finances.views.consolidated import (
     ConsolidatedSystemicsView,
     ConsolidatedView,
 )
+from finances.views.dashboard import DashboardView
 from finances.views.entries import (
     EntryCreateView,
     EntryDeleteView,
@@ -118,4 +119,6 @@ urlpatterns = [
     path("import/execute/", ImportExecuteView.as_view(), name="import_execute"),
     # API
     path("api/dashboard/", include("finances.api.urls")),
+    # Dashboard (must be last to avoid catching other routes)
+    path("", DashboardView.as_view(), name="dashboard"),
 ]

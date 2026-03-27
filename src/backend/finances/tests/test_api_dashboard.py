@@ -256,7 +256,7 @@ class TestDashboardView:
     def test_dashboard_renders(self, logged_client):
         response = logged_client.get("/")
         assert response.status_code == 200
-        assert "dashboard_page.html" in [t.name for t in response.templates]
+        assert "dashboard/dashboard_page.html" in [t.name for t in response.templates]
 
     def test_month_in_context(self, logged_client):
         response = logged_client.get("/?year=2026&month=3")

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Dashboard — {{ current_month|stringformat:"02d" }}/{{ current_year }}{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-4">
+    <h2 class="text-2xl font-bold">Dashboard</h2>
+    <div class="flex gap-2 items-center">
+        <select class="select select-sm select-bordered"
+                onchange="window.location.href='/?year={{ current_year }}&month=' + this.value">
+            {% for m in months %}
+            <option value="{{ m }}" {% if m == current_month %}selected{% endif %}>
+                {{ m|stringformat:"02d" }}/{{ current_year }}
+            </option>
+            {% endfor %}
+        </select>
+        <select class="select select-sm select-bordered"
+                onchange="window.location.href='/?year=' + this.value + '&month={{ current_month }}'">
+            {% for y in year_range %}
+            <option value="{{ y }}" {% if y == current_year %}selected{% endif %}>{{ y }}</option>
+            {% endfor %}
+        </select>
+    </div>
+</div>
+
+<!-- React island cards grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="dashboard-cards">
+    <div data-react-component="SummaryCard" data-api-url="/api/dashboard/summary/?{{ api_params }}"></div>
+    <div data-react-component="TopCategoriesCard" data-api-url="/api/dashboard/top-categories/?{{ api_params }}"></div>
+    <div data-react-component="EvolutionCard" data-api-url="/api/dashboard/evolution/?{{ api_params }}"></div>
+    <div data-react-component="AlertsCard" data-api-url="/api/dashboard/alerts/?{{ api_params }}"></div>
+    <div data-react-component="RecentEntriesCard" data-api-url="/api/dashboard/recent-entries/?{{ api_params }}"></div>
+    <div data-react-component="InstallmentsCard" data-api-url="/api/dashboard/installments/?{{ api_params }}"></div>
+</div>
+
+<!-- Load React bundle (built by Vite) -->
+<script type="module" src="{% static 'frontend/mount.js' %}"></script>
+{% endblock %}
