@@ -286,3 +286,60 @@ def update_income(user, name: str, amount: str, month_str: str) -> str:
     )
     action = "criada" if created else "atualizada"
     return f"Renda '{name}' {action}: R$ {amount_val:.2f} em {month:%m/%Y}."
+
+
+from assistant.agents.memory import AUTO_APPLY, CONFIRM_APPLY, find_matching_rules
+from assistant.models import MemoryRule, MemorySource
+
+VALID_MEMORY_FIELDS = {"category", "payment_method", "description"}
+
+
+def lookup_memory(user, message: str) -> str:
+    """Look up memory rules matching the user's message."""
+    rules = find_matching_rules(user, message)
+    if not rules:
+        return "Nenhuma regra de memória encontrada."
+
+    lines = ["Regras de memória encontradas:"]
+    for rule in rules:
+        if rule.confidence >= AUTO_APPLY:
+            tier = "auto-aplicar"
+        elif rule.confidence >= CONFIRM_APPLY:
+            tier = "sugerir ao usuário"
+        else:
+            tier = "perguntar ao usuário"
+        lines.append(f"- {rule.field}='{rule.value}' (confiança: {rule.confidence}, {tier})")
+
+    return "\n".join(lines)
+
+
+def create_memory_rule(user, trigger: str, field: str, value: str) -> str:
+    """Create or update a memory rule from user correction."""
+    if field not in VALID_MEMORY_FIELDS:
+        valid = ", ".join(sorted(VALID_MEMORY_FIELDS))
+        return f"Erro: campo '{field}' inválido. Válidos: {valid}."
+
+    rule, created = MemoryRule.objects.update_or_create(
+        user=user,
+        trigger=trigger.lower(),
+        field=field,
+        defaults={
+            "value": value,
+            "confidence": 1.0,
+            "source": MemorySource.USER_CORRECTION,
+        },
+    )
+    action = "criada" if created else "atualizada"
+    return f"Regra de memória {action}: '{trigger}' → {field}='{value}'."
+
+
+def list_memory_rules(user) -> str:
+    """List all memory rules for the user."""
+    rules = MemoryRule.objects.filter(user=user).order_by("trigger", "field")
+    if not rules.exists():
+        return "Nenhuma regra de memória cadastrada."
+
+    lines = ["Suas regras de memória:"]
+    for rule in rules:
+        lines.append(f"- '{rule.trigger}' → {rule.field}='{rule.value}' (confiança: {rule.confidence})")
+    return "\n".join(lines)
