@@ -31,6 +31,8 @@ dev = [
     "pytest-bdd>=8.0",
     "model-bakery>=1.20",
     "ruff>=0.15.4",
+    "anyio>=4.13.0",
+    "pytest-anyio>=0.0.0",
 ]
 
 [tool.ruff]

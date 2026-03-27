@@ -1,6 +1,9 @@
+import pydantic_ai.models
 import pytest
 from django.test import Client
 from model_bakery import baker
+
+pydantic_ai.models.ALLOW_MODEL_REQUESTS = False
 
 
 @pytest.fixture
