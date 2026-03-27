@@ -126,6 +126,11 @@ Each line is a JSON object:
 {"type": "done", "message_id": "abc-123"}
 ```
 
+If an error occurs (LLM failure, tool exception):
+```
+{"type": "error", "content": "Erro ao processar mensagem. Tente novamente."}
+```
+
 ### GET /api/assistant/history/
 
 **Response:** JSON array of messages:
@@ -186,7 +191,8 @@ Each line is a JSON object:
 |------|---------|
 | `src/backend/config/settings.py` | Add `assistant` to INSTALLED_APPS, add LLM config vars |
 | `src/backend/config/urls.py` | Include `assistant.urls` |
-| `src/backend/templates/base.html` | Replace chat placeholder with ChatWidget mount point |
+| `src/backend/templates/base.html` | Replace chat placeholder with ChatWidget mount point, move React script tag here from dashboard template |
+| `src/backend/templates/dashboard/dashboard_page.html` | Remove `<script>` for mount.js (moved to base.html) |
 | `src/backend/frontend/src/mount.tsx` | Register ChatWidget component |
 | `pyproject.toml` | Add `pydantic-ai` dependency |
 | `.env.example` | Add `LLM_MODEL`, `LLM_API_KEY` vars |
