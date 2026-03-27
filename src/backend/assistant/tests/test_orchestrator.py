@@ -9,9 +9,19 @@ class TestOrchestratorAgent:
     def test_agent_has_tools(self):
         """Verify the agent is configured with the expected tools."""
         tool_names = list(assistant_agent._function_toolset.tools.keys())
+        # 3 existing + 8 new = 11
+        assert len(tool_names) == 11
         assert "get_categories" in tool_names
         assert "get_payment_methods" in tool_names
         assert "register_entry" in tool_names
+        assert "get_expenses" in tool_names
+        assert "get_balance" in tool_names
+        assert "get_budget_status" in tool_names
+        assert "get_installments" in tool_names
+        assert "add_category" in tool_names
+        assert "set_category_budget" in tool_names
+        assert "add_payment_method" in tool_names
+        assert "set_income" in tool_names
 
     def test_agent_has_system_prompt(self):
         """Verify system prompt is set."""

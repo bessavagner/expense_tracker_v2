@@ -78,9 +78,20 @@ def create_entry(
     )
 
 
+def _billing_month(year: int, month: int) -> "date | str":
+    """Return a date for the first of the month, or an error string if invalid."""
+    try:
+        return date(year, month, 1)
+    except ValueError:
+        return f"Erro: ano/mês inválido ({year}/{month})."
+
+
 def query_expenses(user, year: int, month: int, category_name: str | None = None) -> str:
     """Query total expenses for a month, optionally filtered by category."""
-    billing_month = date(year, month, 1)
+    bm = _billing_month(year, month)
+    if isinstance(bm, str):
+        return bm
+    billing_month = bm
     qs = Entry.objects.filter(user=user, billing_month=billing_month, amount__gt=0)
 
     if category_name:
@@ -105,7 +116,10 @@ def query_expenses(user, year: int, month: int, category_name: str | None = None
 
 def query_balance(user, year: int, month: int) -> str:
     """Query monthly balance: income, expenses, returns."""
-    billing_month = date(year, month, 1)
+    bm = _billing_month(year, month)
+    if isinstance(bm, str):
+        return bm
+    billing_month = bm
 
     income = Income.objects.filter(user=user, month=billing_month).aggregate(total=Sum("amount"))[
         "total"
@@ -129,7 +143,10 @@ def query_balance(user, year: int, month: int) -> str:
 
 def query_budget_status(user, year: int, month: int) -> str:
     """List categories that exceeded or are near their budget ceiling."""
-    billing_month = date(year, month, 1)
+    bm = _billing_month(year, month)
+    if isinstance(bm, str):
+        return bm
+    billing_month = bm
 
     category_totals = (
         Entry.objects.filter(user=user, billing_month=billing_month, amount__gt=0)
