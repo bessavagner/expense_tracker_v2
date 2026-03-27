@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import include, path
 
 from finances.views.consolidated import (
     CategoryDetailView,
@@ -116,4 +116,6 @@ urlpatterns = [
     path("import/map/", ImportMappingView.as_view(), name="import_map"),
     path("import/preview/", ImportPreviewView.as_view(), name="import_preview"),
     path("import/execute/", ImportExecuteView.as_view(), name="import_execute"),
+    # API
+    path("api/dashboard/", include("finances.api.urls")),
 ]
