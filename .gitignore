@@ -36,3 +36,7 @@ htmlcov/
 .pytest_cache/
 .ruff_cache/
 .django_tailwind_cli/
+
+# Frontend
+src/backend/frontend/node_modules/
+src/backend/frontend/dist/

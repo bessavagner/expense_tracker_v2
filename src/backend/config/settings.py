@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     # Third-party
     "django_tailwind_cli",
     "django_htmx",
+    "rest_framework",
     # Local apps
     "core",
     "finances",
@@ -115,3 +116,13 @@ TAILWIND_CLI_DIST_CSS = "css/tailwind.css"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOGIN_URL = "/admin/login/"
+
+# Django REST Framework
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+}

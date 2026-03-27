@@ -1,10 +1,11 @@
-from django.urls import path
+from django.urls import include, path
 
 from finances.views.consolidated import (
     CategoryDetailView,
     ConsolidatedSystemicsView,
     ConsolidatedView,
 )
+from finances.views.dashboard import DashboardView
 from finances.views.entries import (
     EntryCreateView,
     EntryDeleteView,
@@ -116,4 +117,8 @@ urlpatterns = [
     path("import/map/", ImportMappingView.as_view(), name="import_map"),
     path("import/preview/", ImportPreviewView.as_view(), name="import_preview"),
     path("import/execute/", ImportExecuteView.as_view(), name="import_execute"),
+    # API
+    path("api/dashboard/", include("finances.api.urls")),
+    # Dashboard (must be last to avoid catching other routes)
+    path("", DashboardView.as_view(), name="dashboard"),
 ]
