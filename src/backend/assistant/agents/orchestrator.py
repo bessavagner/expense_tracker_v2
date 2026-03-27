@@ -6,9 +6,12 @@ from pydantic_ai import Agent, RunContext
 from assistant.agents.tools import (
     create_category,
     create_entry,
+    create_memory_rule,
     create_payment_method,
     list_categories,
+    list_memory_rules,
     list_payment_methods,
+    lookup_memory,
     query_balance,
     query_budget_status,
     query_expenses,
@@ -39,6 +42,12 @@ mas mostre no formato brasileiro (dd/mm/aaaa) ao usuário
 - Quando o usuário perguntar sobre gastos sem especificar mês, use o mês atual
 - Para consultas, responda de forma clara e concisa com os valores formatados em Real
 - Seja conciso e direto nas respostas
+- Antes de propor uma entrada, use check_memory para verificar se há regras memorizadas
+- Se a regra tem confiança >= 0.9, use o valor diretamente ao propor a entrada (sem mencionar a memória)
+- Se a confiança é entre 0.7 e 0.9, mencione a sugestão e pergunte se está certo
+- Se a confiança é < 0.7, pergunte ao usuário antes de usar
+- Quando o usuário corrigir um campo ("não, isso é Lanche", "use Pix"), crie uma regra com save_memory_rule
+- Se o usuário perguntar o que você lembra, use get_memory_rules
 """
 
 assistant_agent = Agent(
@@ -138,3 +147,33 @@ async def add_payment_method(
 async def set_income(ctx: RunContext[User], name: str, amount: str, month: str) -> str:
     """Cria ou atualiza uma renda mensal. Mês no formato AAAA-MM-DD."""
     return await sync_to_async(update_income)(ctx.deps, name, amount, month)
+
+
+@assistant_agent.tool
+async def check_memory(ctx: RunContext[User], message: str) -> str:
+    """Verifica regras de memória que correspondem à mensagem do usuário.
+
+    Args:
+        message: A mensagem original do usuário para buscar correspondências
+    """
+    return await sync_to_async(lookup_memory)(ctx.deps, message)
+
+
+@assistant_agent.tool
+async def save_memory_rule(
+    ctx: RunContext[User], trigger: str, field: str, value: str
+) -> str:
+    """Salva uma regra de memória a partir de correção do usuário.
+
+    Args:
+        trigger: Padrão de correspondência (ex: "cosmos", "posto")
+        field: Campo alvo: "category", "payment_method", ou "description"
+        value: Valor correto (ex: "Alimentação", "Pix")
+    """
+    return await sync_to_async(create_memory_rule)(ctx.deps, trigger, field, value)
+
+
+@assistant_agent.tool
+async def get_memory_rules(ctx: RunContext[User]) -> str:
+    """Lista todas as regras de memória do usuário."""
+    return await sync_to_async(list_memory_rules)(ctx.deps)
