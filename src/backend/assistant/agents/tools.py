@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 from django.db.models import Sum
 
 from finances.models import Category, Entry, Income, InstallmentPlan, PaymentMethod
+from finances.models.payment_method import PaymentType
 
 
 def list_categories(user) -> list[str]:
@@ -196,3 +197,75 @@ def query_installments(user) -> str:
         lines.append(f"\nTotal mensal em parcelas: R$ {total_monthly:.2f}")
 
     return "\n".join(lines)
+
+
+def create_category(user, name: str, budget_ceiling: str) -> str:
+    """Create a new expense category."""
+    if Category.objects.filter(user=user, name=name).exists():
+        return f"Erro: categoria '{name}' já existe."
+
+    try:
+        ceiling = Decimal(budget_ceiling)
+    except InvalidOperation:
+        return f"Erro: valor de teto inválido '{budget_ceiling}'."
+
+    Category.objects.create(user=user, name=name, budget_ceiling=ceiling)
+    return f"Categoria '{name}' criada com teto de R$ {ceiling:.2f}."
+
+
+def update_category_budget(user, category_name: str, new_ceiling: str) -> str:
+    """Update the budget ceiling of an existing category."""
+    try:
+        category = Category.objects.get(user=user, name=category_name)
+    except Category.DoesNotExist:
+        return f"Erro: categoria '{category_name}' não encontrada."
+
+    try:
+        ceiling = Decimal(new_ceiling)
+    except InvalidOperation:
+        return f"Erro: valor inválido '{new_ceiling}'."
+
+    old_ceiling = category.budget_ceiling
+    category.budget_ceiling = ceiling
+    category.save()
+    return f"Teto de {category_name} atualizado de R$ {old_ceiling:.2f} para R$ {ceiling:.2f}."
+
+
+def create_payment_method(user, name: str, pm_type: str, closing_day: str | None = None) -> str:
+    """Create a new payment method."""
+    valid_types = [choice.value for choice in PaymentType]
+    if pm_type not in valid_types:
+        return f"Erro: tipo inválido '{pm_type}'. Válidos: {', '.join(valid_types)}."
+
+    closing = None
+    if closing_day:
+        try:
+            closing = int(closing_day)
+        except ValueError:
+            return f"Erro: dia de fechamento inválido '{closing_day}'."
+
+    PaymentMethod.objects.create(user=user, name=name, type=pm_type, closing_day=closing)
+    closing_info = f" (fechamento dia {closing})" if closing else ""
+    return f"Forma de pagamento '{name}' criada{closing_info}."
+
+
+def update_income(user, name: str, amount: str, month_str: str) -> str:
+    """Create or update income for a specific month."""
+    try:
+        amount_val = Decimal(amount)
+    except InvalidOperation:
+        return f"Erro: valor inválido '{amount}'."
+
+    try:
+        month = date.fromisoformat(month_str)
+    except ValueError:
+        return f"Erro: data inválida '{month_str}'. Use formato AAAA-MM-DD."
+
+    income, created = Income.objects.update_or_create(
+        user=user,
+        name=name,
+        month=month,
+        defaults={"amount": amount_val},
+    )
+    action = "criada" if created else "atualizada"
+    return f"Renda '{name}' {action}: R$ {amount_val:.2f} em {month:%m/%Y}."

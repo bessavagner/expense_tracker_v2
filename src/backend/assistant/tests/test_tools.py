@@ -4,15 +4,19 @@ from decimal import Decimal
 import pytest
 
 from assistant.agents.tools import (
+    create_category,
     create_entry,
+    create_payment_method,
     list_categories,
     list_payment_methods,
     query_balance,
     query_budget_status,
     query_expenses,
     query_installments,
+    update_category_budget,
+    update_income,
 )
-from finances.models import Category, PaymentMethod
+from finances.models import Category, Income, PaymentMethod
 
 
 @pytest.mark.django_db
@@ -274,3 +278,71 @@ class TestQueryInstallments:
     def test_no_installments(self, seeded_user):
         result = query_installments(seeded_user)
         assert "nenhum" in result.lower() or "ativ" in result.lower()
+
+
+@pytest.mark.django_db
+class TestCreateCategory:
+    def test_creates_category(self, seeded_user):
+        result = create_category(seeded_user, "Assinatura", "200.00")
+        assert "criada" in result.lower()
+        assert Category.objects.filter(user=seeded_user, name="Assinatura").exists()
+
+    def test_duplicate_name(self, seeded_user):
+        result = create_category(seeded_user, "Alimentação", "500.00")
+        assert "erro" in result.lower() or "já existe" in result.lower()
+
+
+@pytest.mark.django_db
+class TestUpdateCategoryBudget:
+    def test_updates_ceiling(self, seeded_user):
+        result = update_category_budget(seeded_user, "Alimentação", "1500.00")
+        assert "atualizado" in result.lower()
+        cat = Category.objects.get(user=seeded_user, name="Alimentação")
+        assert cat.budget_ceiling == Decimal("1500.00")
+
+    def test_nonexistent_category(self, seeded_user):
+        result = update_category_budget(seeded_user, "NonExistent", "500.00")
+        assert "erro" in result.lower() or "não encontrada" in result.lower()
+
+
+@pytest.mark.django_db
+class TestCreatePaymentMethod:
+    def test_creates_pix(self, seeded_user):
+        result = create_payment_method(seeded_user, "Novo Pix", "pix")
+        assert "criada" in result.lower()
+        assert PaymentMethod.objects.filter(user=seeded_user, name="Novo Pix").exists()
+
+    def test_creates_credit_card(self, seeded_user):
+        result = create_payment_method(seeded_user, "Crédito Teste", "credit_card", "25")
+        assert "criada" in result.lower()
+        pm = PaymentMethod.objects.get(user=seeded_user, name="Crédito Teste")
+        assert pm.closing_day == 25
+
+    def test_invalid_type(self, seeded_user):
+        result = create_payment_method(seeded_user, "Bad", "invalid_type")
+        assert "erro" in result.lower()
+
+
+@pytest.mark.django_db
+class TestUpdateIncome:
+    def test_creates_new_income(self, seeded_user):
+        result = update_income(seeded_user, "Salário", "8000.00", "2026-03-01")
+        lowered = result.lower()
+        assert "salv" in lowered or "criada" in lowered or "atualizada" in lowered
+        assert Income.objects.filter(
+            user=seeded_user, name="Salário", month=date(2026, 3, 1)
+        ).exists()
+
+    def test_updates_existing(self, seeded_user):
+        from model_bakery import baker
+
+        baker.make(
+            "finances.Income",
+            user=seeded_user,
+            name="Salário",
+            amount=Decimal("5000"),
+            month=date(2026, 3, 1),
+        )
+        update_income(seeded_user, "Salário", "8000.00", "2026-03-01")
+        income = Income.objects.get(user=seeded_user, name="Salário", month=date(2026, 3, 1))
+        assert income.amount == Decimal("8000.00")
