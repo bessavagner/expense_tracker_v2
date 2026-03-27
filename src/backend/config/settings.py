@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     # Local apps
     "core",
     "finances",
+    "assistant",
 ]
 
 MIDDLEWARE = [
@@ -116,6 +117,11 @@ TAILWIND_CLI_DIST_CSS = "css/tailwind.css"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOGIN_URL = "/admin/login/"
+
+# AI Assistant
+LLM_MODEL = os.environ.get("LLM_MODEL", "openai:gpt-4o-mini")
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
+ASSISTANT_MAX_HISTORY = int(os.environ.get("ASSISTANT_MAX_HISTORY", "20"))
 
 # Django REST Framework
 REST_FRAMEWORK = {
