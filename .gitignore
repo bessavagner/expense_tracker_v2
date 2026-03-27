@@ -3,6 +3,7 @@ docker-compose.override.yml
 
 # Superpowers
 .superpowers/
+.worktrees/
 
 # Django
 db.sqlite3
