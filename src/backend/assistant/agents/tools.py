@@ -1,7 +1,9 @@
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
-from finances.models import Category, Entry, PaymentMethod
+from django.db.models import Sum
+
+from finances.models import Category, Entry, Income, InstallmentPlan, PaymentMethod
 
 
 def list_categories(user) -> list[str]:
@@ -73,3 +75,124 @@ def create_entry(
         f"em {category.name} via {payment_method.name} "
         f"(fatura: {entry.billing_month:%m/%Y})"
     )
+
+
+def query_expenses(user, year: int, month: int, category_name: str | None = None) -> str:
+    """Query total expenses for a month, optionally filtered by category."""
+    billing_month = date(year, month, 1)
+    qs = Entry.objects.filter(user=user, billing_month=billing_month, amount__gt=0)
+
+    if category_name:
+        try:
+            category = Category.objects.get(user=user, name=category_name)
+        except Category.DoesNotExist:
+            return f"Categoria '{category_name}' não encontrada."
+        qs = qs.filter(category=category)
+        total = qs.aggregate(total=Sum("amount"))["total"] or Decimal("0")
+        ceiling_info = ""
+        if category.budget_ceiling and category.budget_ceiling > 0:
+            pct = total / category.budget_ceiling * 100
+            ceiling_info = f" (teto: R$ {category.budget_ceiling:.2f} — {pct:.0f}% do orçamento)"
+        return (
+            f"Em {month:02d}/{year}, você gastou R$ {total:.2f} com {category_name}{ceiling_info}."
+        )
+
+    total = qs.aggregate(total=Sum("amount"))["total"] or Decimal("0")
+    count = qs.count()
+    return f"Em {month:02d}/{year}, você gastou R$ {total:.2f} em {count} entradas."
+
+
+def query_balance(user, year: int, month: int) -> str:
+    """Query monthly balance: income, expenses, returns."""
+    billing_month = date(year, month, 1)
+
+    income = Income.objects.filter(user=user, month=billing_month).aggregate(total=Sum("amount"))[
+        "total"
+    ] or Decimal("0")
+
+    entries = Entry.objects.filter(user=user, billing_month=billing_month)
+    expenses = entries.filter(amount__gt=0).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+    returns = abs(
+        entries.filter(amount__lt=0).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+    )
+    balance = income - expenses + returns
+
+    return (
+        f"Saldo de {month:02d}/{year}:\n"
+        f"- Renda: R$ {income:.2f}\n"
+        f"- Gastos: R$ {expenses:.2f}\n"
+        f"- Retornos: R$ {returns:.2f}\n"
+        f"- Saldo: R$ {balance:.2f}"
+    )
+
+
+def query_budget_status(user, year: int, month: int) -> str:
+    """List categories that exceeded or are near their budget ceiling."""
+    billing_month = date(year, month, 1)
+
+    category_totals = (
+        Entry.objects.filter(user=user, billing_month=billing_month, amount__gt=0)
+        .values("category__name", "category__budget_ceiling")
+        .annotate(total=Sum("amount"))
+    )
+
+    over = []
+    warning = []
+    ok_count = 0
+
+    for ct in category_totals:
+        ceiling = ct["category__budget_ceiling"]
+        if not ceiling or ceiling <= 0:
+            ok_count += 1
+            continue
+        pct = ct["total"] / ceiling * 100
+        if pct >= 100:
+            over.append(
+                f"🔴 {ct['category__name']}: R$ {ct['total']:.0f} / R$ {ceiling:.0f} ({pct:.0f}%)"
+            )
+        elif pct >= 90:
+            warning.append(
+                f"⚠️ {ct['category__name']}: R$ {ct['total']:.0f} / R$ {ceiling:.0f} ({pct:.0f}%)"
+            )
+        else:
+            ok_count += 1
+
+    lines = []
+    if over:
+        lines.append(f"Categorias acima do teto em {month:02d}/{year}:")
+        lines.extend(over)
+    if warning:
+        lines.append("Categorias perto do teto:")
+        lines.extend(warning)
+    if ok_count > 0:
+        lines.append(f"\n{ok_count} categorias dentro do orçamento.")
+    if not over and not warning:
+        lines.append(f"Todas as categorias dentro do orçamento em {month:02d}/{year}.")
+
+    return "\n".join(lines)
+
+
+def query_installments(user) -> str:
+    """List active installment plans."""
+    plans = InstallmentPlan.objects.filter(user=user).order_by("-date")
+
+    if not plans.exists():
+        return "Nenhum parcelamento ativo."
+
+    lines = ["Parcelamentos ativos:"]
+    total_monthly = Decimal("0")
+
+    for plan in plans:
+        entry_count = Entry.objects.filter(installment_plan=plan).count()
+        if entry_count == 0:
+            continue
+        lines.append(
+            f"- {plan.description} ({entry_count}/{plan.num_installments}x) "
+            f"— R$ {plan.installment_amount:.2f}/mês"
+        )
+        total_monthly += plan.installment_amount
+
+    if total_monthly > 0:
+        lines.append(f"\nTotal mensal em parcelas: R$ {total_monthly:.2f}")
+
+    return "\n".join(lines)

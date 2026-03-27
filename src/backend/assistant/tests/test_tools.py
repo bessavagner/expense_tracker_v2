@@ -3,7 +3,16 @@ from decimal import Decimal
 
 import pytest
 
-from assistant.agents.tools import create_entry, list_categories, list_payment_methods
+from assistant.agents.tools import (
+    create_entry,
+    list_categories,
+    list_payment_methods,
+    query_balance,
+    query_budget_status,
+    query_expenses,
+    query_installments,
+)
+from finances.models import Category, PaymentMethod
 
 
 @pytest.mark.django_db
@@ -116,3 +125,152 @@ class TestCreateEntry:
 
         entry = Entry.objects.get(user=seeded_user, description="Amanda - reembolso")
         assert entry.amount == Decimal("-150.00")
+
+
+@pytest.mark.django_db
+class TestQueryExpenses:
+    def test_total_for_month(self, seeded_user):
+        from model_bakery import baker
+
+        cat = Category.objects.get(user=seeded_user, name="Alimentação")
+        pm = PaymentMethod.objects.get(user=seeded_user, name="Pix")
+        baker.make(
+            "finances.Entry",
+            user=seeded_user,
+            date=date(2026, 3, 5),
+            amount=Decimal("500"),
+            category=cat,
+            payment_method=pm,
+            billing_month=date(2026, 3, 1),
+        )
+        baker.make(
+            "finances.Entry",
+            user=seeded_user,
+            date=date(2026, 3, 10),
+            amount=Decimal("300"),
+            category=cat,
+            payment_method=pm,
+            billing_month=date(2026, 3, 1),
+        )
+        result = query_expenses(seeded_user, 2026, 3)
+        assert "800" in result
+
+    def test_filtered_by_category(self, seeded_user):
+        from model_bakery import baker
+
+        cat = Category.objects.get(user=seeded_user, name="Alimentação")
+        cat2 = Category.objects.get(user=seeded_user, name="Lanche")
+        pm = PaymentMethod.objects.get(user=seeded_user, name="Pix")
+        baker.make(
+            "finances.Entry",
+            user=seeded_user,
+            date=date(2026, 3, 5),
+            amount=Decimal("500"),
+            category=cat,
+            payment_method=pm,
+            billing_month=date(2026, 3, 1),
+        )
+        baker.make(
+            "finances.Entry",
+            user=seeded_user,
+            date=date(2026, 3, 5),
+            amount=Decimal("100"),
+            category=cat2,
+            payment_method=pm,
+            billing_month=date(2026, 3, 1),
+        )
+        result = query_expenses(seeded_user, 2026, 3, category_name="Alimentação")
+        assert "500" in result
+        assert "100" not in result
+
+    def test_empty_month(self, seeded_user):
+        result = query_expenses(seeded_user, 2026, 6)
+        assert "0" in result or "nenhum" in result.lower()
+
+
+@pytest.mark.django_db
+class TestQueryBalance:
+    def test_returns_income_and_expenses(self, seeded_user):
+        from model_bakery import baker
+
+        baker.make(
+            "finances.Income",
+            user=seeded_user,
+            month=date(2026, 3, 1),
+            amount=Decimal("5000"),
+            name="Salário",
+        )
+        cat = Category.objects.get(user=seeded_user, name="Alimentação")
+        pm = PaymentMethod.objects.get(user=seeded_user, name="Pix")
+        baker.make(
+            "finances.Entry",
+            user=seeded_user,
+            date=date(2026, 3, 5),
+            amount=Decimal("1000"),
+            category=cat,
+            payment_method=pm,
+            billing_month=date(2026, 3, 1),
+        )
+        baker.make(
+            "finances.Entry",
+            user=seeded_user,
+            date=date(2026, 3, 10),
+            amount=Decimal("-200"),
+            category=cat,
+            payment_method=pm,
+            billing_month=date(2026, 3, 1),
+        )
+        result = query_balance(seeded_user, 2026, 3)
+        assert "5000" in result or "5.000" in result
+        assert "1000" in result or "1.000" in result
+        assert "200" in result
+
+
+@pytest.mark.django_db
+class TestQueryBudgetStatus:
+    def test_over_budget_category(self, seeded_user):
+        from model_bakery import baker
+
+        cat = Category.objects.get(user=seeded_user, name="Alimentação")
+        cat.budget_ceiling = Decimal("100")
+        cat.save()
+        pm = PaymentMethod.objects.get(user=seeded_user, name="Pix")
+        baker.make(
+            "finances.Entry",
+            user=seeded_user,
+            date=date(2026, 3, 5),
+            amount=Decimal("150"),
+            category=cat,
+            payment_method=pm,
+            billing_month=date(2026, 3, 1),
+        )
+        result = query_budget_status(seeded_user, 2026, 3)
+        assert "Alimentação" in result
+        assert "150" in result or "🔴" in result
+
+
+@pytest.mark.django_db
+class TestQueryInstallments:
+    def test_active_installments(self, seeded_user):
+        from model_bakery import baker
+
+        cat = Category.objects.get(user=seeded_user, name="Alimentação")
+        pm = PaymentMethod.objects.get(user=seeded_user, name="Crédito C6")
+        plan = baker.make(
+            "finances.InstallmentPlan",
+            user=seeded_user,
+            date=date(2025, 12, 1),
+            description="Notebook",
+            category=cat,
+            payment_method=pm,
+            total_amount=Decimal("600"),
+            num_installments=3,
+            installment_amount=Decimal("200"),
+        )
+        plan.generate_entries()
+        result = query_installments(seeded_user)
+        assert "Notebook" in result
+
+    def test_no_installments(self, seeded_user):
+        result = query_installments(seeded_user)
+        assert "nenhum" in result.lower() or "ativ" in result.lower()
