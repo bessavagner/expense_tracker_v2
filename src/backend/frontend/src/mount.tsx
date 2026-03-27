@@ -1,8 +1,20 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
+import SummaryCard from "./cards/SummaryCard";
+import TopCategoriesCard from "./cards/TopCategoriesCard";
+import EvolutionCard from "./cards/EvolutionCard";
+import AlertsCard from "./cards/AlertsCard";
+import RecentEntriesCard from "./cards/RecentEntriesCard";
+import InstallmentsCard from "./cards/InstallmentsCard";
 
-// Card components will be imported here in Task 4
-const COMPONENTS: Record<string, React.ComponentType<{ apiUrl: string }>> = {};
+const COMPONENTS: Record<string, React.ComponentType<{ apiUrl: string }>> = {
+  SummaryCard,
+  TopCategoriesCard,
+  EvolutionCard,
+  AlertsCard,
+  RecentEntriesCard,
+  InstallmentsCard,
+};
 
 function mountAll() {
   const elements = document.querySelectorAll("[data-react-component]");

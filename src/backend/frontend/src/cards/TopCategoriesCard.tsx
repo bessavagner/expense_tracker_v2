@@ -1,0 +1,56 @@
+import { useEffect, useState } from "react";
+import { fetchApi } from "../api";
+import type { CategoryData } from "../types";
+
+const COLORS = ["#e94560", "#0f3460", "#16c79a", "#533483", "#f59e0b"];
+
+interface Props {
+  apiUrl: string;
+}
+
+export default function TopCategoriesCard({ apiUrl }: Props) {
+  const [data, setData] = useState<CategoryData[] | null>(null);
+
+  useEffect(() => {
+    fetchApi<CategoryData[]>(apiUrl).then(setData);
+  }, [apiUrl]);
+
+  if (!data)
+    return (
+      <div className="card bg-base-100 border border-base-300 shadow-sm animate-pulse h-48" />
+    );
+
+  const maxAmount = Math.max(...data.map((d) => parseFloat(d.amount)), 1);
+
+  return (
+    <div className="card bg-base-100 border border-base-300 shadow-sm">
+      <div className="card-body p-4">
+        <h3 className="card-title text-sm">Top Categorias</h3>
+        <div className="space-y-2">
+          {data.map((cat, i) => (
+            <div key={cat.name}>
+              <div className="flex justify-between text-xs mb-0.5">
+                <span className="opacity-70">{cat.name}</span>
+                <span
+                  className="font-bold"
+                  style={{ color: COLORS[i % COLORS.length] }}
+                >
+                  R$ {cat.amount}
+                </span>
+              </div>
+              <div className="bg-base-200 rounded h-2.5">
+                <div
+                  className="h-full rounded"
+                  style={{
+                    width: `${(parseFloat(cat.amount) / maxAmount) * 100}%`,
+                    backgroundColor: COLORS[i % COLORS.length],
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
