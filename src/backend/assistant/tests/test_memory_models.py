@@ -126,7 +126,6 @@ class TestMemoryRule:
         assert rule.confidence == 1.0
 
     def test_last_used_at_can_be_updated(self, user):
-        from django.utils import timezone
         from assistant.models import MemoryRule
 
         rule = MemoryRule.objects.create(

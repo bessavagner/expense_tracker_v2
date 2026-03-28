@@ -43,10 +43,12 @@ mas mostre no formato brasileiro (dd/mm/aaaa) ao usuário
 - Para consultas, responda de forma clara e concisa com os valores formatados em Real
 - Seja conciso e direto nas respostas
 - Antes de propor uma entrada, use check_memory para verificar se há regras memorizadas
-- Se a regra tem confiança >= 0.9, use o valor diretamente ao propor a entrada (sem mencionar a memória)
+- Se a regra tem confiança >= 0.9, use o valor diretamente ao propor a entrada \
+(sem mencionar a memória)
 - Se a confiança é entre 0.7 e 0.9, mencione a sugestão e pergunte se está certo
 - Se a confiança é < 0.7, pergunte ao usuário antes de usar
-- Quando o usuário corrigir um campo ("não, isso é Lanche", "use Pix"), crie uma regra com save_memory_rule
+- Quando o usuário corrigir um campo ("não, isso é Lanche", "use Pix"), \
+crie uma regra com save_memory_rule
 - Se o usuário perguntar o que você lembra, use get_memory_rules
 """
 
@@ -160,9 +162,7 @@ async def check_memory(ctx: RunContext[User], message: str) -> str:
 
 
 @assistant_agent.tool
-async def save_memory_rule(
-    ctx: RunContext[User], trigger: str, field: str, value: str
-) -> str:
+async def save_memory_rule(ctx: RunContext[User], trigger: str, field: str, value: str) -> str:
     """Salva uma regra de memória a partir de correção do usuário.
 
     Args:

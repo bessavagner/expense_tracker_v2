@@ -5,15 +5,14 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('assistant', '0002_memoryrule'),
+        ("assistant", "0002_memoryrule"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='memoryrule',
-            name='last_used_at',
+            model_name="memoryrule",
+            name="last_used_at",
             field=models.DateTimeField(default=django.utils.timezone.now),
         ),
     ]

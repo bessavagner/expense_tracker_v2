@@ -3,6 +3,8 @@ from decimal import Decimal, InvalidOperation
 
 from django.db.models import Sum
 
+from assistant.agents.memory import AUTO_APPLY, CONFIRM_APPLY, find_matching_rules
+from assistant.models import MemoryRule, MemorySource
 from finances.models import Category, Entry, Income, InstallmentPlan, PaymentMethod
 from finances.models.payment_method import PaymentType
 
@@ -288,9 +290,6 @@ def update_income(user, name: str, amount: str, month_str: str) -> str:
     return f"Renda '{name}' {action}: R$ {amount_val:.2f} em {month:%m/%Y}."
 
 
-from assistant.agents.memory import AUTO_APPLY, CONFIRM_APPLY, find_matching_rules
-from assistant.models import MemoryRule, MemorySource
-
 VALID_MEMORY_FIELDS = {"category", "payment_method", "description"}
 
 
@@ -341,5 +340,7 @@ def list_memory_rules(user) -> str:
 
     lines = ["Suas regras de memória:"]
     for rule in rules:
-        lines.append(f"- '{rule.trigger}' → {rule.field}='{rule.value}' (confiança: {rule.confidence})")
+        lines.append(
+            f"- '{rule.trigger}' → {rule.field}='{rule.value}' (confiança: {rule.confidence})"
+        )
     return "\n".join(lines)
