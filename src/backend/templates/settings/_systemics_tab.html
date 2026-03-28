@@ -19,6 +19,13 @@
             </td>
             <td></td>
         </tr>
+        {% empty %}
+        <tr>
+            <td colspan="6" class="text-center py-6">
+                <span class="text-2xl">🔄</span>
+                <p class="text-xs text-base-content/60 mt-1">Nenhum gasto sistemático cadastrado. Use o formulário abaixo para adicionar.</p>
+            </td>
+        </tr>
         {% endfor %}
     </tbody>
 </table>

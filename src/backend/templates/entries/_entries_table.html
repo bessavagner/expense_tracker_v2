@@ -19,7 +19,15 @@
         {% for entry in entries %}
         {% include "entries/_entry_row.html" %}
         {% empty %}
-        <tr><td colspan="7" class="text-center opacity-60">Nenhuma entrada neste mês.</td></tr>
+        <tr>
+            <td colspan="7" class="text-center py-8">
+                <div class="flex flex-col items-center">
+                    <span class="text-4xl mb-3">📝</span>
+                    <p class="font-semibold text-sm">Nenhuma entrada neste mês</p>
+                    <p class="text-xs text-base-content/60 mt-1">Use o formulário acima ou o botão "+ Nova Entrada" para começar</p>
+                </div>
+            </td>
+        </tr>
         {% endfor %}
     </tbody>
 </table>

@@ -17,6 +17,13 @@
                        hx-swap="innerHTML">
             </td>
         </tr>
+        {% empty %}
+        <tr>
+            <td colspan="4" class="text-center py-6">
+                <span class="text-2xl">💳</span>
+                <p class="text-xs text-base-content/60 mt-1">Nenhuma forma de pagamento cadastrada. Use o formulário abaixo para adicionar.</p>
+            </td>
+        </tr>
         {% endfor %}
     </tbody>
 </table>
