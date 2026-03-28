@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchApi } from "../api";
 import type { EntryData } from "../types";
+import EmptyState from "../components/EmptyState";
 
 interface Props {
   apiUrl: string;
@@ -17,6 +18,17 @@ export default function RecentEntriesCard({ apiUrl }: Props) {
     return (
       <div className="card bg-base-100 border border-base-300 shadow-sm animate-pulse h-48" />
     );
+
+  if (data.length === 0) {
+    return (
+      <div className="card bg-base-100 border border-base-300 shadow-sm">
+        <div className="card-body p-4">
+          <h3 className="card-title text-sm">Últimas Entradas</h3>
+          <EmptyState emoji="📝" title="Nenhuma entrada recente" description="Adicione sua primeira entrada para começar" actionHref="/entries/" actionLabel="Ver entradas" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="card bg-base-100 border border-base-300 shadow-sm">

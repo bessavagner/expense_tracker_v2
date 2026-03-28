@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchApi } from "../api";
 import type { CategoryData } from "../types";
+import EmptyState from "../components/EmptyState";
 
 const COLORS = ["#e94560", "#0f3460", "#16c79a", "#533483", "#f59e0b"];
 
@@ -19,6 +20,17 @@ export default function TopCategoriesCard({ apiUrl }: Props) {
     return (
       <div className="card bg-base-100 border border-base-300 shadow-sm animate-pulse h-48" />
     );
+
+  if (data.length === 0) {
+    return (
+      <div className="card bg-base-100 border border-base-300 shadow-sm">
+        <div className="card-body p-4">
+          <h3 className="card-title text-sm">Top Categorias</h3>
+          <EmptyState emoji="🏷️" title="Sem categorias" description="Categorize suas despesas para ver o ranking" actionHref="/settings/" actionLabel="Configurações" />
+        </div>
+      </div>
+    );
+  }
 
   const maxAmount = Math.max(...data.map((d) => parseFloat(d.amount)), 1);
 

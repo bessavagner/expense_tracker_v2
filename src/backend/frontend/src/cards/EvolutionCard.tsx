@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import EmptyState from "../components/EmptyState";
 import {
   LineChart,
   Line,
@@ -26,6 +27,18 @@ export default function EvolutionCard({ apiUrl }: Props) {
     return (
       <div className="card bg-base-100 border border-base-300 shadow-sm animate-pulse h-64" />
     );
+
+  const hasData = data.some(d => parseFloat(d.expenses) > 0 || parseFloat(d.income) > 0);
+  if (!hasData) {
+    return (
+      <div className="card bg-base-100 border border-base-300 shadow-sm">
+        <div className="card-body p-4">
+          <h3 className="card-title text-sm">Evolução</h3>
+          <EmptyState emoji="📈" title="Sem movimentação" description="Adicione entradas para acompanhar a evolução mensal" />
+        </div>
+      </div>
+    );
+  }
 
   const chartData = data.map((d) => ({
     month: d.month.slice(5), // "2026-03" → "03"
