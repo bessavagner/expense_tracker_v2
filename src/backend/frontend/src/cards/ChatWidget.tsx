@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { useChatPinned } from "../hooks/useChatPinned";
 
 interface Message {
   id: string;
@@ -15,18 +16,31 @@ export default function ChatWidget({ apiUrl }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
+  const { isPinned, setIsPinned } = useChatPinned();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
-  // Load history on expand
+  // Restore pinned state on mount
   useEffect(() => {
-    if (isExpanded && messages.length === 0) {
+    if (isPinned) {
+      setIsOpen(true);
+      window.dispatchEvent(
+        new CustomEvent("chat:pin", { detail: { width: 380 } }),
+      );
+    }
+  }, []);
+
+  // Load history on first open
+  useEffect(() => {
+    if (isOpen && messages.length === 0) {
       fetch(`${apiUrl}history/`, { credentials: "same-origin" })
         .then((r) => r.json())
         .then((data: Message[]) => setMessages(data))
         .catch(() => {});
     }
-  }, [isExpanded, apiUrl]);
+  }, [isOpen, apiUrl]);
 
   // Auto-scroll
   useEffect(() => {
@@ -124,10 +138,60 @@ export default function ChatWidget({ apiUrl }: Props) {
     }
   };
 
-  if (!isExpanded) {
+  // Resize handlers for pinned mode
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const aside = (e.target as HTMLElement).closest("aside");
+    const startWidth = aside?.getBoundingClientRect().width || 380;
+    resizeRef.current = { startX: e.clientX, startWidth };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizeRef.current) return;
+      const delta = resizeRef.current.startX - e.clientX;
+      const newWidth = Math.max(
+        300,
+        Math.min(600, resizeRef.current.startWidth + delta),
+      );
+      window.dispatchEvent(
+        new CustomEvent("chat:resize", { detail: { width: newWidth } }),
+      );
+    };
+
+    const handleMouseUp = () => {
+      resizeRef.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  }, []);
+
+  const handlePin = () => {
+    if (isPinned) {
+      setIsPinned(false);
+    } else {
+      setIsPinned(true);
+      setIsOpen(true);
+      setIsMinimized(false);
+    }
+  };
+
+  const handleClose = () => {
+    setIsOpen(false);
+    setIsMinimized(false);
+    if (isPinned) setIsPinned(false);
+  };
+
+  // --- Collapsed state: floating button ---
+  if (!isOpen) {
     return (
       <button
-        onClick={() => setIsExpanded(true)}
+        onClick={() => setIsOpen(true)}
         className="w-12 h-12 bg-neutral text-neutral-content rounded-full flex items-center justify-center text-xl shadow-lg hover:scale-110 transition-transform cursor-pointer"
         title="Abrir chat"
       >
@@ -136,85 +200,138 @@ export default function ChatWidget({ apiUrl }: Props) {
     );
   }
 
-  return (
-    <div className="flex flex-col h-full bg-base-100 border-l border-base-300 w-80">
-      {/* Header */}
-      <div className="flex items-center justify-between p-3 bg-neutral text-neutral-content">
-        <span className="font-bold text-sm">💬 Assistente</span>
+  // --- Chat content (shared between pinned and floating) ---
+  const chatHeader = (
+    <div className="flex items-center justify-between p-3 bg-neutral text-neutral-content shrink-0">
+      <span className="font-bold text-sm">💬 Assistente</span>
+      <div className="flex gap-1">
         <button
-          onClick={() => setIsExpanded(false)}
+          onClick={handlePin}
+          className={`btn btn-ghost btn-xs text-neutral-content ${isPinned ? "opacity-100" : "opacity-60"}`}
+          title={isPinned ? "Desafixar" : "Fixar"}
+        >
+          📌
+        </button>
+        {isPinned && (
+          <button
+            onClick={() => setIsMinimized(!isMinimized)}
+            className="btn btn-ghost btn-xs text-neutral-content"
+            title={isMinimized ? "Expandir" : "Minimizar"}
+          >
+            {isMinimized ? "▲" : "▼"}
+          </button>
+        )}
+        <button
+          onClick={handleClose}
           className="btn btn-ghost btn-xs text-neutral-content"
+          title="Fechar"
         >
           ✕
         </button>
       </div>
+    </div>
+  );
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
-        {messages.map((msg) => (
+  const chatMessages = (
+    <div className="flex-1 overflow-y-auto p-3 space-y-2">
+      {messages.map((msg) => (
+        <div
+          key={msg.id}
+          className={`chat ${msg.role === "user" ? "chat-end" : "chat-start"}`}
+        >
           <div
-            key={msg.id}
-            className={`chat ${msg.role === "user" ? "chat-end" : "chat-start"}`}
+            className={`chat-bubble text-sm ${
+              msg.role === "user"
+                ? "chat-bubble-primary"
+                : "chat-bubble-neutral"
+            }`}
           >
-            <div
-              className={`chat-bubble text-sm ${
-                msg.role === "user"
-                  ? "chat-bubble-primary"
-                  : "chat-bubble-neutral"
-              }`}
-            >
-              {msg.content || (
-                <span className="loading loading-dots loading-sm" />
-              )}
-            </div>
+            {msg.content || (
+              <span className="loading loading-dots loading-sm" />
+            )}
           </div>
-        ))}
-        <div ref={messagesEndRef} />
+        </div>
+      ))}
+      <div ref={messagesEndRef} />
+    </div>
+  );
+
+  const quickReplies = messages.length > 0 &&
+    messages[messages.length - 1].role === "assistant" &&
+    messages[messages.length - 1].content.includes("Confirma?") && (
+      <div className="flex gap-1 px-3 pb-1">
+        <button
+          className="btn btn-xs btn-success"
+          onClick={() => sendMessage("sim")}
+          disabled={isStreaming}
+        >
+          Sim
+        </button>
+        <button
+          className="btn btn-xs btn-error"
+          onClick={() => sendMessage("não")}
+          disabled={isStreaming}
+        >
+          Não
+        </button>
       </div>
+    );
 
-      {/* Quick replies */}
-      {messages.length > 0 &&
-        messages[messages.length - 1].role === "assistant" &&
-        messages[messages.length - 1].content.includes("Confirma?") && (
-          <div className="flex gap-1 px-3 pb-1">
-            <button
-              className="btn btn-xs btn-success"
-              onClick={() => sendMessage("sim")}
-              disabled={isStreaming}
-            >
-              Sim
-            </button>
-            <button
-              className="btn btn-xs btn-error"
-              onClick={() => sendMessage("não")}
-              disabled={isStreaming}
-            >
-              Não
-            </button>
-          </div>
-        )}
+  const chatInput = (
+    <div className="p-3 border-t border-base-300 shrink-0">
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Digite sua mensagem..."
+          className="input input-bordered input-sm flex-1"
+          disabled={isStreaming}
+        />
+        <button
+          onClick={() => sendMessage()}
+          className="btn btn-sm btn-accent"
+          disabled={isStreaming || !input.trim()}
+        >
+          →
+        </button>
+      </div>
+    </div>
+  );
 
-      {/* Input */}
-      <div className="p-3 border-t border-base-300">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Digite sua mensagem..."
-            className="input input-bordered input-sm flex-1"
-            disabled={isStreaming}
-          />
-          <button
-            onClick={() => sendMessage()}
-            className="btn btn-sm btn-accent"
-            disabled={isStreaming || !input.trim()}
-          >
-            →
-          </button>
+  // --- Pinned mode ---
+  if (isPinned) {
+    return (
+      <div className="flex h-full">
+        {/* Resize handle */}
+        <div
+          className="w-1 hover:bg-accent/30 cursor-col-resize transition-colors group relative shrink-0"
+          onMouseDown={handleResizeStart}
+        >
+          <div className="absolute inset-y-0 -left-1 -right-1" />
+        </div>
+        <div className="flex flex-col flex-1 bg-base-100 min-w-0">
+          {chatHeader}
+          {!isMinimized && (
+            <>
+              {chatMessages}
+              {quickReplies}
+              {chatInput}
+            </>
+          )}
         </div>
       </div>
+    );
+  }
+
+  // --- Floating mode (popup) ---
+  return (
+    <div className="fixed bottom-6 right-6 z-50 w-96 h-[32rem] flex flex-col bg-base-100 border border-base-300 rounded-lg shadow-xl">
+      {chatHeader}
+      {chatMessages}
+      {quickReplies}
+      {chatInput}
     </div>
   );
 }
