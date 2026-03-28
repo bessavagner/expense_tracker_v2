@@ -111,7 +111,7 @@ STORAGES = {
 
 # TailwindCSS v4 + DaisyUI
 TAILWIND_CLI_USE_DAISY_UI = True
-TAILWIND_CLI_SRC_CSS = "static/css/tailwind.css"
+TAILWIND_CLI_SRC_CSS = "static/css/input.css"
 TAILWIND_CLI_DIST_CSS = "css/tailwind.css"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
