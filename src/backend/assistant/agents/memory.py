@@ -13,9 +13,11 @@ def find_matching_rules(user, message: str) -> list[MemoryRule]:
     rules = MemoryRule.objects.filter(user=user)
     matched = []
     message_lower = message.lower()
-    now = timezone.now()
     for rule in rules:
         if rule.trigger.lower() in message_lower:
             matched.append(rule)
-            MemoryRule.objects.filter(pk=rule.pk).update(last_used_at=now)
+    if matched:
+        MemoryRule.objects.filter(pk__in=[r.pk for r in matched]).update(
+            last_used_at=timezone.now()
+        )
     return matched
