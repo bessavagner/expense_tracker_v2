@@ -1,0 +1,19 @@
+[Unit]
+Description=Expense Tracker V2 - Backend (Django)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory={{PROJECT_ROOT}}/src/backend
+
+ExecStart={{UV_BIN}}/uv run python manage.py runserver 0.0.0.0:{{BACKEND_PORT}}
+
+Restart=always
+RestartSec=5
+
+Environment="HOME={{HOME}}"
+Environment="PATH={{UV_BIN}}:{{NODE_BIN}}:/usr/local/bin:/usr/bin:/bin"
+
+[Install]
+WantedBy=default.target

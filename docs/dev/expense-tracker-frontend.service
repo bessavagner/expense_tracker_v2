@@ -1,0 +1,19 @@
+[Unit]
+Description=Expense Tracker V2 - Frontend (Vite)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory={{PROJECT_ROOT}}/src/backend/frontend
+
+ExecStart={{PNPM_BIN}}/pnpm dev --port {{FRONTEND_PORT}}
+
+Restart=always
+RestartSec=5
+
+Environment="HOME={{HOME}}"
+Environment="PATH={{NODE_BIN}}:{{UV_BIN}}:/usr/local/bin:/usr/bin:/bin"
+
+[Install]
+WantedBy=default.target
