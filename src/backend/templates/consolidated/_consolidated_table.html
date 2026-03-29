@@ -25,6 +25,16 @@
         {% for m in months %}
         <tr id="detail-{{ row.category__id }}-{{ m }}" style="display:none;"></tr>
         {% endfor %}
+        {% empty %}
+        <tr>
+            <td colspan="{{ months|length|add:1 }}" class="text-center py-8">
+                <div class="flex flex-col items-center gap-2 text-base-content/60">
+                    <span class="text-3xl">📊</span>
+                    <p class="font-semibold">Nenhum gasto registrado</p>
+                    <p class="text-sm">Adicione entradas para ver o consolidado por categoria</p>
+                </div>
+            </td>
+        </tr>
         {% endfor %}
     </tbody>
     <tfoot>
