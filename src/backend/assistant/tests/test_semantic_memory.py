@@ -40,3 +40,49 @@ class MemoryEmbeddingModelTest(TestCase):
         )
         self.user.delete()
         self.assertEqual(MemoryEmbedding.objects.count(), 0)
+
+
+class SemanticSearchTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="searchuser", password="testpass")
+        # Create embeddings with known vectors for cosine similarity testing
+        self.emb1 = MemoryEmbedding.objects.create(
+            user=self.user,
+            text="supermercado cosmos",
+            embedding=[1.0] + [0.0] * 1535,
+            metadata={"field": "category", "value": "Alimentação"},
+        )
+        self.emb2 = MemoryEmbedding.objects.create(
+            user=self.user,
+            text="posto de gasolina",
+            embedding=[0.0, 1.0] + [0.0] * 1534,
+            metadata={"field": "category", "value": "Combustível"},
+        )
+
+    def test_find_semantic_matches_returns_similar(self):
+        from assistant.agents.memory import find_semantic_matches
+
+        query_vector = [0.9] + [0.1] + [0.0] * 1534
+        matches = find_semantic_matches(self.user, query_vector, threshold=0.5)
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0].text, "supermercado cosmos")
+
+    def test_find_semantic_matches_respects_threshold(self):
+        from assistant.agents.memory import find_semantic_matches
+
+        query_vector = [0.5, 0.5] + [0.0] * 1534
+        matches = find_semantic_matches(self.user, query_vector, threshold=0.95)
+        self.assertEqual(len(matches), 0)
+
+    def test_find_semantic_matches_filters_by_user(self):
+        from assistant.agents.memory import find_semantic_matches
+
+        other_user = User.objects.create_user(username="other", password="testpass")
+        MemoryEmbedding.objects.create(
+            user=other_user,
+            text="other user embedding",
+            embedding=[1.0] + [0.0] * 1535,
+        )
+        query_vector = [1.0] + [0.0] * 1535
+        matches = find_semantic_matches(self.user, query_vector, threshold=0.5)
+        self.assertTrue(all(m.user == self.user for m in matches))

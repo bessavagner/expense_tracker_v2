@@ -1,10 +1,17 @@
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
+from asgiref.sync import sync_to_async as _sync_to_async
 from django.db.models import Sum
 
-from assistant.agents.memory import AUTO_APPLY, CONFIRM_APPLY, find_matching_rules
+from assistant.agents.memory import (
+    AUTO_APPLY,
+    CONFIRM_APPLY,
+    find_matching_rules,
+    find_semantic_matches,
+)
 from assistant.models import MemoryRule, MemorySource
+from assistant.services.embedding import get_embedding
 from finances.models import Category, Entry, Income, InstallmentPlan, PaymentMethod
 from finances.models.payment_method import PaymentType
 
@@ -310,6 +317,39 @@ def lookup_memory(user, message: str) -> str:
         lines.append(f"- {rule.field}='{rule.value}' (confiança: {rule.confidence}, {tier})")
 
     return "\n".join(lines)
+
+
+async def lookup_memory_async(user, message: str) -> str:
+    """Look up memory rules matching the user's message, with semantic fallback."""
+    rules = await _sync_to_async(find_matching_rules)(user, message)
+    if rules:
+        lines = ["Regras de memória encontradas:"]
+        for rule in rules:
+            if rule.confidence >= AUTO_APPLY:
+                tier = "auto-aplicar"
+            elif rule.confidence >= CONFIRM_APPLY:
+                tier = "sugerir ao usuário"
+            else:
+                tier = "perguntar ao usuário"
+            lines.append(
+                f"- {rule.field}='{rule.value}' (confiança: {rule.confidence}, {tier})"
+            )
+        return "\n".join(lines)
+
+    # Fallback: semantic search
+    query_vector = await get_embedding(message)
+    if query_vector:
+        matches = await _sync_to_async(find_semantic_matches)(user, query_vector)
+        if matches:
+            lines = ["Memórias similares encontradas (busca semântica):"]
+            for match in matches:
+                meta = match.metadata or {}
+                field = meta.get("field", "?")
+                value = meta.get("value", "?")
+                lines.append(f"- {field}='{value}' (texto: '{match.text[:50]}')")
+            return "\n".join(lines)
+
+    return "Nenhuma regra de memória encontrada."
 
 
 def create_memory_rule(user, trigger: str, field: str, value: str) -> str:

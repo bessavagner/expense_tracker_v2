@@ -1,6 +1,7 @@
 from django.utils import timezone
+from pgvector.django import CosineDistance
 
-from assistant.models import MemoryRule
+from assistant.models import MemoryEmbedding, MemoryRule
 
 # Confidence thresholds
 AUTO_APPLY = 0.9  # >= 0.9: apply silently
@@ -21,3 +22,15 @@ def find_matching_rules(user, message: str) -> list[MemoryRule]:
             last_used_at=timezone.now()
         )
     return matched
+
+
+def find_semantic_matches(
+    user, query_vector: list[float], threshold: float = 0.8, limit: int = 5
+) -> list:
+    """Find memory embeddings similar to query_vector using cosine distance."""
+    return list(
+        MemoryEmbedding.objects.filter(user=user)
+        .annotate(distance=CosineDistance("embedding", query_vector))
+        .filter(distance__lt=1 - threshold)
+        .order_by("distance")[:limit]
+    )
