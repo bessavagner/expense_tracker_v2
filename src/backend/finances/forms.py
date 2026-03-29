@@ -15,6 +15,13 @@ class EntryForm(forms.ModelForm):
     class Meta:
         model = Entry
         fields = ["date", "amount", "description", "category", "payment_method"]
+        labels = {
+            "date": "Data",
+            "amount": "Valor",
+            "description": "Descrição",
+            "category": "Categoria",
+            "payment_method": "Forma de pagamento",
+        }
         widgets = {
             "date": forms.DateInput(
                 attrs={"type": "date", "class": "input input-bordered input-sm w-full"}
@@ -56,6 +63,15 @@ class InstallmentForm(forms.ModelForm):
             "num_installments",
             "installment_amount",
         ]
+        labels = {
+            "date": "Data",
+            "description": "Descrição",
+            "category": "Categoria",
+            "payment_method": "Forma de pagamento",
+            "total_amount": "Valor total",
+            "num_installments": "Parcelas",
+            "installment_amount": "Valor da parcela",
+        }
         widgets = {
             "date": forms.DateInput(
                 attrs={"type": "date", "class": "input input-bordered input-sm w-full"}
