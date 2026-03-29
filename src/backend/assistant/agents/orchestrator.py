@@ -11,7 +11,7 @@ from assistant.agents.tools import (
     list_categories,
     list_memory_rules,
     list_payment_methods,
-    lookup_memory,
+    lookup_memory_async,
     query_balance,
     query_budget_status,
     query_expenses,
@@ -158,7 +158,7 @@ async def check_memory(ctx: RunContext[User], message: str) -> str:
     Args:
         message: A mensagem original do usuário para buscar correspondências
     """
-    return await sync_to_async(lookup_memory)(ctx.deps, message)
+    return await lookup_memory_async(ctx.deps, message)
 
 
 @assistant_agent.tool

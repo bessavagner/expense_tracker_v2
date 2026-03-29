@@ -3,6 +3,7 @@ import uuid
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
+from pgvector.django import VectorField
 
 
 class MessageRole(models.TextChoices):
@@ -59,3 +60,23 @@ class MemoryRule(models.Model):
 
     def __str__(self):
         return f"{self.trigger} → {self.field}={self.value}"
+
+
+class MemoryEmbedding(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="memory_embeddings",
+    )
+    text = models.TextField()
+    embedding = VectorField(dimensions=1536)
+    metadata = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "embedding de memória"
+        verbose_name_plural = "embeddings de memória"
+
+    def __str__(self):
+        return self.text[:50]
