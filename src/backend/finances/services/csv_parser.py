@@ -50,6 +50,93 @@ def parse_date(value: str) -> date:
         raise ValueError(f"Invalid date format: {value}") from exc
 
 
+# Brazilian abbreviated month names (as exported by Google Sheets)
+PTBR_MONTHS = {
+    "jan": 1,
+    "fev": 2,
+    "mar": 3,
+    "abr": 4,
+    "mai": 5,
+    "jun": 6,
+    "jul": 7,
+    "ago": 8,
+    "set": 9,
+    "out": 10,
+    "nov": 11,
+    "dez": 12,
+}
+
+
+def parse_month_header(header: str) -> date | None:
+    """Parse a pt-BR month-column header like 'out./2025' into a first-of-month date.
+
+    Returns None when the header is not a recognizable month column.
+    """
+    cleaned = header.strip().lower()
+    match = re.fullmatch(r"([a-z]{3})\.?/(\d{4})", cleaned)
+    if not match:
+        return None
+    abbr, year = match.group(1), int(match.group(2))
+    month = PTBR_MONTHS.get(abbr)
+    if month is None:
+        return None
+    return date(year, month, 1)
+
+
+def parse_wide_csv(file_obj, key_fields: list[str]) -> list[dict]:
+    """Parse a wide CSV (one column per month) into unpivoted rows.
+
+    Each returned dict contains the requested ``key_fields`` plus a ``months``
+    dict mapping first-of-month dates to Decimal amounts. Empty cells and rows
+    with an empty first key are skipped.
+    """
+    reader = csv.reader(file_obj)
+    headers = next(reader)
+    headers_lower = [h.strip().lower() for h in headers]
+
+    key_indices = {}
+    for field in key_fields:
+        for i, header in enumerate(headers_lower):
+            if header == field:
+                key_indices[field] = i
+                break
+
+    missing = [field for field in key_fields if field not in key_indices]
+    if missing:
+        raise ValueError(f"Missing key column(s) in CSV headers: {', '.join(missing)}")
+
+    month_indices = {
+        i: parsed
+        for i, header in enumerate(headers)
+        if (parsed := parse_month_header(header)) is not None
+    }
+
+    rows = []
+    for csv_row in reader:
+        primary_idx = key_indices.get(key_fields[0])
+        if primary_idx is None or primary_idx >= len(csv_row):
+            continue
+        if not csv_row[primary_idx].strip():
+            continue
+
+        row = {}
+        for field, idx in key_indices.items():
+            row[field] = csv_row[idx].strip() if idx < len(csv_row) else ""
+
+        months = {}
+        for idx, month_date in month_indices.items():
+            if idx >= len(csv_row):
+                continue
+            cell = csv_row[idx].strip()
+            if not cell:
+                continue
+            months[month_date] = parse_amount(cell)
+        row["months"] = months
+        rows.append(row)
+
+    return rows
+
+
 # Header aliases for auto-detection (lowercase)
 HEADER_ALIASES = {
     "date": ["data"],

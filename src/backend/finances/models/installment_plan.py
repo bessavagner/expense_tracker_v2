@@ -4,7 +4,7 @@ from datetime import date
 from django.conf import settings
 from django.db import models, transaction
 
-from finances.services.billing import compute_billing_month
+from finances.services.billing import compute_billing_month, resolve_closing_day
 
 
 class InstallmentPlan(models.Model):
@@ -44,7 +44,7 @@ class InstallmentPlan(models.Model):
         billing_month = compute_billing_month(
             self.date,
             self.payment_method.type,
-            self.payment_method.closing_day,
+            resolve_closing_day(self.payment_method, self.date),
         )
         entries = []
         for i in range(self.num_installments):

@@ -10,7 +10,7 @@ from django.shortcuts import redirect, render
 from django.views import View
 
 from finances.models import Category, Entry, EntryType, InstallmentPlan, PaymentMethod
-from finances.services.billing import compute_billing_month
+from finances.services.billing import compute_billing_month, resolve_closing_day
 from finances.services.csv_parser import detect_columns, parse_csv_rows
 
 
@@ -346,7 +346,7 @@ class ImportExecuteView(LoginRequiredMixin, View):
                     billing_month = compute_billing_month(
                         entry_date,
                         payment_method.type,
-                        payment_method.closing_day,
+                        resolve_closing_day(payment_method, entry_date),
                     )
                     Entry.objects.create(
                         user=user,
