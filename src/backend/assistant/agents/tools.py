@@ -259,6 +259,9 @@ def update_category_budget(user, category_name: str, new_ceiling: str) -> str:
 
 def create_payment_method(user, name: str, pm_type: str, closing_day: str | None = None) -> str:
     """Create a new payment method."""
+    if PaymentMethod.objects.filter(user=user, name=name).exists():
+        return f"Erro: forma de pagamento '{name}' já existe."
+
     valid_types = [choice.value for choice in PaymentType]
     if pm_type not in valid_types:
         return f"Erro: tipo inválido '{pm_type}'. Válidos: {', '.join(valid_types)}."
@@ -331,9 +334,7 @@ async def lookup_memory_async(user, message: str) -> str:
                 tier = "sugerir ao usuário"
             else:
                 tier = "perguntar ao usuário"
-            lines.append(
-                f"- {rule.field}='{rule.value}' (confiança: {rule.confidence}, {tier})"
-            )
+            lines.append(f"- {rule.field}='{rule.value}' (confiança: {rule.confidence}, {tier})")
         return "\n".join(lines)
 
     # Fallback: semantic search

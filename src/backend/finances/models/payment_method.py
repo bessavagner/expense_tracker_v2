@@ -34,6 +34,9 @@ class PaymentMethod(models.Model):
         verbose_name = "forma de pagamento"
         verbose_name_plural = "formas de pagamento"
         ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "name"], name="unique_payment_method_per_user"),
+        ]
 
     def __str__(self):
         return self.name
