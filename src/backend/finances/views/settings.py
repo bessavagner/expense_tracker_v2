@@ -61,6 +61,15 @@ class IncomeCreateView(HtmxLoginRequiredMixin, View):
 
 
 class IncomeUpdateView(HtmxLoginRequiredMixin, View):
+    def get(self, request, pk):
+        income = Income.objects.filter(user=request.user, pk=pk).first()
+        if not income:
+            raise Http404
+        form = IncomeForm(instance=income)
+        context = {"income": income, "edit_form": form}
+        html = render_to_string("settings/_income_edit_form.html", context, request=request)
+        return HttpResponse(html)
+
     def post(self, request, pk):
         income = Income.objects.filter(user=request.user, pk=pk).first()
         if not income:

@@ -1,0 +1,39 @@
+<form hx-post="{% url 'finances:settings_income_edit' income.id %}"
+      hx-target="#settings-content"
+      hx-swap="innerHTML"
+      class="card card-bordered bg-base-200 p-4">
+    {% csrf_token %}
+    <h3 class="font-semibold text-sm mb-3">Editar renda: {{ income.name }}</h3>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 items-end">
+        <div>
+            <label class="label label-text text-xs">Nome</label>
+            {{ edit_form.name }}
+        </div>
+        <div>
+            <label class="label label-text text-xs">Valor</label>
+            {{ edit_form.amount }}
+        </div>
+        <div>
+            <label class="label label-text text-xs">Mês</label>
+            {{ edit_form.month }}
+        </div>
+        <div class="flex items-center gap-2 pb-1">
+            <label class="flex items-center gap-1"><span class="text-sm">Recorrente</span>{{ edit_form.is_recurring }}</label>
+        </div>
+        <div>
+            <label class="label label-text text-xs">Início</label>
+            {{ edit_form.recurrence_start }}
+        </div>
+        <div>
+            <label class="label label-text text-xs">Fim</label>
+            {{ edit_form.recurrence_end }}
+        </div>
+        <div class="col-span-2 md:col-span-2 flex justify-end gap-2">
+            <button type="button" class="btn btn-sm btn-ghost"
+                    hx-get="{% url 'finances:settings_income' %}"
+                    hx-target="#settings-content"
+                    hx-swap="innerHTML">Cancelar</button>
+            <button type="submit" class="btn btn-sm btn-accent">Salvar</button>
+        </div>
+    </div>
+</form>

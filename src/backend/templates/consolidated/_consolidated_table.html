@@ -17,7 +17,9 @@
             <td class="text-right cursor-pointer hover:bg-base-200 {% if row.budget_status|get_item:m == 'danger' %}text-error font-bold{% elif row.budget_status|get_item:m == 'warning' %}text-warning font-bold{% endif %}"
                 hx-get="{% url 'finances:category_detail' row.category__id current_year m %}"
                 hx-target="#detail-{{ row.category__id }}-{{ m }}"
-                hx-swap="innerHTML">
+                hx-swap="innerHTML"
+                hx-on::after-request="document.getElementById('detail-{{ row.category__id }}-{{ m }}').style.display = 'table-row'"
+                @click="const r = document.getElementById('detail-{{ row.category__id }}-{{ m }}'); if (r && r.innerHTML.trim()) { r.style.display = r.style.display === 'table-row' ? 'none' : 'table-row'; $event.preventDefault(); }">
                 {% if row.months|get_item:m %}R$ {{ row.months|get_item:m }}{% else %}—{% endif %}
             </td>
             {% endfor %}
