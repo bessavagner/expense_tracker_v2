@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchApi } from "../api";
+import { formatBRL } from "../format";
 import type { CategoryData } from "../types";
 import EmptyState from "../components/EmptyState";
 
@@ -44,10 +45,10 @@ export default function TopCategoriesCard({ apiUrl }: Props) {
               <div className="flex justify-between text-xs mb-0.5">
                 <span className="opacity-70">{cat.name}</span>
                 <span
-                  className="font-bold"
+                  className="font-bold whitespace-nowrap"
                   style={{ color: COLORS[i % COLORS.length] }}
                 >
-                  R$ {cat.amount}
+                  {formatBRL(cat.amount)}
                 </span>
               </div>
               <div className="bg-base-200 rounded h-2.5">

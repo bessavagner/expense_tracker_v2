@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchApi } from "../api";
+import { formatBRL } from "../format";
 import type { InstallmentsResponse } from "../types";
 
 interface Props {
@@ -34,7 +35,7 @@ export default function InstallmentsCard({ apiUrl }: Props) {
                   ({plan.current}/{plan.total})
                 </span>
               </span>
-              <span className="font-bold">R$ {plan.amount}</span>
+              <span className="font-bold whitespace-nowrap">{formatBRL(plan.amount)}</span>
             </div>
           ))}
           {data.plans.length > 0 && (
@@ -42,7 +43,9 @@ export default function InstallmentsCard({ apiUrl }: Props) {
               <div className="divider my-1" />
               <div className="flex justify-between text-xs font-bold">
                 <span>Total este mês</span>
-                <span className="text-error">R$ {data.monthly_total}</span>
+                <span className="text-error whitespace-nowrap">
+                  {formatBRL(data.monthly_total)}
+                </span>
               </div>
             </>
           )}

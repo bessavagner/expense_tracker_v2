@@ -1,3 +1,4 @@
+{% load finance_filters %}
 <!-- Inline entry form -->
 {% include "entries/_inline_entry_form.html" %}
 
@@ -35,8 +36,8 @@
 
 <!-- Summary -->
 <div class="flex gap-6 mt-4 text-sm opacity-70">
-    <span>Total gastos: <strong class="text-error">R$ {{ summary.total_expenses }}</strong></span>
-    <span>Total retornos: <strong class="text-success">R$ {{ summary.total_returns }}</strong></span>
-    <span>Líquido: <strong>R$ {{ summary.net }}</strong></span>
+    <span>Total gastos: <strong class="text-error whitespace-nowrap">{{ summary.total_expenses|brl }}</strong></span>
+    <span>Total retornos: <strong class="text-success whitespace-nowrap">{{ summary.total_returns|brl }}</strong></span>
+    <span>Líquido: <strong class="whitespace-nowrap">{{ summary.net|brl }}</strong></span>
     <span>Entradas: <strong>{{ summary.entry_count }}</strong></span>
 </div>

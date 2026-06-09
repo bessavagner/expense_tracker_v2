@@ -3,7 +3,7 @@ export interface SummaryData {
   expenses: string;
   returns: string;
   balance: string;
-  budget_pct: number;
+  budget_pct: number | null;
 }
 
 export interface CategoryData {

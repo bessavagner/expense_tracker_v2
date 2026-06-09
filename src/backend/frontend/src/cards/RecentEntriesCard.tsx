@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchApi } from "../api";
+import { formatBRL } from "../format";
 import type { EntryData } from "../types";
 import EmptyState from "../components/EmptyState";
 
@@ -46,9 +47,9 @@ export default function RecentEntriesCard({ apiUrl }: Props) {
                   {entry.date} {entry.description}
                 </span>
                 <span
-                  className={`font-bold ${amount < 0 ? "text-success" : "text-error"}`}
+                  className={`font-bold whitespace-nowrap ${amount < 0 ? "text-success" : "text-error"}`}
                 >
-                  R$ {entry.amount}
+                  {formatBRL(entry.amount)}
                 </span>
               </div>
             );

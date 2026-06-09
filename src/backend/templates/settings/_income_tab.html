@@ -1,3 +1,4 @@
+{% load finance_filters %}
 <div class="overflow-x-auto">
 <table class="table table-sm">
     <thead>
@@ -7,7 +8,7 @@
         {% for income in incomes %}
         <tr>
             <td>{{ income.name }}</td>
-            <td>R$ {{ income.amount }}</td>
+            <td class="whitespace-nowrap">{{ income.amount|brl }}</td>
             <td>{{ income.month|date:"m/Y" }}</td>
             <td>{% if income.is_recurring %}<span class="badge badge-sm badge-accent">Sim</span>{% endif %}</td>
             <td>{{ income.recurrence_start|date:"d/m/Y"|default:"—" }}</td>

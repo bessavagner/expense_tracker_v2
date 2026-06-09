@@ -1,3 +1,5 @@
+from decimal import Decimal, InvalidOperation
+
 from django import template
 
 register = template.Library()
@@ -9,3 +11,21 @@ def get_item(dictionary, key):
     if isinstance(dictionary, dict):
         return dictionary.get(key, "")
     return ""
+
+
+@register.filter
+def brl(value):
+    """Format a numeric value as pt-BR currency: 4000 -> 'R$ 4.000,00'.
+
+    None/blank render as 'R$ 0,00'; unparseable values are returned unchanged.
+    """
+    if value is None or value == "":
+        value = 0
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return value
+    negative = amount < 0
+    # US grouping then swap separators to pt-BR (1,234.56 -> 1.234,56)
+    formatted = f"{abs(amount):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"-R$ {formatted}" if negative else f"R$ {formatted}"

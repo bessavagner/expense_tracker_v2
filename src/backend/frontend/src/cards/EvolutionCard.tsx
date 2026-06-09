@@ -10,6 +10,7 @@ import {
   Legend,
 } from "recharts";
 import { fetchApi } from "../api";
+import { formatBRL, formatBRLCompact } from "../format";
 import type { EvolutionPoint } from "../types";
 
 interface Props {
@@ -53,10 +54,12 @@ export default function EvolutionCard({ apiUrl }: Props) {
         <ResponsiveContainer width="100%" height={180}>
           <LineChart data={chartData}>
             <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 10 }} width={50} />
-            <Tooltip
-              formatter={(value: number) => `R$ ${value.toFixed(2)}`}
+            <YAxis
+              tick={{ fontSize: 10 }}
+              width={60}
+              tickFormatter={(v: number) => formatBRLCompact(v)}
             />
+            <Tooltip formatter={(value: number) => formatBRL(value)} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Line
               type="monotone"

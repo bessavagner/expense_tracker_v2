@@ -1,3 +1,4 @@
+{% load finance_filters %}
 <div class="overflow-x-auto">
 <table class="table table-sm">
     <thead>
@@ -8,7 +9,7 @@
         <tr>
             <td>{{ s.name }}</td>
             <td><span class="badge badge-sm">{{ s.category.name }}</span></td>
-            <td>R$ {{ s.default_amount }}</td>
+            <td class="whitespace-nowrap">{{ s.default_amount|brl }}</td>
             <td>{{ s.payment_method.name|default:"—" }}</td>
             <td>
                 <input type="checkbox" class="toggle toggle-sm toggle-accent"
