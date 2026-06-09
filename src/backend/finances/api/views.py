@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from django.db.models import Sum
+from django.db.models import Case, DecimalField, Sum, Value, When
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -28,9 +28,17 @@ class SummaryView(APIView):
             total=Sum("amount")
         )["total"] or Decimal("0")
 
-        entries = Entry.objects.filter(user=user, billing_month=billing_month)
-        expenses = sum(e.amount for e in entries if e.amount > 0)
-        returns = abs(sum(e.amount for e in entries if e.amount < 0))
+        _decimal = DecimalField()
+        totals = Entry.objects.filter(user=user, billing_month=billing_month).aggregate(
+            expenses=Sum(
+                Case(When(amount__gt=0, then="amount"), default=Value(0), output_field=_decimal)
+            ),
+            returns=Sum(
+                Case(When(amount__lt=0, then="amount"), default=Value(0), output_field=_decimal)
+            ),
+        )
+        expenses = totals["expenses"] or Decimal("0")
+        returns = abs(totals["returns"] or Decimal("0"))
 
         total_ceiling = Category.objects.filter(user=user).aggregate(total=Sum("budget_ceiling"))[
             "total"
@@ -81,29 +89,38 @@ class EvolutionView(APIView):
         year, month, billing_month = _get_month_params(request)
         user = request.user
 
-        result = []
+        # Build list of 6 months going back from billing_month
+        months = []
         current = billing_month
         for _ in range(6):
-            expenses = Entry.objects.filter(
-                user=user, billing_month=current, amount__gt=0
-            ).aggregate(total=Sum("amount"))["total"] or Decimal("0")
-            income = Income.objects.filter(user=user, month=current).aggregate(total=Sum("amount"))[
-                "total"
-            ] or Decimal("0")
-            result.append(
-                {
-                    "month": f"{current:%Y-%m}",
-                    "expenses": f"{expenses:.2f}",
-                    "income": f"{income:.2f}",
-                }
-            )
-            # Go back one month
+            months.append(current)
             if current.month == 1:
                 current = date(current.year - 1, 12, 1)
             else:
                 current = date(current.year, current.month - 1, 1)
 
-        result.reverse()  # oldest first
+        # Two bulk queries instead of 12
+        entry_totals = {
+            row["billing_month"]: row["total"]
+            for row in Entry.objects.filter(user=user, billing_month__in=months, amount__gt=0)
+            .values("billing_month")
+            .annotate(total=Sum("amount"))
+        }
+        income_totals = {
+            row["month"]: row["total"]
+            for row in Income.objects.filter(user=user, month__in=months)
+            .values("month")
+            .annotate(total=Sum("amount"))
+        }
+
+        result = [
+            {
+                "month": f"{m:%Y-%m}",
+                "expenses": f"{entry_totals.get(m, Decimal('0')):.2f}",
+                "income": f"{income_totals.get(m, Decimal('0')):.2f}",
+            }
+            for m in reversed(months)  # oldest first
+        ]
         return Response(result)
 
 
@@ -223,17 +240,21 @@ class InstallmentsView(APIView):
             installment_plan__isnull=False,
         ).select_related("installment_plan")
 
+        # Pre-fetch all installment plan entries in a single query
+        plan_ids = [e.installment_plan_id for e in installment_entries]
+        plan_months_lookup: dict[int, list] = {}
+        for plan_id, bmonth in (
+            Entry.objects.filter(installment_plan_id__in=plan_ids)
+            .order_by("billing_month")
+            .values_list("installment_plan_id", "billing_month")
+        ):
+            plan_months_lookup.setdefault(plan_id, []).append(bmonth)
+
         plans = []
         monthly_total = Decimal("0")
         for entry in installment_entries:
             plan = entry.installment_plan
-            # Determine current installment number
-            plan_entries = (
-                Entry.objects.filter(installment_plan=plan)
-                .order_by("billing_month")
-                .values_list("billing_month", flat=True)
-            )
-            months_list = list(plan_entries)
+            months_list = plan_months_lookup.get(plan.id, [])
             try:
                 current_num = months_list.index(billing_month) + 1
             except ValueError:
