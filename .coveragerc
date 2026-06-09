@@ -4,6 +4,7 @@ branch = True
 omit =
     */migrations/*
     */tests/*
+    */management/commands/seed_*
     src/backend/config/settings.py
     src/backend/config/wsgi.py
     src/backend/config/asgi.py

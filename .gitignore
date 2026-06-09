@@ -50,3 +50,10 @@ src/backend/frontend/dist/
 
 # Credentials
 **/credentials.json
+
+# data
+.data/
+
+# Tooling state & QA artifacts
+.omc/
+qa-screenshots/

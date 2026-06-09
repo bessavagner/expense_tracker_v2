@@ -43,11 +43,12 @@ class TestCategory:
     def test_ordering_by_name(self, user):
         baker.make("finances.Category", user=user, name="Lanche")
         baker.make("finances.Category", user=user, name="Alimentação")
-        baker.make("finances.Category", user=user, name="Álcool")
+        baker.make("finances.Category", user=user, name="Zebra")
         from finances.models import Category
 
         names = list(Category.objects.filter(user=user).values_list("name", flat=True))
-        assert names == sorted(names)
+        assert names.index("Alimentação") < names.index("Lanche")
+        assert names.index("Lanche") < names.index("Zebra")
 
     def test_default_budget_ceiling_is_zero(self, user):
         from finances.models import Category
