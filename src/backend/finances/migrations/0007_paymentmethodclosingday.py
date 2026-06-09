@@ -10,7 +10,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('finances', '0005_alter_paymentmethod_closing_day'),
+        ('finances', '0006_unique_payment_method_per_user'),
     ]
 
     operations = [
