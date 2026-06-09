@@ -42,8 +42,11 @@ class SummaryView(APIView):
 
         total_ceiling = Category.objects.filter(user=user).aggregate(total=Sum("budget_ceiling"))[
             "total"
-        ] or Decimal("1")
-        budget_pct = round(float(expenses) / float(total_ceiling) * 100, 1) if total_ceiling else 0
+        ] or Decimal("0")
+        # No budget set -> null, so the UI can show "sem teto" instead of a bogus %.
+        budget_pct = (
+            round(float(expenses) / float(total_ceiling) * 100, 1) if total_ceiling > 0 else None
+        )
 
         return Response(
             {

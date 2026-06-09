@@ -78,6 +78,36 @@ class TestSummaryEndpoint:
         assert data["income"] == "0.00"
         assert data["expenses"] == "0.00"
 
+    def test_budget_pct_null_when_no_ceiling(self, logged_client, user):
+        cat = baker.make("finances.Category", user=user, budget_ceiling=Decimal("0"))
+        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+        baker.make(
+            "finances.Entry",
+            user=user,
+            date=date(2026, 3, 5),
+            amount=Decimal("500"),
+            category=cat,
+            payment_method=pm,
+            billing_month=date(2026, 3, 1),
+        )
+        data = logged_client.get("/api/dashboard/summary/?year=2026&month=3").json()
+        assert data["budget_pct"] is None
+
+    def test_budget_pct_computed_when_ceiling_set(self, logged_client, user):
+        cat = baker.make("finances.Category", user=user, budget_ceiling=Decimal("1000"))
+        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+        baker.make(
+            "finances.Entry",
+            user=user,
+            date=date(2026, 3, 5),
+            amount=Decimal("500"),
+            category=cat,
+            payment_method=pm,
+            billing_month=date(2026, 3, 1),
+        )
+        data = logged_client.get("/api/dashboard/summary/?year=2026&month=3").json()
+        assert data["budget_pct"] == 50.0
+
     def test_unauthenticated(self):
         client = Client()
         response = client.get("/api/dashboard/summary/?year=2026&month=3")

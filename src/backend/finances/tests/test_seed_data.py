@@ -32,3 +32,19 @@ class TestSeedData:
         call_command("seed_data", f"--user={user.username}")
         assert Category.objects.filter(user=user).count() == 26
         assert PaymentMethod.objects.filter(user=user).count() == 6
+
+    def test_fills_zero_ceiling_on_existing_category(self, user):
+        from decimal import Decimal
+
+        Category.objects.create(user=user, name="Alimentação", budget_ceiling=Decimal("0"))
+        call_command("seed_data", f"--user={user.username}")
+        cat = Category.objects.get(user=user, name="Alimentação")
+        assert cat.budget_ceiling == Decimal("1300.00")
+
+    def test_does_not_clobber_custom_ceiling(self, user):
+        from decimal import Decimal
+
+        Category.objects.create(user=user, name="Alimentação", budget_ceiling=Decimal("999.00"))
+        call_command("seed_data", f"--user={user.username}")
+        cat = Category.objects.get(user=user, name="Alimentação")
+        assert cat.budget_ceiling == Decimal("999.00")

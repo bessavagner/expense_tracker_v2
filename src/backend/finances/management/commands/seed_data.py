@@ -58,13 +58,17 @@ class Command(BaseCommand):
             raise CommandError(f"User '{username}' does not exist.") from e
         cat_created = 0
         for name, ceiling, is_system in CATEGORIES:
-            _, created = Category.objects.get_or_create(
+            category, created = Category.objects.get_or_create(
                 user=user,
                 name=name,
                 defaults={"budget_ceiling": ceiling, "is_system": is_system},
             )
             if created:
                 cat_created += 1
+            elif not category.budget_ceiling:
+                # Repor o teto padrão sem sobrescrever valores customizados.
+                category.budget_ceiling = ceiling
+                category.save(update_fields=["budget_ceiling"])
         pm_created = 0
         for name, pm_type, closing_day in PAYMENT_METHODS:
             _, created = PaymentMethod.objects.get_or_create(
