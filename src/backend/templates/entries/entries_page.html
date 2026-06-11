@@ -7,33 +7,34 @@
     <h2 class="text-2xl font-bold">Entradas</h2>
 </div>
 
-<!-- Month tabs -->
+<!-- Month tabs (full-page nav so the whole monthly cockpit reflects the month) -->
 <div class="tabs tabs-bordered mb-4">
     {% for m in months %}
     <a class="tab {% if m == current_month %}tab-active{% endif %}"
-       hx-get="{% url 'finances:entries_month' current_year m %}"
-       hx-target="#entries-container"
-       hx-swap="innerHTML"
-       hx-push-url="true">
+       href="{% url 'finances:entries_month' current_year m %}">
         {{ m|stringformat:"02d" }}
     </a>
     {% endfor %}
     <select class="select select-sm select-bordered ml-2"
-            onchange="htmx.ajax('GET', '/entries/' + this.value + '/{{ current_month }}/', {target: '#entries-container', swap: 'innerHTML'})">
+            onchange="window.location = '/entries/' + this.value + '/{{ current_month }}/'">
         {% for y in year_range %}
         <option value="{{ y }}" {% if y == current_year %}selected{% endif %}>{{ y }}</option>
         {% endfor %}
     </select>
 </div>
 
+<!-- Monthly cockpit: income / systemic / closing-days surfaced above the long entries list -->
+<div hx-get="{% url 'finances:cockpit_income' current_year current_month %}"
+     hx-trigger="load" hx-swap="outerHTML"></div>
+<div class="grid gap-4 md:grid-cols-2">
+    <div hx-get="{% url 'finances:cockpit_systemic' current_year current_month %}"
+         hx-trigger="load" hx-swap="outerHTML"></div>
+    <div hx-get="{% url 'finances:cockpit_vencimentos' current_year current_month %}"
+         hx-trigger="load" hx-swap="outerHTML"></div>
+</div>
+
+<h3 class="text-lg font-semibold mt-2 mb-2">🧾 Lançamentos</h3>
 <div id="entries-container">
     {% include "entries/_entries_table.html" %}
 </div>
-
-<div hx-get="{% url 'finances:cockpit_income' current_year current_month %}"
-     hx-trigger="load" hx-swap="outerHTML"></div>
-<div hx-get="{% url 'finances:cockpit_systemic' current_year current_month %}"
-     hx-trigger="load" hx-swap="outerHTML"></div>
-<div hx-get="{% url 'finances:cockpit_vencimentos' current_year current_month %}"
-     hx-trigger="load" hx-swap="outerHTML"></div>
 {% endblock %}

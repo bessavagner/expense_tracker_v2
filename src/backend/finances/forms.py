@@ -133,9 +133,18 @@ class CockpitIncomeForm(forms.ModelForm):
         model = Income
         fields = ["name", "amount", "month"]
         widgets = {
-            "name": forms.TextInput(attrs={"class": "input input-bordered input-sm w-full"}),
+            "name": forms.TextInput(
+                attrs={
+                    "class": "input input-bordered input-sm w-full",
+                    "placeholder": "Nome (ex.: Salário)",
+                }
+            ),
             "amount": forms.NumberInput(
-                attrs={"class": "input input-bordered input-sm w-full", "step": "0.01"}
+                attrs={
+                    "class": "input input-bordered input-sm w-full",
+                    "step": "0.01",
+                    "placeholder": "Valor (R$)",
+                }
             ),
             "month": forms.DateInput(
                 attrs={"type": "date", "class": "input input-bordered input-sm w-full"}

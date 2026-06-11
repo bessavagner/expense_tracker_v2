@@ -117,10 +117,14 @@ class CockpitSystemicPostView(HtmxLoginRequiredMixin, View):
         if entry is None:
             value = _parse_amount(amount, systemic.default_amount)
             systemic.create_monthly_entry(billing_month, amount=value)
+            toast = f"{systemic.name} lançado!"
         elif amount is not None:
             entry.amount = _parse_amount(amount, entry.amount)
             entry.save(update_fields=["amount", "updated_at"])
-        return _render_systemic_section(request, y, m, toast=f"{systemic.name} lançado!")
+            toast = f"{systemic.name} atualizado!"
+        else:
+            toast = None
+        return _render_systemic_section(request, y, m, toast=toast)
 
 
 class CockpitSystemicDeleteView(HtmxLoginRequiredMixin, View):
