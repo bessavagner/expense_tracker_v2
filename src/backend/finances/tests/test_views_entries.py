@@ -109,6 +109,43 @@ class TestEntryListView:
         response = logged_client.get("/entries/2026/3/")
         assert "form" in response.context
 
+    def test_only_regular_entries_shown(self, logged_client, user, sample_entries):
+        """SYSTEMIC and INSTALLMENT entries must not appear in the Lançamentos list."""
+        from finances.models.entry import EntryType
+
+        category = baker.make("finances.Category", user=user)
+        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+        # Create a systemic entry for the same billing month
+        baker.make(
+            "finances.Entry",
+            user=user,
+            date=date(2026, 3, 5),
+            amount=Decimal("200.00"),
+            description="Aluguel sistemático",
+            category=category,
+            payment_method=pm,
+            billing_month=date(2026, 3, 1),
+            entry_type=EntryType.SYSTEMIC,
+            billing_month_override=True,
+        )
+        # Create an installment entry for the same billing month
+        baker.make(
+            "finances.Entry",
+            user=user,
+            date=date(2026, 3, 5),
+            amount=Decimal("100.00"),
+            description="Notebook parcela",
+            category=category,
+            payment_method=pm,
+            billing_month=date(2026, 3, 1),
+            entry_type=EntryType.INSTALLMENT,
+            billing_month_override=True,
+        )
+        response = logged_client.get("/entries/2026/3/")
+        entries = response.context["entries"]
+        assert all(e.entry_type == EntryType.REGULAR for e in entries)
+        assert len(entries) == 3  # only the 3 regular from sample_entries
+
 
 @pytest.mark.django_db
 class TestEntryCreateView:

@@ -10,6 +10,7 @@ from django.views.generic import ListView, UpdateView
 
 from finances.forms import EntryForm, InstallmentForm
 from finances.models import Entry
+from finances.models.entry import EntryType
 from finances.views.mixins import HtmxLoginRequiredMixin
 
 
@@ -35,7 +36,11 @@ class EntryListView(HtmxLoginRequiredMixin, ListView):
         month = int(self.kwargs["month"])
         billing_month = date(year, month, 1)
         return (
-            Entry.objects.filter(user=self.request.user, billing_month=billing_month)
+            Entry.objects.filter(
+                user=self.request.user,
+                billing_month=billing_month,
+                entry_type=EntryType.REGULAR,
+            )
             .select_related("category", "payment_method")
             .order_by("-date", "-created_at")
         )
