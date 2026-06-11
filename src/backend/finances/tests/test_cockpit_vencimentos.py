@@ -69,3 +69,32 @@ class TestCockpitVencimentos(TestCase):
                 payment_method=self.pm, month=date(2026, 10, 1)
             ).exists()
         )
+
+    def test_cannot_set_another_users_payment_method(self):
+        other = baker.make(CustomUser)
+        other_pm = baker.make(
+            PaymentMethod,
+            user=other,
+            name="Inter",
+            type=PaymentType.CREDIT_CARD,
+            closing_day=5,
+            is_active=True,
+        )
+        resp = self.client.post(
+            f"/cockpit/2026/10/vencimentos/{other_pm.pk}/", {"closing_day": "12"}
+        )
+        self.assertEqual(resp.status_code, 404)
+        self.assertFalse(
+            PaymentMethodClosingDay.objects.filter(payment_method=other_pm).exists()
+        )
+
+    def test_non_numeric_closing_day_does_not_error(self):
+        resp = self.client.post(
+            f"/cockpit/2026/10/vencimentos/{self.pm.pk}/", {"closing_day": "abc"}
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(
+            PaymentMethodClosingDay.objects.filter(
+                payment_method=self.pm, month=date(2026, 10, 1)
+            ).exists()
+        )

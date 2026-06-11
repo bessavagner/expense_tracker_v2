@@ -193,7 +193,11 @@ class CockpitVencimentoSetView(HtmxLoginRequiredMixin, View):
             ).delete()
             toast = f"{pm.name}: vencimento padrão"
         else:
-            day = max(1, min(31, int(raw)))
+            try:
+                day = max(1, min(31, int(raw)))
+            except ValueError:
+                # Non-numeric input: no-op, leave any existing override untouched.
+                return _render_vencimentos_section(request, y, m)
             PaymentMethodClosingDay.objects.update_or_create(
                 payment_method=pm, month=billing_month, defaults={"closing_day": day}
             )
