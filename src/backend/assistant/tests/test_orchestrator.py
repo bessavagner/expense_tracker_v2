@@ -9,8 +9,8 @@ class TestOrchestratorAgent:
     def test_agent_has_tools(self):
         """Verify the agent is configured with the expected tools."""
         tool_names = list(assistant_agent._function_toolset.tools.keys())
-        # 11 existing + 3 memory = 14
-        assert len(tool_names) == 14
+        # 11 existing + 3 memory + 2 systemic = 16
+        assert len(tool_names) == 16
         assert "get_categories" in tool_names
         assert "get_payment_methods" in tool_names
         assert "register_entry" in tool_names
@@ -22,6 +22,8 @@ class TestOrchestratorAgent:
         assert "set_category_budget" in tool_names
         assert "add_payment_method" in tool_names
         assert "set_income" in tool_names
+        assert "get_systemic_expenses" in tool_names
+        assert "set_systemic_amount" in tool_names
 
     def test_agent_has_memory_tools(self):
         """Verify memory tools are registered."""
@@ -39,6 +41,21 @@ class TestOrchestratorAgent:
         prompt = assistant_agent._system_prompts[0]
         prompt_text = prompt if isinstance(prompt, str) else prompt.__doc__ or ""
         assert "check_memory" in prompt_text
+
+    def test_system_prompt_includes_systemic_guardrails(self):
+        """Verify system prompt distinguishes systemic expenses and has guardrails."""
+        prompt = assistant_agent._system_prompts[0]
+        prompt_text = prompt if isinstance(prompt, str) else prompt.__doc__ or ""
+        assert "sistemático" in prompt_text
+        # Must have the guardrail preventing creating wrong entity type
+        assert "NÃO crie" in prompt_text or "não crie" in prompt_text.lower()
+
+    def test_system_prompt_includes_entity_lookup_rule(self):
+        """Verify system prompt requires confirming entity existence before mutation."""
+        prompt = assistant_agent._system_prompts[0]
+        prompt_text = prompt if isinstance(prompt, str) else prompt.__doc__ or ""
+        # Must require looking up entities before modifying them
+        assert "confirmar" in prompt_text or "liste" in prompt_text or "consulte" in prompt_text
 
     @pytest.mark.anyio
     async def test_agent_runs_with_test_model(self, seeded_user):

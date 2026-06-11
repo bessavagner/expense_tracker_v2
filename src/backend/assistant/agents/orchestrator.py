@@ -11,6 +11,7 @@ from assistant.agents.tools import (
     list_categories,
     list_memory_rules,
     list_payment_methods,
+    list_systemic_expenses,
     lookup_memory_async,
     query_balance,
     query_budget_status,
@@ -18,6 +19,9 @@ from assistant.agents.tools import (
     query_installments,
     update_category_budget,
     update_income,
+)
+from assistant.agents.tools import (
+    set_systemic_amount as _set_systemic_amount,
 )
 
 # Type alias for dependencies — the User model instance
@@ -50,6 +54,26 @@ mas mostre no formato brasileiro (dd/mm/aaaa) ao usuário
 - Quando o usuário corrigir um campo ("não, isso é Lanche", "use Pix"), \
 crie uma regra com save_memory_rule
 - Se o usuário perguntar o que você lembra, use get_memory_rules
+
+Glossário de entidades:
+- lançamentos/despesas: gastos avulsos registrados individualmente
+- rendas: entradas de dinheiro (salário, freelance etc.) — gerenciadas com set_income
+- gastos sistemáticos: despesas recorrentes mensais com nomes próprios \
+(ex: "Análise - Vagner", "Unimed", "Spotify") — gerenciadas com set_systemic_amount
+- categorias: agrupamentos de despesas (ex: Alimentação, Saúde)
+- formas de pagamento: meios de pagamento (Pix, crédito etc.)
+- parcelamentos: compras divididas em parcelas mensais
+
+Regras de integridade de entidades:
+- Antes de modificar qualquer entidade citada pelo nome (renda, gasto sistemático, \
+categoria, forma de pagamento), SEMPRE liste/consulte com a ferramenta apropriada \
+para confirmar que ela existe e de que tipo é.
+- Gastos sistemáticos NÃO são rendas. Para ajustar o valor de um gasto sistemático \
+num mês use set_systemic_amount; use set_income SOMENTE para renda.
+- Se o nome citado não corresponder a nenhuma entidade existente, NÃO crie um \
+registro de outro tipo nem invente — pergunte ao usuário ou diga que não encontrou.
+- Nunca afirme que realizou uma alteração sem ter chamado a ferramenta correta \
+e recebido confirmação de sucesso.
 """
 
 assistant_agent = Agent(
@@ -177,3 +201,23 @@ async def save_memory_rule(ctx: RunContext[User], trigger: str, field: str, valu
 async def get_memory_rules(ctx: RunContext[User]) -> str:
     """Lista todas as regras de memória do usuário."""
     return await sync_to_async(list_memory_rules)(ctx.deps)
+
+
+@assistant_agent.tool
+async def get_systemic_expenses(ctx: RunContext[User]) -> list[str]:
+    """Lista os gastos sistemáticos ativos do usuário (despesas recorrentes mensais)."""
+    return await sync_to_async(list_systemic_expenses)(ctx.deps)
+
+
+@assistant_agent.tool
+async def set_systemic_amount(
+    ctx: RunContext[User], name: str, amount: str, month: str
+) -> str:
+    """Define o valor de um gasto sistemático para um mês específico.
+
+    Args:
+        name: Nome exato (ou aproximado) do gasto sistemático
+        amount: Valor em decimal (ex: "300.00")
+        month: Mês no formato AAAA-MM-DD (use o primeiro dia do mês)
+    """
+    return await sync_to_async(_set_systemic_amount)(ctx.deps, name, amount, month)
