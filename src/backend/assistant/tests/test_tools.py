@@ -346,3 +346,142 @@ class TestUpdateIncome:
         update_income(seeded_user, "Salário", "8000.00", "2026-03-01")
         income = Income.objects.get(user=seeded_user, name="Salário", month=date(2026, 3, 1))
         assert income.amount == Decimal("8000.00")
+
+
+@pytest.mark.django_db
+class TestSystemicTools:
+    """Tests for list_systemic_expenses and set_systemic_amount."""
+
+    def _make_systemic(self, user, name="Análise - Vagner", amount="300.00", is_active=True):
+        from model_bakery import baker
+
+        from finances.models import Category, PaymentMethod
+
+        cat, _ = Category.objects.get_or_create(user=user, name="Saúde")
+        pm, _ = PaymentMethod.objects.get_or_create(
+            user=user, name="Débito", defaults={"type": "pix"}
+        )
+        return baker.make(
+            "finances.SystemicExpense",
+            user=user,
+            name=name,
+            category=cat,
+            payment_method=pm,
+            default_amount=Decimal(amount),
+            is_active=is_active,
+        )
+
+    # ── list_systemic_expenses ────────────────────────────────────────────────
+
+    def test_list_returns_active_systemic_expenses(self, seeded_user):
+        from assistant.agents.tools import list_systemic_expenses
+
+        self._make_systemic(seeded_user, "Análise - Vagner", "300.00")
+        self._make_systemic(seeded_user, "Unimed", "450.00")
+        result = list_systemic_expenses(seeded_user)
+        assert any("Análise - Vagner" in item for item in result)
+        assert any("Unimed" in item for item in result)
+
+    def test_list_excludes_inactive(self, seeded_user):
+        from assistant.agents.tools import list_systemic_expenses
+
+        self._make_systemic(seeded_user, "Spotify", "45.00", is_active=True)
+        self._make_systemic(seeded_user, "InativoXYZ", "10.00", is_active=False)
+        result = list_systemic_expenses(seeded_user)
+        assert not any("InativoXYZ" in item for item in result)
+
+    def test_list_excludes_other_users(self, seeded_user, db):
+        from model_bakery import baker
+
+        from assistant.agents.tools import list_systemic_expenses
+
+        other = baker.make("core.CustomUser")
+        cat = baker.make("finances.Category", user=other, name="X")
+        baker.make(
+            "finances.SystemicExpense",
+            user=other,
+            name="OtherSystemic",
+            category=cat,
+            default_amount=Decimal("100"),
+            is_active=True,
+        )
+        result = list_systemic_expenses(seeded_user)
+        assert not any("OtherSystemic" in item for item in result)
+
+    # ── set_systemic_amount: happy paths ─────────────────────────────────────
+
+    def test_set_creates_systemic_entry_for_month(self, seeded_user):
+        from assistant.agents.tools import set_systemic_amount
+        from finances.models import Entry, EntryType
+
+        s = self._make_systemic(seeded_user, "Análise - Vagner", "300.00")
+        result = set_systemic_amount(seeded_user, "Análise - Vagner", "350.00", "2026-06-01")
+        assert "Análise - Vagner" in result
+        assert "350" in result
+        entry = Entry.objects.get(
+            user=seeded_user,
+            systemic_expense=s,
+            billing_month=date(2026, 6, 1),
+            entry_type=EntryType.SYSTEMIC,
+        )
+        assert entry.amount == Decimal("350.00")
+
+    def test_set_updates_existing_entry_no_duplicate(self, seeded_user):
+        from assistant.agents.tools import set_systemic_amount
+        from finances.models import Entry, EntryType
+
+        s = self._make_systemic(seeded_user, "Análise - Vagner", "300.00")
+        # First call creates
+        set_systemic_amount(seeded_user, "Análise - Vagner", "350.00", "2026-06-01")
+        # Second call updates, must NOT duplicate
+        result = set_systemic_amount(seeded_user, "Análise - Vagner", "400.00", "2026-06-01")
+        assert "400" in result
+        entries = Entry.objects.filter(
+            user=seeded_user,
+            systemic_expense=s,
+            billing_month=date(2026, 6, 1),
+            entry_type=EntryType.SYSTEMIC,
+        )
+        assert entries.count() == 1
+        assert entries.first().amount == Decimal("400.00")
+
+    def test_set_case_insensitive_name_match(self, seeded_user):
+        from assistant.agents.tools import set_systemic_amount
+        from finances.models import Entry, EntryType
+
+        s = self._make_systemic(seeded_user, "Análise - Vagner", "300.00")
+        result = set_systemic_amount(seeded_user, "análise - vagner", "320.00", "2026-06-01")
+        assert "320" in result
+        assert Entry.objects.filter(
+            user=seeded_user,
+            systemic_expense=s,
+            billing_month=date(2026, 6, 1),
+            entry_type=EntryType.SYSTEMIC,
+        ).exists()
+
+    # ── set_systemic_amount: error paths ─────────────────────────────────────
+
+    def test_unknown_name_returns_error_creates_nothing(self, seeded_user):
+        from assistant.agents.tools import set_systemic_amount
+        from finances.models import Entry
+
+        self._make_systemic(seeded_user, "Análise - Vagner", "300.00")
+        result = set_systemic_amount(seeded_user, "DesconhecidoXYZ", "300.00", "2026-06-01")
+        assert "Não encontrei" in result
+        assert "DesconhecidoXYZ" in result
+        assert "Análise - Vagner" in result  # lists available names
+        assert Entry.objects.filter(user=seeded_user).count() == 0
+
+    def test_invalid_amount_returns_error(self, seeded_user):
+        from assistant.agents.tools import set_systemic_amount
+
+        self._make_systemic(seeded_user, "Análise - Vagner", "300.00")
+        result = set_systemic_amount(seeded_user, "Análise - Vagner", "abc", "2026-06-01")
+        assert "inválido" in result.lower() or "erro" in result.lower()
+
+    def test_invalid_date_returns_error(self, seeded_user):
+        from assistant.agents.tools import set_systemic_amount
+
+        self._make_systemic(seeded_user, "Análise - Vagner", "300.00")
+        result = set_systemic_amount(seeded_user, "Análise - Vagner", "300.00", "not-a-date")
+        assert "inválido" in result.lower() or "erro" in result.lower()

@@ -12,7 +12,15 @@ from assistant.agents.memory import (
 )
 from assistant.models import MemoryRule, MemorySource
 from assistant.services.embedding import get_embedding
-from finances.models import Category, Entry, Income, InstallmentPlan, PaymentMethod
+from finances.models import (
+    Category,
+    Entry,
+    EntryType,
+    Income,
+    InstallmentPlan,
+    PaymentMethod,
+    SystemicExpense,
+)
 from finances.models.payment_method import PaymentType
 
 
@@ -298,6 +306,54 @@ def update_income(user, name: str, amount: str, month_str: str) -> str:
     )
     action = "criada" if created else "atualizada"
     return f"Renda '{name}' {action}: R$ {amount_val:.2f} em {month:%m/%Y}."
+
+
+def list_systemic_expenses(user) -> list[str]:
+    """List active systemic expense names and default amounts for the user."""
+    return [
+        f"{s.name} (padrão R$ {s.default_amount:.2f})"
+        for s in SystemicExpense.objects.filter(user=user, is_active=True).order_by("name")
+    ]
+
+
+def set_systemic_amount(user, name: str, amount_str: str, month_str: str) -> str:
+    """Set the amount of a systemic expense for a specific month."""
+    try:
+        amount_val = Decimal(amount_str)
+    except InvalidOperation:
+        return f"Erro: valor inválido '{amount_str}'."
+
+    try:
+        month = date.fromisoformat(month_str).replace(day=1)
+    except ValueError:
+        return f"Erro: data inválida '{month_str}'. Use formato AAAA-MM-DD."
+
+    s = SystemicExpense.objects.filter(user=user, is_active=True, name__iexact=name).first()
+    if s is None:
+        available = ", ".join(
+            SystemicExpense.objects.filter(user=user, is_active=True)
+            .order_by("name")
+            .values_list("name", flat=True)
+        )
+        return (
+            f"Não encontrei um gasto sistemático chamado '{name}'. "
+            f"Disponíveis: {available}. (Nenhuma alteração feita.)"
+        )
+
+    existing = Entry.objects.filter(
+        user=user,
+        systemic_expense=s,
+        billing_month=month,
+        entry_type=EntryType.SYSTEMIC,
+    ).first()
+
+    if existing:
+        existing.amount = amount_val
+        existing.save(update_fields=["amount", "updated_at"])
+    else:
+        s.create_monthly_entry(month, amount=amount_val)
+
+    return f"Gasto sistemático '{s.name}' definido para R$ {amount_val:.2f} em {month:%m/%Y}."
 
 
 VALID_MEMORY_FIELDS = {"category", "payment_method", "description"}
