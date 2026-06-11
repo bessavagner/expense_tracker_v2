@@ -96,12 +96,15 @@ class CategoryDetailView(HtmxLoginRequiredMixin, ListView):
     context_object_name = "entries"
 
     def get_queryset(self):
-        return (
-            Entry.objects.filter(
-                user=self.request.user,
-                category_id=self.kwargs["category_id"],
-                billing_month=date(int(self.kwargs["year"]), int(self.kwargs["month"]), 1),
-            )
-            .select_related("payment_method")
-            .order_by("-date")
+        qs = Entry.objects.filter(
+            user=self.request.user,
+            category_id=self.kwargs["category_id"],
+            billing_month=date(int(self.kwargs["year"]), int(self.kwargs["month"]), 1),
         )
+        # Mirror the parent table's filter: systemic tab shows only systemic
+        # entries; the diverse tab excludes them.
+        if self.request.GET.get("type") == "systemic":
+            qs = qs.filter(entry_type=EntryType.SYSTEMIC)
+        else:
+            qs = qs.exclude(entry_type=EntryType.SYSTEMIC)
+        return qs.select_related("payment_method").order_by("-date")

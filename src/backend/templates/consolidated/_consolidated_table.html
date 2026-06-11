@@ -15,7 +15,7 @@
             <td class="font-medium">{{ row.category__name }}</td>
             {% for m in months %}
             <td class="text-right whitespace-nowrap cursor-pointer hover:bg-base-200 {% if row.budget_status|get_item:m == 'danger' %}text-error font-bold{% elif row.budget_status|get_item:m == 'warning' %}text-warning font-bold{% endif %}"
-                hx-get="{% url 'finances:category_detail' row.category__id current_year m %}"
+                hx-get="{% url 'finances:category_detail' row.category__id current_year m %}{% if tab == 'systemics' %}?type=systemic{% endif %}"
                 hx-target="#detail-{{ row.category__id }}-{{ m }}"
                 hx-swap="innerHTML"
                 hx-trigger="click once"
