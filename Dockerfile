@@ -20,14 +20,14 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g pnpm
+    && npm install -g pnpm@10.23.0
 
 # Install Python dependencies
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-editable
 
 # Install Node dependencies and build frontend
-COPY src/backend/frontend/package.json src/backend/frontend/pnpm-lock.yaml ./src/backend/frontend/
+COPY src/backend/frontend/package.json src/backend/frontend/pnpm-lock.yaml src/backend/frontend/pnpm-workspace.yaml ./src/backend/frontend/
 RUN cd src/backend/frontend && pnpm install --frozen-lockfile
 
 COPY src/backend/frontend/ ./src/backend/frontend/
@@ -44,7 +44,11 @@ ENV DJANGO_SETTINGS_MODULE=config.settings \
     SECRET_KEY=build-only-not-used-at-runtime \
     DEBUG=False \
     POSTGRES_HOST=localhost
-RUN cd src/backend && uv run python manage.py collectstatic --noinput 2>/dev/null || true
+# Ignore the Tailwind SOURCE file (input.css contains `@import "tailwindcss"`,
+# which WhiteNoise's manifest post-processing can't resolve). The compiled
+# css/tailwind.css is what gets served. No error masking: a real failure here
+# must fail the build (a missing manifest = 500s on every {% static %} page).
+RUN cd src/backend && uv run python manage.py collectstatic --noinput --ignore=input.css
 
 # ============================================================
 # Stage 2: Runtime — minimal production image

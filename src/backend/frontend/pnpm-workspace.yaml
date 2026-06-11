@@ -1,0 +1,5 @@
+# pnpm 10 moved settings here (out of package.json's "pnpm" field).
+# Approve esbuild's build script so `pnpm install --frozen-lockfile` doesn't
+# fail on ERR_PNPM_IGNORED_BUILDS in clean CI/Docker builds.
+onlyBuiltDependencies:
+  - esbuild

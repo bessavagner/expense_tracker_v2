@@ -2,6 +2,11 @@
 .worktrees/
 .git/
 .github/
+.claude/
+.omc/
+.superpowers/
+.data/
+qa-screenshots/
 __pycache__/
 *.pyc
 *.pyo
