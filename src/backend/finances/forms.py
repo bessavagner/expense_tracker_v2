@@ -1,3 +1,6 @@
+from datetime import date as _date
+from decimal import Decimal
+
 from django import forms
 from django.core.validators import MinValueValidator
 
@@ -122,6 +125,47 @@ class IncomeForm(forms.ModelForm):
                 attrs={"type": "date", "class": "input input-bordered input-sm w-full"}
             ),
         }
+
+
+class CockpitIncomeForm(forms.ModelForm):
+    repeat_until_december = forms.BooleanField(required=False)
+
+    class Meta:
+        model = Income
+        fields = ["name", "amount", "month"]
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "input input-bordered input-sm w-full"}),
+            "amount": forms.NumberInput(
+                attrs={"class": "input input-bordered input-sm w-full", "step": "0.01"}
+            ),
+            "month": forms.DateInput(
+                attrs={"type": "date", "class": "input input-bordered input-sm w-full"}
+            ),
+        }
+
+    def save_for_user(self, user):
+        """Create one Income per target month; returns the created list."""
+        base = self.cleaned_data
+        start = base["month"].replace(day=1)
+        if self.cleaned_data.get("repeat_until_december"):
+            months = [_date(start.year, m, 1) for m in range(start.month, 13)]
+        else:
+            months = [start]
+        created = []
+        recurring = len(months) > 1
+        for m in months:
+            created.append(
+                Income.objects.create(
+                    user=user,
+                    name=base["name"],
+                    amount=base["amount"],
+                    month=m,
+                    is_recurring=recurring,
+                    recurrence_start=months[0] if recurring else None,
+                    recurrence_end=months[-1] if recurring else None,
+                )
+            )
+        return created
 
 
 class SystemicExpenseForm(forms.ModelForm):
