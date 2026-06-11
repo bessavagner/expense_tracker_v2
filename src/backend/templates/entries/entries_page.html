@@ -33,6 +33,9 @@
          hx-trigger="load" hx-swap="outerHTML"></div>
 </div>
 
+<div hx-get="{% url 'finances:cockpit_parcelamentos' current_year current_month %}"
+     hx-trigger="load" hx-swap="outerHTML"></div>
+
 <h3 class="text-lg font-semibold mt-2 mb-2">🧾 Lançamentos</h3>
 <div id="entries-container">
     {% include "entries/_entries_table.html" %}

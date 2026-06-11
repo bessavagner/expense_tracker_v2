@@ -4,6 +4,7 @@ from finances.views.cockpit import (
     CockpitIncomeCreateView,
     CockpitIncomeDeleteView,
     CockpitIncomeSectionView,
+    CockpitParcelamentosSectionView,
     CockpitSystemicDeleteView,
     CockpitSystemicPostView,
     CockpitSystemicSectionView,
@@ -158,6 +159,12 @@ urlpatterns = [
         "cockpit/<int:year>/<int:month>/systemic/<uuid:pk>/delete/",
         CockpitSystemicDeleteView.as_view(),
         name="cockpit_systemic_delete",
+    ),
+    # Cockpit — parcelamentos
+    path(
+        "cockpit/<int:year>/<int:month>/parcelamentos/",
+        CockpitParcelamentosSectionView.as_view(),
+        name="cockpit_parcelamentos",
     ),
     # Cockpit — vencimentos
     path(

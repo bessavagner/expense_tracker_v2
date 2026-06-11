@@ -9,6 +9,7 @@ from finances.forms import CockpitIncomeForm
 from finances.models import Entry, Income, PaymentMethod, SystemicExpense
 from finances.models.payment_method import PaymentType
 from finances.models.payment_method_closing_day import PaymentMethodClosingDay
+from finances.services.installment_month import installment_rows_for_month
 from finances.services.systemic_month import systemic_rows_for_month
 from finances.views.mixins import HtmxLoginRequiredMixin
 
@@ -207,3 +208,22 @@ class CockpitVencimentoSetView(HtmxLoginRequiredMixin, View):
             )
             toast = f"{pm.name}: fecha dia {day}"
         return _render_vencimentos_section(request, y, m, toast=toast)
+
+
+# ---------------------------------------------------------------------------
+# Parcelamentos section
+# ---------------------------------------------------------------------------
+
+
+class CockpitParcelamentosSectionView(HtmxLoginRequiredMixin, View):
+    def get(self, request, year, month):
+        y, m = int(year), int(month)
+        ctx = {
+            "current_year": y,
+            "current_month": m,
+            "parcelamento_rows": installment_rows_for_month(request.user, y, m),
+        }
+        html = render_to_string(
+            "cockpit/_parcelamentos_section.html", ctx, request=request
+        )
+        return HttpResponse(html)
