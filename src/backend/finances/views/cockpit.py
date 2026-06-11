@@ -5,7 +5,7 @@ from django.http import Http404, HttpResponse
 from django.template.loader import render_to_string
 from django.views import View
 
-from finances.forms import CockpitIncomeForm
+from finances.forms import CockpitIncomeForm, SystemicExpenseForm
 from finances.models import Entry, Income, PaymentMethod, SystemicExpense
 from finances.models.payment_method import PaymentType
 from finances.models.payment_method_closing_day import PaymentMethodClosingDay
@@ -75,6 +75,7 @@ def _systemic_context(request, year, month):
         "current_year": year,
         "current_month": month,
         "systemic_rows": systemic_rows_for_month(request.user, year, month),
+        "systemic_form": SystemicExpenseForm(user=request.user),
     }
 
 
@@ -140,6 +141,23 @@ class CockpitSystemicDeleteView(HtmxLoginRequiredMixin, View):
             user=request.user, systemic_expense=systemic, billing_month=date(y, m, 1)
         ).delete()
         return _render_systemic_section(request, y, m, toast=f"{systemic.name}: não ocorreu")
+
+
+class CockpitSystemicCreateView(HtmxLoginRequiredMixin, View):
+    """Inline create a new SystemicExpense from the cockpit."""
+
+    def post(self, request, year, month):
+        y, m = int(year), int(month)
+        form = SystemicExpenseForm(request.POST, user=request.user)
+        if form.is_valid():
+            systemic = form.save(commit=False)
+            systemic.user = request.user
+            systemic.save()
+            return _render_systemic_section(request, y, m, toast=f"{systemic.name} adicionado!")
+        ctx = _systemic_context(request, y, m)
+        ctx["systemic_form"] = form
+        html = render_to_string("cockpit/_systemic_section.html", ctx, request=request)
+        return HttpResponse(html)
 
 
 # ---------------------------------------------------------------------------
