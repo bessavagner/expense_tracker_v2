@@ -1,0 +1,42 @@
+{# src/backend/templates/cockpit/_income_section.html #}
+{% load finance_filters %}
+<div id="cockpit-income" class="card bg-base-100 shadow-sm mb-4">
+  <div class="card-body p-4">
+    <h3 class="font-semibold flex items-center gap-2">Renda do mês</h3>
+    <table class="table table-sm">
+      <tbody>
+        {% for inc in incomes %}
+        <tr>
+          <td>{{ inc.name }}</td>
+          <td class="text-right whitespace-nowrap">{{ inc.amount|brl }}</td>
+          <td class="text-right">
+            <button class="btn btn-ghost btn-xs"
+                    hx-delete="{% url 'finances:cockpit_income_delete' current_year current_month inc.pk %}"
+                    hx-target="#cockpit-income" hx-swap="outerHTML"
+                    hx-confirm="Excluir esta renda?">Excluir</button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="3" class="text-center opacity-60">Nenhuma renda neste mês.</td></tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr class="font-bold">
+          <td>Total</td>
+          <td class="text-right whitespace-nowrap">{{ income_month_total|brl }}</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+    <form hx-post="{% url 'finances:cockpit_income_create' current_year current_month %}"
+          hx-target="#cockpit-income" hx-swap="outerHTML"
+          class="flex flex-wrap items-end gap-2 mt-2">
+      {% csrf_token %}
+      {{ income_form.name }}{{ income_form.amount }}{{ income_form.month }}
+      <label class="label cursor-pointer gap-1 text-xs">
+        {{ income_form.repeat_until_december }} repetir até dez
+      </label>
+      <button class="btn btn-primary btn-sm" type="submit">+ adicionar</button>
+    </form>
+  </div>
+</div>
