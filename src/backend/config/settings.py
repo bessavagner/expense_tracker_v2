@@ -63,6 +63,9 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "config.wsgi.application"
+# Served via ASGI in production (gunicorn + uvicorn worker) so the assistant's
+# SSE streaming works correctly under async.
+ASGI_APPLICATION = "config.asgi.application"
 
 AUTH_USER_MODEL = "core.CustomUser"
 
@@ -155,3 +158,9 @@ if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+    # HTTP Strict Transport Security: tell browsers to only use HTTPS for a year,
+    # including subdomains, and allow preload-list inclusion.
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True

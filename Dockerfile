@@ -71,4 +71,5 @@ EXPOSE ${PORT}
 
 WORKDIR /app/src/backend
 
-CMD ["sh", "-c", "gunicorn config.wsgi:application --bind 0.0.0.0:${PORT} --worker-class gthread --threads 4 --workers 2 --timeout 300 --access-logfile - --error-logfile -"]
+# ASGI (gunicorn + uvicorn worker) so the assistant's SSE streaming works under async.
+CMD ["sh", "-c", "gunicorn config.asgi:application --bind 0.0.0.0:${PORT} --worker-class uvicorn.workers.UvicornWorker --workers 2 --timeout 300 --access-logfile - --error-logfile -"]

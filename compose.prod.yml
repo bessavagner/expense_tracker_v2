@@ -1,0 +1,25 @@
+# Production compose — single web service, no local db/redis.
+# The database lives on Supabase; secrets come from .env (NOT in git).
+#
+# Usage on the host:
+#   docker compose -f compose.prod.yml build
+#   docker compose -f compose.prod.yml run --rm web python manage.py migrate
+#   docker compose -f compose.prod.yml up -d
+#
+# The container listens only on 127.0.0.1:8080 — front it with a reverse proxy /
+# tunnel / Cloud Run, never expose it directly to the internet.
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz/').status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
