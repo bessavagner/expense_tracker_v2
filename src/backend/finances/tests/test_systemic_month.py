@@ -4,8 +4,7 @@ from django.test import TestCase
 from model_bakery import baker
 
 from core.models import CustomUser
-from finances.models import Category, Entry, PaymentMethod, SystemicExpense
-from finances.models.entry import EntryType
+from finances.models import Category, PaymentMethod, SystemicExpense
 
 
 class TestSystemicMonth(TestCase):
@@ -20,7 +19,7 @@ class TestSystemicMonth(TestCase):
         s1 = baker.make(SystemicExpense, user=self.user, name="Aluguel",
                         category=self.cat, payment_method=self.pm,
                         default_amount="1500", is_active=True)
-        s2 = baker.make(SystemicExpense, user=self.user, name="Academia",
+        baker.make(SystemicExpense, user=self.user, name="Academia",
                         category=self.cat, payment_method=self.pm,
                         default_amount="80", is_active=True)
         baker.make(SystemicExpense, user=self.user, name="Antigo",
