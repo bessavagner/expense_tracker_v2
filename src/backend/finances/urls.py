@@ -7,6 +7,8 @@ from finances.views.cockpit import (
     CockpitSystemicDeleteView,
     CockpitSystemicPostView,
     CockpitSystemicSectionView,
+    CockpitVencimentoSetView,
+    CockpitVencimentosSectionView,
 )
 from finances.views.consolidated import (
     CategoryDetailView,
@@ -156,6 +158,17 @@ urlpatterns = [
         "cockpit/<int:year>/<int:month>/systemic/<uuid:pk>/delete/",
         CockpitSystemicDeleteView.as_view(),
         name="cockpit_systemic_delete",
+    ),
+    # Cockpit — vencimentos
+    path(
+        "cockpit/<int:year>/<int:month>/vencimentos/",
+        CockpitVencimentosSectionView.as_view(),
+        name="cockpit_vencimentos",
+    ),
+    path(
+        "cockpit/<int:year>/<int:month>/vencimentos/<uuid:pk>/",
+        CockpitVencimentoSetView.as_view(),
+        name="cockpit_vencimento_set",
     ),
     # API
     path("api/dashboard/", include("finances.api.urls")),

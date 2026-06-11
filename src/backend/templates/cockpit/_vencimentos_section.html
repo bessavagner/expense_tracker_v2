@@ -1,0 +1,27 @@
+<div id="cockpit-vencimentos" class="card bg-base-100 shadow-sm mb-4">
+  <div class="card-body p-4">
+    <h3 class="font-semibold flex items-center gap-2">Vencimentos do mês (cartões)</h3>
+    <table class="table table-sm">
+      <tbody>
+        {% for row in venc_rows %}
+        <tr>
+          <td>{{ row.pm.name }}</td>
+          <td>
+            <form class="inline-flex items-center gap-1"
+                  hx-post="{% url 'finances:cockpit_vencimento_set' current_year current_month row.pm.pk %}"
+                  hx-target="#cockpit-vencimentos" hx-swap="outerHTML">
+              fecha dia <input name="closing_day" type="number" min="1" max="31"
+                     value="{{ row.effective_day|default_if_none:'' }}" class="input input-bordered input-xs w-16">
+              <button class="btn btn-ghost btn-xs" type="submit">salvar</button>
+              {% if row.is_override %}<span class="badge badge-xs badge-warning">override</span>
+              {% else %}<span class="opacity-50 text-xs">padrão</span>{% endif %}
+            </form>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="2" class="text-center opacity-60">Nenhum cartão de crédito ativo.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

@@ -6,7 +6,9 @@ from django.template.loader import render_to_string
 from django.views import View
 
 from finances.forms import CockpitIncomeForm
-from finances.models import Entry, Income, SystemicExpense
+from finances.models import Entry, Income, PaymentMethod, SystemicExpense
+from finances.models.payment_method import PaymentType
+from finances.models.payment_method_closing_day import PaymentMethodClosingDay
 from finances.services.systemic_month import systemic_rows_for_month
 from finances.views.mixins import HtmxLoginRequiredMixin
 
@@ -133,3 +135,67 @@ class CockpitSystemicDeleteView(HtmxLoginRequiredMixin, View):
             user=request.user, systemic_expense=systemic, billing_month=date(y, m, 1)
         ).delete()
         return _render_systemic_section(request, y, m, toast=f"{systemic.name}: não ocorreu")
+
+
+# ---------------------------------------------------------------------------
+# Vencimentos section (credit-card closing day per month)
+# ---------------------------------------------------------------------------
+
+
+def _vencimentos_context(request, year, month):
+    billing_month = date(year, month, 1)
+    cards = PaymentMethod.objects.filter(
+        user=request.user, type=PaymentType.CREDIT_CARD, is_active=True
+    ).order_by("name")
+    rows = []
+    for pm in cards:
+        override = PaymentMethodClosingDay.objects.filter(
+            payment_method=pm, month=billing_month
+        ).first()
+        rows.append(
+            {
+                "pm": pm,
+                "effective_day": override.closing_day if override else pm.closing_day,
+                "is_override": override is not None,
+            }
+        )
+    return {"current_year": year, "current_month": month, "venc_rows": rows}
+
+
+def _render_vencimentos_section(request, year, month, toast=None):
+    html = render_to_string(
+        "cockpit/_vencimentos_section.html",
+        _vencimentos_context(request, year, month),
+        request=request,
+    )
+    response = HttpResponse(html)
+    if toast:
+        response["HX-Trigger"] = f'{{"showToast": {{"message": "{toast}", "type": "success"}}}}'
+    return response
+
+
+class CockpitVencimentosSectionView(HtmxLoginRequiredMixin, View):
+    def get(self, request, year, month):
+        return _render_vencimentos_section(request, int(year), int(month))
+
+
+class CockpitVencimentoSetView(HtmxLoginRequiredMixin, View):
+    def post(self, request, year, month, pk):
+        y, m = int(year), int(month)
+        pm = PaymentMethod.objects.filter(user=request.user, pk=pk).first()
+        if not pm:
+            raise Http404
+        billing_month = date(y, m, 1)
+        raw = (request.POST.get("closing_day") or "").strip()
+        if raw == "":
+            PaymentMethodClosingDay.objects.filter(
+                payment_method=pm, month=billing_month
+            ).delete()
+            toast = f"{pm.name}: vencimento padrão"
+        else:
+            day = max(1, min(31, int(raw)))
+            PaymentMethodClosingDay.objects.update_or_create(
+                payment_method=pm, month=billing_month, defaults={"closing_day": day}
+            )
+            toast = f"{pm.name}: fecha dia {day}"
+        return _render_vencimentos_section(request, y, m, toast=toast)

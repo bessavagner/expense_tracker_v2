@@ -34,4 +34,6 @@
      hx-trigger="load" hx-swap="outerHTML"></div>
 <div hx-get="{% url 'finances:cockpit_systemic' current_year current_month %}"
      hx-trigger="load" hx-swap="outerHTML"></div>
+<div hx-get="{% url 'finances:cockpit_vencimentos' current_year current_month %}"
+     hx-trigger="load" hx-swap="outerHTML"></div>
 {% endblock %}
