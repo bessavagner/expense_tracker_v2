@@ -1,5 +1,4 @@
 from datetime import date as _date
-from decimal import Decimal
 
 from django import forms
 from django.core.validators import MinValueValidator

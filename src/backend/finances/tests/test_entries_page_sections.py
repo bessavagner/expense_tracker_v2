@@ -1,7 +1,7 @@
 # src/backend/finances/tests/test_entries_page_sections.py
-from datetime import date
 from django.test import TestCase
 from model_bakery import baker
+
 from core.models import CustomUser
 
 

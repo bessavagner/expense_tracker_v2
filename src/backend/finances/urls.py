@@ -123,9 +123,21 @@ urlpatterns = [
     path("import/preview/", ImportPreviewView.as_view(), name="import_preview"),
     path("import/execute/", ImportExecuteView.as_view(), name="import_execute"),
     # Cockpit — income
-    path("cockpit/<int:year>/<int:month>/income/", CockpitIncomeSectionView.as_view(), name="cockpit_income"),
-    path("cockpit/<int:year>/<int:month>/income/create/", CockpitIncomeCreateView.as_view(), name="cockpit_income_create"),
-    path("cockpit/<int:year>/<int:month>/income/<uuid:pk>/delete/", CockpitIncomeDeleteView.as_view(), name="cockpit_income_delete"),
+    path(
+        "cockpit/<int:year>/<int:month>/income/",
+        CockpitIncomeSectionView.as_view(),
+        name="cockpit_income",
+    ),
+    path(
+        "cockpit/<int:year>/<int:month>/income/create/",
+        CockpitIncomeCreateView.as_view(),
+        name="cockpit_income_create",
+    ),
+    path(
+        "cockpit/<int:year>/<int:month>/income/<uuid:pk>/delete/",
+        CockpitIncomeDeleteView.as_view(),
+        name="cockpit_income_delete",
+    ),
     # API
     path("api/dashboard/", include("finances.api.urls")),
     # Dashboard (must be last to avoid catching other routes)
