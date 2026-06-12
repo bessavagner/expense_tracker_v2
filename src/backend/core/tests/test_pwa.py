@@ -115,3 +115,22 @@ class TestBaseHeadTags(TestCase):
         body = self.client.get("/").content.decode()
         self.assertIn("serviceWorker", body)
         self.assertIn("/sw.js", body)
+
+
+class TestLoginPagePwa(TestCase):
+    """The login page (admin login) is the unauthenticated landing, so it must
+    also advertise the PWA so the browser offers install before sign-in."""
+
+    def test_login_page_links_manifest(self):
+        body = self.client.get("/admin/login/").content.decode()
+        self.assertIn('rel="manifest"', body)
+        self.assertIn("/manifest.webmanifest", body)
+
+    def test_login_page_registers_service_worker(self):
+        body = self.client.get("/admin/login/").content.decode()
+        self.assertIn("serviceWorker", body)
+        self.assertIn("/sw.js", body)
+
+    def test_login_page_has_brand_tile_color(self):
+        body = self.client.get("/admin/login/").content.decode()
+        self.assertIn("#147874", body)

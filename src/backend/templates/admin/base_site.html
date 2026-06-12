@@ -1,0 +1,39 @@
+{% extends "admin/base.html" %}
+{% load i18n static %}
+
+{% comment %}
+Project override of Django's admin/base_site.html. Reproduces the upstream
+title/branding/nav-global blocks verbatim and adds PWA head tags in `extrahead`
+so the admin login page (the app's unauthenticated landing) advertises the
+installable PWA. Mirrors the tags in templates/base.html.
+{% endcomment %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block branding %}
+<div id="site-name"><a href="{% url 'admin:index' %}">{{ site_header|default:_('Django administration') }}</a></div>
+{% if user.is_anonymous %}
+  {% include "admin/color_theme_toggle.html" %}
+{% endif %}
+{% endblock %}
+
+{% block nav-global %}{% endblock %}
+
+{% block extrahead %}{{ block.super }}
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#f5f3ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0c1115" media="(prefers-color-scheme: dark)">
+<meta name="msapplication-TileColor" content="#147874">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Ledger">
+<link rel="apple-touch-icon" href="{% static 'images/pwa/apple-touch-icon.png' %}">
+<script>
+  if ('serviceWorker' in navigator &&
+      !['localhost', '127.0.0.1'].includes(location.hostname)) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js');
+    });
+  }
+</script>
+{% endblock %}
