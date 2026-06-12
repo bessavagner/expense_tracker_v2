@@ -27,16 +27,52 @@ class SettingsView(HtmxLoginRequiredMixin, TemplateView):
 # --- Income ---
 
 
+def income_groups(user):
+    """Group a user's incomes by name into one summary row each.
+
+    Recurring incomes create one Income row per month; the Settings list groups
+    them so the tab shows sources, not a wall of near-identical rows. Per-month
+    values are edited in the monthly cockpit (Entradas).
+    """
+    groups: dict[str, dict] = {}
+    for inc in Income.objects.filter(user=user).order_by("name", "month"):
+        g = groups.get(inc.name)
+        if g is None:
+            g = groups[inc.name] = {
+                "name": inc.name,
+                "count": 0,
+                "min_month": inc.month,
+                "max_month": inc.month,
+                "_amounts": set(),
+                "is_recurring": False,
+            }
+        g["count"] += 1
+        g["min_month"] = min(g["min_month"], inc.month)
+        g["max_month"] = max(g["max_month"], inc.month)
+        g["_amounts"].add(inc.amount)
+        g["is_recurring"] = g["is_recurring"] or inc.is_recurring
+    result = []
+    for g in groups.values():
+        amounts = g.pop("_amounts")
+        g["amount"] = next(iter(amounts)) if len(amounts) == 1 else None
+        result.append(g)
+    result.sort(key=lambda x: x["name"])
+    return result
+
+
+def _income_tab_context(user):
+    return {"income_groups": income_groups(user), "form": IncomeForm()}
+
+
 class IncomeTabView(HtmxLoginRequiredMixin, TemplateView):
-    """Income tab content."""
+    """Income tab content (grouped summary)."""
 
     template_name = "settings/_income_tab.html"
     htmx_template_name = "settings/_income_tab.html"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["incomes"] = Income.objects.filter(user=self.request.user)
-        context["form"] = IncomeForm()
+        context.update(_income_tab_context(self.request.user))
         return context
 
 
@@ -50,13 +86,25 @@ class IncomeCreateView(HtmxLoginRequiredMixin, View):
         return self._render_tab(request)
 
     def _render_tab(self, request):
-        context = {
-            "incomes": Income.objects.filter(user=request.user),
-            "form": IncomeForm(),
-        }
-        html = render_to_string("settings/_income_tab.html", context, request=request)
+        html = render_to_string(
+            "settings/_income_tab.html", _income_tab_context(request.user), request=request
+        )
         response = HttpResponse(html)
         response["HX-Trigger"] = '{"showToast": {"message": "Renda salva!", "type": "success"}}'
+        return response
+
+
+class IncomeGroupDeleteView(HtmxLoginRequiredMixin, View):
+    """Delete every income row sharing a name (remove a whole income source)."""
+
+    def post(self, request):
+        name = request.POST.get("name", "")
+        Income.objects.filter(user=request.user, name=name).delete()
+        html = render_to_string(
+            "settings/_income_tab.html", _income_tab_context(request.user), request=request
+        )
+        response = HttpResponse(html)
+        response["HX-Trigger"] = '{"showToast": {"message": "Renda removida!", "type": "success"}}'
         return response
 
 
@@ -77,11 +125,9 @@ class IncomeUpdateView(HtmxLoginRequiredMixin, View):
         form = IncomeForm(request.POST, instance=income)
         if form.is_valid():
             form.save()
-        context = {
-            "incomes": Income.objects.filter(user=request.user),
-            "form": IncomeForm(),
-        }
-        html = render_to_string("settings/_income_tab.html", context, request=request)
+        html = render_to_string(
+            "settings/_income_tab.html", _income_tab_context(request.user), request=request
+        )
         response = HttpResponse(html)
         response["HX-Trigger"] = (
             '{"showToast": {"message": "Renda atualizada!", "type": "success"}}'

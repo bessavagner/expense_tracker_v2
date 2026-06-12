@@ -38,6 +38,7 @@ from finances.views.settings import (
     CategoryDeleteView,
     CategoryEditView,
     IncomeCreateView,
+    IncomeGroupDeleteView,
     IncomeTabView,
     IncomeUpdateView,
     PaymentMethodCreateView,
@@ -77,6 +78,11 @@ urlpatterns = [
     path("settings/", SettingsView.as_view(), name="settings"),
     path("settings/income/", IncomeTabView.as_view(), name="settings_income"),
     path("settings/income/create/", IncomeCreateView.as_view(), name="settings_income_create"),
+    path(
+        "settings/income/group-delete/",
+        IncomeGroupDeleteView.as_view(),
+        name="settings_income_group_delete",
+    ),
     path(
         "settings/income/<uuid:pk>/edit/", IncomeUpdateView.as_view(), name="settings_income_edit"
     ),

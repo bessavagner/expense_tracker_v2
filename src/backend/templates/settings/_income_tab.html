@@ -36,27 +36,34 @@
 <div class="overflow-x-auto">
 <table class="table table-sm">
     <thead>
-        <tr><th>Nome</th><th>Valor</th><th>Mês</th><th>Recorrente</th><th>Início</th><th>Fim</th><th></th></tr>
+        <tr><th>Fonte</th><th>Valor</th><th>Período</th><th>Meses</th><th></th></tr>
     </thead>
     <tbody>
-        {% for income in incomes %}
+        {% for g in income_groups %}
         <tr>
-            <td>{{ income.name }}</td>
-            <td class="whitespace-nowrap">{{ income.amount|money }}</td>
-            <td>{{ income.month|date:"m/Y" }}</td>
-            <td>{% if income.is_recurring %}<span class="badge badge-sm badge-accent">Sim</span>{% endif %}</td>
-            <td>{{ income.recurrence_start|date:"d/m/Y"|default:"—" }}</td>
-            <td>{{ income.recurrence_end|date:"d/m/Y"|default:"—" }}</td>
             <td>
-                <button class="btn btn-ghost btn-xs"
-                        hx-get="{% url 'finances:settings_income_edit' income.id %}"
+                {{ g.name }}
+                {% if g.is_recurring %}<span class="badge badge-sm badge-accent">recorrente</span>{% endif %}
+            </td>
+            <td class="whitespace-nowrap">
+                {% if g.amount is not None %}{{ g.amount|money }}{% else %}<span class="opacity-60">vários</span>{% endif %}
+            </td>
+            <td class="whitespace-nowrap">
+                {{ g.min_month|date:"m/Y" }}{% if g.max_month != g.min_month %} – {{ g.max_month|date:"m/Y" }}{% endif %}
+            </td>
+            <td>{{ g.count }} {{ g.count|pluralize:"mês,meses" }}</td>
+            <td>
+                <button class="btn btn-ghost btn-xs text-error"
+                        hx-post="{% url 'finances:settings_income_group_delete' %}"
+                        hx-vals='{"name": "{{ g.name|escapejs }}"}'
                         hx-target="#settings-content"
-                        hx-swap="innerHTML">✏️</button>
+                        hx-swap="innerHTML"
+                        hx-confirm="Excluir todas as {{ g.count }} entradas desta fonte de renda?">excluir</button>
             </td>
         </tr>
         {% empty %}
         <tr>
-            <td colspan="7" class="text-center py-6">
+            <td colspan="5" class="text-center py-6">
                 <span class="text-2xl">💰</span>
                 <p class="text-xs text-base-content/60 mt-1">Nenhuma renda cadastrada. Use o formulário acima para adicionar.</p>
             </td>
@@ -65,3 +72,6 @@
     </tbody>
 </table>
 </div>
+<p class="text-xs text-base-content/60 mt-2">
+    Os valores são ajustados mês a mês em <a class="link" href="{% url 'finances:entries' %}">Entradas</a>.
+</p>
