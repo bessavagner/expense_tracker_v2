@@ -6,34 +6,26 @@ interface Props {
   apiUrl: string;
 }
 
-const SEVERITY_STYLES: Record<
-  string,
-  { bg: string; border: string; text: string }
-> = {
-  danger: {
-    bg: "bg-red-50",
-    border: "border-l-red-500",
-    text: "text-red-700",
-  },
-  warning: {
-    bg: "bg-amber-50",
-    border: "border-l-amber-500",
-    text: "text-amber-800",
-  },
-  info: {
-    bg: "bg-blue-50",
-    border: "border-l-blue-500",
-    text: "text-blue-700",
-  },
-  success: {
-    bg: "bg-green-50",
-    border: "border-l-green-500",
-    text: "text-green-700",
-  },
+// Theme-aware severity styling (DaisyUI semantic colors adapt to light/dark).
+const SEVERITY_BORDER: Record<string, string> = {
+  danger: "border-l-error bg-error/10",
+  warning: "border-l-warning bg-warning/10",
+  info: "border-l-info bg-info/10",
+  success: "border-l-success bg-success/10",
 };
+
+const SEVERITY_RANK: Record<string, number> = {
+  danger: 0,
+  warning: 1,
+  info: 2,
+  success: 3,
+};
+
+const LIMIT = 5;
 
 export default function AlertsCard({ apiUrl }: Props) {
   const [data, setData] = useState<AlertData[] | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     fetchApi<AlertData[]>(apiUrl).then(setData);
@@ -44,24 +36,40 @@ export default function AlertsCard({ apiUrl }: Props) {
       <div className="card bg-base-100 border border-base-300 shadow-sm animate-pulse h-48" />
     );
 
+  // Most severe first, then collapse the tail.
+  const alerts = [...data].sort(
+    (a, b) =>
+      (SEVERITY_RANK[a.severity] ?? 9) - (SEVERITY_RANK[b.severity] ?? 9),
+  );
+  const shown = expanded ? alerts : alerts.slice(0, LIMIT);
+
   return (
     <div className="card bg-base-100 border border-base-300 shadow-sm">
       <div className="card-body p-4">
         <h3 className="card-title text-sm">Alertas</h3>
         <div className="space-y-2">
-          {data.map((alert, i) => {
-            const style =
-              SEVERITY_STYLES[alert.severity] || SEVERITY_STYLES.info;
+          {shown.map((alert, i) => {
+            const border = SEVERITY_BORDER[alert.severity] || SEVERITY_BORDER.info;
             return (
               <div
                 key={i}
-                className={`${style.bg} border-l-4 ${style.border} px-3 py-2 rounded-r text-xs font-medium ${style.text}`}
+                className={`${border} border-l-4 px-3 py-2 rounded-r text-xs font-medium text-base-content`}
               >
                 {alert.message}
               </div>
             );
           })}
-          {data.length === 0 && (
+
+          {alerts.length > LIMIT && (
+            <button
+              className="btn btn-ghost btn-xs w-full"
+              onClick={() => setExpanded((e) => !e)}
+            >
+              {expanded ? "ver menos" : `ver todos (${alerts.length})`}
+            </button>
+          )}
+
+          {alerts.length === 0 && (
             <div className="text-sm opacity-60 text-center py-4">
               Nenhum alerta este mês
             </div>
