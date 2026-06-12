@@ -1,3 +1,109 @@
 @import "tailwindcss";
 @source "../../frontend/src";
-@plugin "daisyui";
+/* Enable ONLY our custom themes: ledger (root default) + ledger-dark (auto via OS). */
+@plugin "daisyui" {
+  themes: ledger --default, ledger-dark --prefersdark;
+}
+
+/* ============================================================
+   "Ledger" — calm, refined personal-finance theme.
+   Light (default) + dark (auto via prefers-color-scheme).
+   One brand hue (deep teal) harmonizes primary/accent so the
+   teal/indigo button clash is gone; warm neutral paper bases.
+   ============================================================ */
+@plugin "daisyui/theme" {
+  name: "ledger";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+
+  --color-base-100: oklch(99% 0.004 95);   /* card / paper white, faint warmth */
+  --color-base-200: oklch(96.5% 0.006 95);  /* page background */
+  --color-base-300: oklch(92% 0.008 95);    /* borders / hover */
+  --color-base-content: oklch(28% 0.02 60); /* warm near-black ink */
+
+  --color-primary: oklch(52% 0.085 190);
+  --color-primary-content: oklch(98% 0.01 190);
+  --color-accent: oklch(57% 0.09 190);       /* same hue family as primary */
+  --color-accent-content: oklch(98% 0.01 190);
+  --color-secondary: oklch(58% 0.07 70);     /* warm sand/gold, intentional 2nd */
+  --color-secondary-content: oklch(98% 0.01 70);
+  --color-neutral: oklch(30% 0.02 60);
+  --color-neutral-content: oklch(96% 0.01 60);
+
+  --color-info: oklch(60% 0.09 230);
+  --color-success: oklch(56% 0.12 160);
+  --color-success-content: oklch(98% 0.01 160);
+  --color-warning: oklch(74% 0.15 75);
+  --color-warning-content: oklch(28% 0.05 75);
+  --color-error: oklch(56% 0.17 25);
+  --color-error-content: oklch(98% 0.01 25);
+
+  --radius-selector: 0.4rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.85rem;
+  --border: 1px;
+}
+
+@plugin "daisyui/theme" {
+  name: "ledger-dark";
+  default: false;
+  prefersdark: true;
+  color-scheme: dark;
+
+  --color-base-100: oklch(22% 0.012 240);   /* elevated cards */
+  --color-base-200: oklch(17.5% 0.012 240);  /* page background (darker) */
+  --color-base-300: oklch(27% 0.014 240);    /* borders / hover */
+  --color-base-content: oklch(92% 0.01 90);  /* warm off-white ink */
+
+  --color-primary: oklch(74% 0.12 185);
+  --color-primary-content: oklch(20% 0.03 185);
+  --color-accent: oklch(78% 0.12 185);
+  --color-accent-content: oklch(20% 0.03 185);
+  --color-secondary: oklch(72% 0.08 75);
+  --color-secondary-content: oklch(20% 0.03 75);
+  --color-neutral: oklch(30% 0.015 240);
+  --color-neutral-content: oklch(92% 0.01 90);
+
+  --color-info: oklch(70% 0.10 230);
+  --color-success: oklch(70% 0.13 160);
+  --color-success-content: oklch(18% 0.03 160);
+  --color-warning: oklch(80% 0.15 75);
+  --color-warning-content: oklch(22% 0.05 75);
+  --color-error: oklch(66% 0.17 25);
+  --color-error-content: oklch(18% 0.03 25);
+
+  --radius-selector: 0.4rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.85rem;
+  --border: 1px;
+}
+
+/* ---- Typography: editorial display + clean body + ledger numerals ---- */
+@layer base {
+  :root {
+    --font-display: "Fraunces", ui-serif, Georgia, serif;
+    --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+  }
+
+  html {
+    font-family: var(--font-sans);
+    /* All numbers line up vertically across rows (real ledger feel). */
+    font-variant-numeric: tabular-nums;
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    letter-spacing: -0.015em;
+    font-weight: 600;
+  }
+
+  /* Opt-in monospaced numerals for money figures. */
+  .tabular, .amount {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+}
