@@ -8,8 +8,8 @@
         <tr>
           <td>{{ row.plan.description }}</td>
           <td class="text-center whitespace-nowrap">{{ row.parcela_num }}/{{ row.num_installments }}</td>
-          <td class="text-right whitespace-nowrap">{{ row.installment_amount|brl }}</td>
-          <td class="text-right whitespace-nowrap text-xs opacity-70">restante {{ row.remaining|brl }}</td>
+          <td class="text-right whitespace-nowrap">{{ row.installment_amount|money }}</td>
+          <td class="text-right whitespace-nowrap text-xs opacity-70">restante {{ row.remaining|money }}</td>
         </tr>
         {% empty %}
         <tr><td colspan="4" class="text-center opacity-60">Nenhum parcelamento neste mês.</td></tr>

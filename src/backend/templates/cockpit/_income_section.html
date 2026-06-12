@@ -8,7 +8,7 @@
         {% for inc in incomes %}
         <tr>
           <td>{{ inc.name }}</td>
-          <td class="text-right whitespace-nowrap">{{ inc.amount|brl }}</td>
+          <td class="text-right whitespace-nowrap">{{ inc.amount|money }}</td>
           <td class="text-right">
             <button class="btn btn-ghost btn-xs"
                     hx-delete="{% url 'finances:cockpit_income_delete' current_year current_month inc.pk %}"
@@ -23,7 +23,7 @@
       <tfoot>
         <tr class="font-bold">
           <td>Total</td>
-          <td class="text-right whitespace-nowrap">{{ income_month_total|brl }}</td>
+          <td class="text-right whitespace-nowrap">{{ income_month_total|money }}</td>
           <td></td>
         </tr>
       </tfoot>

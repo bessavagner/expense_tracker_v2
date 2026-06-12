@@ -21,7 +21,7 @@
                 hx-trigger="click once"
                 hx-on::after-request="document.getElementById('detail-{{ row.category__id }}-{{ m }}').style.display = 'table-row'"
                 @click="const r = document.getElementById('detail-{{ row.category__id }}-{{ m }}'); if (r && r.innerHTML.trim()) { r.style.display = r.style.display === 'table-row' ? 'none' : 'table-row'; }">
-                {% if row.months|get_item:m %}{{ row.months|get_item:m|brl }}{% else %}—{% endif %}
+                {% if row.months|get_item:m %}{{ row.months|get_item:m|money }}{% else %}—{% endif %}
             </td>
             {% endfor %}
         </tr>
@@ -44,7 +44,7 @@
         <tr class="font-bold">
             <td>Total</td>
             {% for m in months %}
-            <td class="text-right whitespace-nowrap">{{ column_totals|get_item:m|brl }}</td>
+            <td class="text-right whitespace-nowrap">{{ column_totals|get_item:m|money }}</td>
             {% endfor %}
         </tr>
     </tfoot>

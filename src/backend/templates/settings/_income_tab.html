@@ -42,7 +42,7 @@
         {% for income in incomes %}
         <tr>
             <td>{{ income.name }}</td>
-            <td class="whitespace-nowrap">{{ income.amount|brl }}</td>
+            <td class="whitespace-nowrap">{{ income.amount|money }}</td>
             <td>{{ income.month|date:"m/Y" }}</td>
             <td>{% if income.is_recurring %}<span class="badge badge-sm badge-accent">Sim</span>{% endif %}</td>
             <td>{{ income.recurrence_start|date:"d/m/Y"|default:"—" }}</td>
