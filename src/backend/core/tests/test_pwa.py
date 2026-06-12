@@ -1,5 +1,7 @@
 import json
+from pathlib import Path
 
+from django.conf import settings
 from django.test import TestCase
 
 
@@ -65,3 +67,16 @@ class TestOffline(TestCase):
         body = self.client.get("/offline/").content.decode()
         self.assertIn("Tentar novamente", body)
         self.assertIn("Sem conex", body)  # "Sem conexão"
+
+
+class TestIconFiles(TestCase):
+    def test_pwa_icons_exist(self):
+        static_dir = Path(settings.STATICFILES_DIRS[0])
+        for name in (
+            "icon-192.png",
+            "icon-512.png",
+            "icon-maskable-512.png",
+            "apple-touch-icon.png",
+        ):
+            path = static_dir / "images" / "pwa" / name
+            self.assertTrue(path.exists(), f"missing icon: {path}")
