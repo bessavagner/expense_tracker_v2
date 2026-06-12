@@ -54,3 +54,14 @@ class TestServiceWorker(TestCase):
     def test_sw_served_without_login(self):
         self.client.logout()
         self.assertEqual(self.client.get("/sw.js").status_code, 200)
+
+
+class TestOffline(TestCase):
+    def test_offline_returns_200_without_login(self):
+        self.client.logout()
+        self.assertEqual(self.client.get("/offline/").status_code, 200)
+
+    def test_offline_page_has_retry(self):
+        body = self.client.get("/offline/").content.decode()
+        self.assertIn("Tentar novamente", body)
+        self.assertIn("Sem conex", body)  # "Sem conexão"

@@ -36,3 +36,10 @@ class ServiceWorkerView(TemplateView):
         response["Service-Worker-Allowed"] = "/"
         response["Cache-Control"] = "no-cache"
         return response
+
+
+class OfflineView(TemplateView):
+    """Offline fallback served by the service worker when a navigation fails.
+    No DB, no auth — must render from cache."""
+
+    template_name = "offline.html"

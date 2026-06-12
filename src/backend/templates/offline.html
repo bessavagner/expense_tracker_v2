@@ -1,0 +1,24 @@
+{% load static %}<!DOCTYPE html>
+<html lang="pt-BR" data-theme="ledger">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>Sem conexão — Expense Tracker</title>
+  <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
+</head>
+<body class="min-h-screen bg-base-200 flex items-center justify-center p-6">
+  <div class="card bg-base-100 shadow-md max-w-sm w-full">
+    <div class="card-body items-center text-center">
+      <div class="text-5xl mb-2">📡</div>
+      <h1 class="card-title">Sem conexão</h1>
+      <p class="text-base-content/70">
+        Você está offline. Os dados financeiros precisam de internet para carregar.
+      </p>
+      <div class="card-actions mt-4">
+        <button class="btn btn-primary" onclick="location.reload()">Tentar novamente</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
