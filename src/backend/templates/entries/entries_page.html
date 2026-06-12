@@ -23,15 +23,17 @@
     </select>
 </div>
 
-<!-- Monthly cockpit: income / systemic / closing-days surfaced above the long entries list -->
-<div hx-get="{% url 'finances:cockpit_income' current_year current_month %}"
-     hx-trigger="load" hx-swap="outerHTML"></div>
-<div class="grid gap-4 md:grid-cols-2">
-    <div hx-get="{% url 'finances:cockpit_systemic' current_year current_month %}"
+<!-- Monthly cockpit: income/vencimentos share a row (both short); systemic and
+     parcelamentos go full-width (long lists) above the entries table. -->
+<div class="grid gap-4 md:grid-cols-2 items-start">
+    <div hx-get="{% url 'finances:cockpit_income' current_year current_month %}"
          hx-trigger="load" hx-swap="outerHTML"></div>
     <div hx-get="{% url 'finances:cockpit_vencimentos' current_year current_month %}"
          hx-trigger="load" hx-swap="outerHTML"></div>
 </div>
+
+<div hx-get="{% url 'finances:cockpit_systemic' current_year current_month %}"
+     hx-trigger="load" hx-swap="outerHTML"></div>
 
 <div hx-get="{% url 'finances:cockpit_parcelamentos' current_year current_month %}"
      hx-trigger="load" hx-swap="outerHTML"></div>
