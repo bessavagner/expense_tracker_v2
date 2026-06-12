@@ -60,6 +60,14 @@ class TestServiceWorker(TestCase):
         self.client.logout()
         self.assertEqual(self.client.get("/sw.js").status_code, 200)
 
+    def test_sw_precaches_offline_page_and_stylesheet(self):
+        # The offline fallback must render styled even on the first offline hit,
+        # so the SW precaches /offline/ and the (hashed) tailwind stylesheet.
+        body = self.client.get("/sw.js").content.decode()
+        self.assertIn("/offline/", body)
+        self.assertIn("tailwind", body)
+        self.assertIn("css/tailwind", body)
+
 
 class TestOffline(TestCase):
     def test_offline_returns_200_without_login(self):

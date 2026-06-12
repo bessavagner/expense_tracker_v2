@@ -1,6 +1,9 @@
-// Ledger PWA service worker. Bumping CACHE invalidates old caches on activate.
+{% load static %}// Ledger PWA service worker. Bumping CACHE invalidates old caches on activate.
 const CACHE = 'ledger-pwa-v1';
-const PRECACHE = ['/offline/'];
+// Precache the offline page AND the stylesheet it needs, so the fallback renders
+// styled even on the very first offline navigation. {% templatetag openblock %} static {% templatetag closeblock %}
+// resolves the hashed URL under ManifestStaticFilesStorage in production.
+const PRECACHE = ['/offline/', '{% static "css/tailwind.css" %}'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
