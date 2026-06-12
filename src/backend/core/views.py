@@ -23,3 +23,16 @@ class ManifestView(TemplateView):
 
     template_name = "manifest.webmanifest"
     content_type = "application/manifest+json"
+
+
+class ServiceWorkerView(TemplateView):
+    """Serve the service worker from the site root so its scope is the whole app."""
+
+    template_name = "sw.js"
+    content_type = "application/javascript"
+
+    def render_to_response(self, context, **response_kwargs):
+        response = super().render_to_response(context, **response_kwargs)
+        response["Service-Worker-Allowed"] = "/"
+        response["Cache-Control"] = "no-cache"
+        return response

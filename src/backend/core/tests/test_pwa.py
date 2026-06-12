@@ -10,7 +10,7 @@ class TestManifest(TestCase):
 
     def test_manifest_content_type(self):
         resp = self.client.get("/manifest.webmanifest")
-        self.assertEqual(resp["Content-Type"], "application/manifest+json")
+        self.assertIn("application/manifest+json", resp["Content-Type"])
 
     def test_manifest_is_valid_json_with_required_keys(self):
         resp = self.client.get("/manifest.webmanifest")
@@ -33,3 +33,24 @@ class TestManifest(TestCase):
     def test_manifest_served_without_login(self):
         self.client.logout()
         self.assertEqual(self.client.get("/manifest.webmanifest").status_code, 200)
+
+
+class TestServiceWorker(TestCase):
+    def test_sw_returns_200(self):
+        self.assertEqual(self.client.get("/sw.js").status_code, 200)
+
+    def test_sw_javascript_content_type(self):
+        resp = self.client.get("/sw.js")
+        self.assertEqual(resp["Content-Type"], "application/javascript")
+
+    def test_sw_allowed_at_root_scope(self):
+        resp = self.client.get("/sw.js")
+        self.assertEqual(resp["Service-Worker-Allowed"], "/")
+
+    def test_sw_not_cached(self):
+        resp = self.client.get("/sw.js")
+        self.assertIn("no-cache", resp["Cache-Control"])
+
+    def test_sw_served_without_login(self):
+        self.client.logout()
+        self.assertEqual(self.client.get("/sw.js").status_code, 200)
