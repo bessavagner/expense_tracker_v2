@@ -3,8 +3,7 @@ import { fetchApi } from "../api";
 import { formatBRL } from "../format";
 import type { CategoryData } from "../types";
 import EmptyState from "../components/EmptyState";
-
-const COLORS = ["#e94560", "#0f3460", "#16c79a", "#533483", "#f59e0b"];
+import { CHART_COLORS } from "../theme";
 
 interface Props {
   apiUrl: string;
@@ -44,10 +43,7 @@ export default function TopCategoriesCard({ apiUrl }: Props) {
             <div key={cat.name}>
               <div className="flex justify-between text-xs mb-0.5">
                 <span className="opacity-70">{cat.name}</span>
-                <span
-                  className="font-bold whitespace-nowrap"
-                  style={{ color: COLORS[i % COLORS.length] }}
-                >
+                <span className="amount font-bold whitespace-nowrap">
                   {formatBRL(cat.amount)}
                 </span>
               </div>
@@ -56,7 +52,7 @@ export default function TopCategoriesCard({ apiUrl }: Props) {
                   className="h-full rounded"
                   style={{
                     width: `${(parseFloat(cat.amount) / maxAmount) * 100}%`,
-                    backgroundColor: COLORS[i % COLORS.length],
+                    backgroundColor: CHART_COLORS[i % CHART_COLORS.length],
                   }}
                 />
               </div>

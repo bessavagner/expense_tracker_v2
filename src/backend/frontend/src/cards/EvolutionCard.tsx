@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import { fetchApi } from "../api";
 import { formatBRL, formatBRLCompact } from "../format";
+import { SERIES } from "../theme";
 import type { EvolutionPoint } from "../types";
 
 interface Props {
@@ -65,7 +66,7 @@ export default function EvolutionCard({ apiUrl }: Props) {
               type="monotone"
               dataKey="expenses"
               name="Gastos"
-              stroke="#e94560"
+              stroke={SERIES.expense}
               strokeWidth={2}
               dot={{ r: 3 }}
             />
@@ -73,7 +74,7 @@ export default function EvolutionCard({ apiUrl }: Props) {
               type="monotone"
               dataKey="income"
               name="Renda"
-              stroke="#16c79a"
+              stroke={SERIES.income}
               strokeWidth={2}
               strokeDasharray="6 3"
               dot={{ r: 3 }}
