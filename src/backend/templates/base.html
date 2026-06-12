@@ -21,6 +21,14 @@
         })();
     </script>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#f5f3ef" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0c1115" media="(prefers-color-scheme: dark)">
+    <meta name="msapplication-TileColor" content="#147874">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Ledger">
+    <link rel="apple-touch-icon" href="{% static 'images/pwa/apple-touch-icon.png' %}">
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script defer src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js"></script>
 </head>
@@ -57,5 +65,13 @@
     </dialog>
 
     <script type="module" src="{% static 'frontend/mount.js' %}"></script>
+    <script>
+      if ('serviceWorker' in navigator &&
+          !['localhost', '127.0.0.1'].includes(location.hostname)) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/sw.js');
+        });
+      }
+    </script>
 </body>
 </html>

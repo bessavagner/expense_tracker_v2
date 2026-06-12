@@ -3,6 +3,9 @@ from pathlib import Path
 
 from django.conf import settings
 from django.test import TestCase
+from model_bakery import baker
+
+from core.models import CustomUser
 
 
 class TestManifest(TestCase):
@@ -80,3 +83,27 @@ class TestIconFiles(TestCase):
         ):
             path = static_dir / "images" / "pwa" / name
             self.assertTrue(path.exists(), f"missing icon: {path}")
+
+
+class TestBaseHeadTags(TestCase):
+    def setUp(self):
+        self.client.force_login(baker.make(CustomUser))
+
+    def test_page_links_manifest(self):
+        body = self.client.get("/").content.decode()
+        self.assertIn('rel="manifest"', body)
+        self.assertIn("/manifest.webmanifest", body)
+
+    def test_page_has_theme_color(self):
+        body = self.client.get("/").content.decode()
+        self.assertIn('name="theme-color"', body)
+        self.assertIn("#f5f3ef", body)  # light theme-color
+
+    def test_page_has_brand_tile_color(self):
+        body = self.client.get("/").content.decode()
+        self.assertIn("#147874", body)  # msapplication-TileColor (brand teal)
+
+    def test_page_registers_service_worker(self):
+        body = self.client.get("/").content.decode()
+        self.assertIn("serviceWorker", body)
+        self.assertIn("/sw.js", body)
