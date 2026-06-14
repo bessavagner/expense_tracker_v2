@@ -153,6 +153,30 @@ ASSISTANT_DELEGATION_REQUEST_LIMIT = int(
     os.environ.get("ASSISTANT_DELEGATION_REQUEST_LIMIT", "8")
 )
 
+# Multimodal (áudio + foto). Transcrição via API da OpenAI; sem chaves novas.
+LLM_TRANSCRIBE_MODEL = os.environ.get("LLM_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe")
+# Modelo usado para LER imagem (recibo). Default = modelo leve do registrador;
+# escape hatch caso o modelo leve leia recibo mal.
+LLM_VISION_MODEL = os.environ.get("LLM_VISION_MODEL", LLM_ORCHESTRATOR_MODEL)
+
+ASSISTANT_MAX_IMAGE_MB = int(os.environ.get("ASSISTANT_MAX_IMAGE_MB", "10"))
+ASSISTANT_MAX_AUDIO_MB = int(os.environ.get("ASSISTANT_MAX_AUDIO_MB", "25"))
+ASSISTANT_ALLOWED_IMAGE_TYPES = (
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/heic",
+)
+ASSISTANT_ALLOWED_AUDIO_TYPES = (
+    "audio/webm",
+    "audio/ogg",
+    "audio/mpeg",
+    "audio/mp4",
+    "audio/x-m4a",
+    "audio/wav",
+    "audio/x-wav",
+)
+
 # Ensure OpenAI client can be instantiated (uses dummy key in dev/test; real key in prod)
 if LLM_API_KEY and not os.environ.get("OPENAI_API_KEY"):
     os.environ["OPENAI_API_KEY"] = LLM_API_KEY
