@@ -1,15 +1,15 @@
 <form hx-post="{% url 'finances:settings_pm_create' %}"
       hx-target="#settings-content"
       hx-swap="innerHTML"
-      class="flex gap-2 mb-4 items-end">
+      class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4 items-end">
     {% csrf_token %}
     {{ form.name }}
     {{ form.type }}
     {{ form.closing_day }}
-    <button type="submit" class="btn btn-sm btn-accent">Adicionar</button>
+    <button type="submit" class="btn btn-sm btn-accent col-span-2 md:col-span-1">Adicionar</button>
 </form>
 
-<div class="overflow-x-auto">
+<div class="overflow-x-auto min-w-0">
 <table class="table table-sm">
     <thead>
         <tr><th>Nome</th><th>Tipo</th><th>Fechamento</th><th>Ativo</th></tr>
