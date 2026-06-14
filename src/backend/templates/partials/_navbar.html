@@ -1,21 +1,11 @@
 <nav class="navbar bg-neutral text-neutral-content">
     <div class="flex flex-1 items-center gap-2">
-        <!-- Hamburger menu (all viewports) -->
-        <div class="dropdown">
-            <div tabindex="0" role="button" class="btn btn-ghost" aria-label="Menu">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-            </div>
-            <ul tabindex="0" class="menu menu-sm dropdown-content bg-neutral rounded-box z-10 mt-3 w-56 p-2 shadow">
-                <li class="menu-title text-neutral-content/80">Expense Tracker</li>
-                <li><a href="{% url 'finances:dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">Dashboard</a></li>
-                <li><a href="{% url 'finances:entries' %}" class="{% if request.resolver_match.url_name and 'entries' in request.resolver_match.url_name %}active{% endif %}">Entradas</a></li>
-                <li><a href="{% url 'finances:consolidated' %}" class="{% if request.resolver_match.url_name and 'consolidated' in request.resolver_match.url_name %}active{% endif %}">Consolidado</a></li>
-                <li><a href="{% url 'finances:settings' %}" class="{% if request.resolver_match.url_name and 'settings' in request.resolver_match.url_name %}active{% endif %}">Configurações</a></li>
-                <li><a href="{% url 'finances:import_upload' %}" class="{% if request.resolver_match.url_name and 'import' in request.resolver_match.url_name %}active{% endif %}">Importar</a></li>
-            </ul>
-        </div>
+        <!-- Hamburger: opens the side drawer (nav-drawer lives in base.html) -->
+        <label for="nav-drawer" class="btn btn-ghost drawer-button" aria-label="Abrir menu">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+        </label>
     </div>
     <div class="flex-none items-center gap-1">
         <!-- Theme toggle (persisted in localStorage; defaults to OS preference) -->
