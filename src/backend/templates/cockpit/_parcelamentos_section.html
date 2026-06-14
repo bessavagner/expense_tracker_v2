@@ -1,11 +1,15 @@
 {% load finance_filters %}
 <div id="cockpit-parcelamentos" class="card bg-base-100 border border-base-200 shadow-sm mb-4">
-  <div class="card-body p-4">
+  <div class="card-body p-4" x-data="{ q: '' }">
     <h3 class="font-semibold flex items-center gap-2">📦 Parcelamentos do mês</h3>
+    <input type="search" x-model="q" placeholder="Buscar parcelamentos…"
+           class="input input-bordered input-sm w-full max-w-xs mb-2">
+    <div class="overflow-x-auto min-w-0">
     <table class="table table-sm">
       <tbody>
         {% for row in parcelamento_rows %}
-        <tr>
+        <tr x-show="q === '' || $el.dataset.search.includes(q.toLowerCase())"
+            data-search="{{ row.plan.description|lower }} {{ row.installment_amount }}">
           <td>{{ row.plan.description }}</td>
           <td class="text-center whitespace-nowrap">{{ row.parcela_num }}/{{ row.num_installments }}</td>
           <td class="text-right whitespace-nowrap">{{ row.installment_amount|money }}</td>
@@ -16,5 +20,6 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
   </div>
 </div>
