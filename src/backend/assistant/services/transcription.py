@@ -8,6 +8,8 @@ testes injetam um cliente fake via o parâmetro ``client``.
 from django.conf import settings
 from openai import AsyncOpenAI
 
+# Singleton preguiçoso: evita construir o cliente na importação (que exigiria
+# OPENAI_API_KEY presente já no import de views.py). É criado no primeiro uso real.
 _client: AsyncOpenAI | None = None
 
 
