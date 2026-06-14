@@ -3,6 +3,7 @@
 <div id="cockpit-income" class="card bg-base-100 border border-base-200 shadow-sm mb-4">
   <div class="card-body p-4">
     <h3 class="font-semibold flex items-center gap-2">💰 Renda do mês</h3>
+    <div class="overflow-x-auto">
     <table class="table table-sm">
       <tbody>
         {% for inc in incomes %}
@@ -28,6 +29,7 @@
         </tr>
       </tfoot>
     </table>
+    </div>
     <form hx-post="{% url 'finances:cockpit_income_create' current_year current_month %}"
           hx-target="#cockpit-income" hx-swap="outerHTML"
           class="flex flex-wrap items-end gap-2 mt-2">
