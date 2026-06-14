@@ -26,24 +26,23 @@
     <table class="table table-sm">
       <tbody>
         {% for row in systemic_rows %}
-        <tr>
+        <tr class="{% if row.entry %}cursor-pointer hover:bg-base-200{% endif %}"
+            {% if row.entry %}
+            hx-get="{% url 'finances:cockpit_systemic_edit_modal' current_year current_month row.systemic.pk %}"
+            hx-target="#entry-modal-content" hx-swap="innerHTML"
+            onclick="document.getElementById('entry-modal').showModal()"
+            {% endif %}>
           <td>{{ row.systemic.name }}</td>
           <td class="text-right whitespace-nowrap">
             {% if row.entry %}{{ row.entry.amount|money }}{% else %}<span class="opacity-50">não lançado</span>{% endif %}
           </td>
           <td class="text-right whitespace-nowrap">
             {% if row.entry %}
-              <form class="inline-flex gap-1"
-                    hx-post="{% url 'finances:cockpit_systemic_post' current_year current_month row.systemic.pk %}"
-                    hx-target="#cockpit-systemic" hx-swap="outerHTML">
-                <input name="amount" type="number" step="0.01" value="{{ row.entry.amount }}"
-                       class="input input-bordered input-xs w-24">
-                <button class="btn btn-ghost btn-xs" type="submit">salvar</button>
-              </form>
               <button class="btn btn-ghost btn-xs"
                       hx-delete="{% url 'finances:cockpit_systemic_delete' current_year current_month row.systemic.pk %}"
                       hx-target="#cockpit-systemic" hx-swap="outerHTML"
-                      hx-confirm="Marcar como não ocorrido neste mês?">não ocorreu</button>
+                      hx-confirm="Marcar como não ocorrido neste mês?"
+                      onclick="event.stopPropagation()">não ocorreu</button>
             {% else %}
               <button class="btn btn-outline btn-xs"
                       hx-post="{% url 'finances:cockpit_systemic_post' current_year current_month row.systemic.pk %}"

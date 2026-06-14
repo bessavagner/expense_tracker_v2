@@ -47,8 +47,9 @@ class TestCockpitSystemicCreateView(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "novo")
 
-    def test_salvar_button_text_in_amount_edit(self):
-        """The amount-edit submit button must say 'salvar', not the bare pencil ✎."""
+    def test_lancado_row_opens_edit_modal(self):
+        """A lançado systemic row is clickable to open the edit modal (the
+        inline amount field was replaced by the shared edit modal)."""
         s = baker.make(
             SystemicExpense,
             user=self.user,
@@ -60,5 +61,5 @@ class TestCockpitSystemicCreateView(TestCase):
         )
         s.create_monthly_entry(date(2026, 5, 1))
         resp = self.client.get("/cockpit/2026/5/systemic/")
-        self.assertContains(resp, "salvar")
-        self.assertNotContains(resp, "✎")
+        self.assertContains(resp, f"/cockpit/2026/5/systemic/{s.pk}/edit-modal/")
+        self.assertContains(resp, "cursor-pointer")
