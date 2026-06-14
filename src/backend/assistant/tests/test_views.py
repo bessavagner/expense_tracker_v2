@@ -6,7 +6,7 @@ from django.test import Client
 from model_bakery import baker
 from pydantic_ai.models.test import TestModel
 
-from assistant.agents.orchestrator import assistant_agent
+from assistant.agents.orchestrator import agents_override
 from assistant.models import ChatMessage
 
 
@@ -30,7 +30,7 @@ def consume_streaming(response):
 @pytest.mark.django_db
 class TestChatEndpoint:
     def test_post_creates_user_message(self, logged_client, user):
-        with assistant_agent.override(model=TestModel()):
+        with agents_override(TestModel()):
             response = logged_client.post(
                 "/api/assistant/chat/",
                 data=json.dumps({"message": "oi"}),
@@ -40,7 +40,7 @@ class TestChatEndpoint:
         assert ChatMessage.objects.filter(user=user, role="user").exists()
 
     def test_post_returns_sse_content_type(self, logged_client, user):
-        with assistant_agent.override(model=TestModel()):
+        with agents_override(TestModel()):
             response = logged_client.post(
                 "/api/assistant/chat/",
                 data=json.dumps({"message": "oi"}),
@@ -49,7 +49,7 @@ class TestChatEndpoint:
         assert response["Content-Type"] == "text/event-stream"
 
     def test_post_creates_assistant_message(self, logged_client, user):
-        with assistant_agent.override(model=TestModel()):
+        with agents_override(TestModel()):
             response = logged_client.post(
                 "/api/assistant/chat/",
                 data=json.dumps({"message": "oi"}),
