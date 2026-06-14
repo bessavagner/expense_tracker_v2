@@ -11,8 +11,11 @@
 {% include "entries/_inline_entry_form.html" %}
 
 <!-- Entries table -->
-<div class="overflow-x-auto">
-<table class="table table-sm">
+<div x-data="{ q: '' }">
+<input type="search" x-model="q" placeholder="Buscar lançamentos…"
+       class="input input-bordered input-sm w-full max-w-xs mb-2">
+<div class="overflow-x-auto min-w-0">
+<table class="table table-sm hidden md:table">
     <thead>
         <tr>
             <th>Data</th>
@@ -40,4 +43,25 @@
         {% endfor %}
     </tbody>
 </table>
+</div>
+<!-- Mobile cards -->
+<div class="md:hidden space-y-2">
+    {% for entry in entries %}
+    <div x-show="q === '' || $el.dataset.search.includes(q.toLowerCase())"
+         data-search="{{ entry.description|lower }} {{ entry.category.name|lower }} {{ entry.amount }}"
+         class="card card-compact bg-base-100 border border-base-300">
+        <div class="card-body">
+            <div class="flex justify-between">
+                <span class="font-medium">{{ entry.description }}</span>
+                <span class="whitespace-nowrap {% if entry.amount < 0 %}text-success{% endif %}">{{ entry.amount|money }}</span>
+            </div>
+            <div class="flex flex-wrap gap-2 text-xs opacity-70">
+                <span>{{ entry.date|date:"d/m" }}</span>
+                <span class="badge badge-xs">{{ entry.category.name }}</span>
+                <span>{{ entry.payment_method.name }}</span>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
 </div>
