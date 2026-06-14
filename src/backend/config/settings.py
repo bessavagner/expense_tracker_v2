@@ -133,8 +133,17 @@ LOGIN_URL = "/admin/login/"
 
 # AI Assistant
 LLM_MODEL = os.environ.get("LLM_MODEL", "openai:gpt-4o-mini")
+# Sistema de agentes (prompt 004): orquestrador/registrador usam um modelo leve e
+# barato; analista/planejador usam um modelo mais capaz. Provider-agnóstico — por
+# padrão herdam LLM_MODEL para não exigir configuração extra nem chaves novas.
+LLM_ORCHESTRATOR_MODEL = os.environ.get("LLM_ORCHESTRATOR_MODEL", LLM_MODEL)
+LLM_WORKER_MODEL = os.environ.get("LLM_WORKER_MODEL", LLM_MODEL)
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
 ASSISTANT_MAX_HISTORY = int(os.environ.get("ASSISTANT_MAX_HISTORY", "20"))
+# Teto de requisições por delegação a um sub-agente (controle de custo multi-agente)
+ASSISTANT_DELEGATION_REQUEST_LIMIT = int(
+    os.environ.get("ASSISTANT_DELEGATION_REQUEST_LIMIT", "8")
+)
 
 # Ensure OpenAI client can be instantiated (uses dummy key in dev/test; real key in prod)
 if LLM_API_KEY and not os.environ.get("OPENAI_API_KEY"):

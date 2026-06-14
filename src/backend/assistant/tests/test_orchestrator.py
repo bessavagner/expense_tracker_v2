@@ -1,81 +1,105 @@
+"""Tests for the multi-agent system (Etapa 3 do prompt 004).
+
+Architecture: orchestrator (router) delegates to specialised sub-agents
+(Registrador = write, Analista/Planejador = read-only).
+"""
+
 import pytest
 from pydantic_ai.models.test import TestModel
 
-from assistant.agents.orchestrator import assistant_agent
+from assistant.agents.analyst import analyst_agent
+from assistant.agents.orchestrator import (
+    agents_override,
+    assistant_agent,
+    orchestrator_agent,
+)
+from assistant.agents.planner import planner_agent
+from assistant.agents.registrar import registrar_agent
+
+WRITE_TOOLS = {
+    "register_entry",
+    "add_category",
+    "set_category_budget",
+    "add_payment_method",
+    "set_income",
+    "set_systemic_amount",
+    "save_memory_rule",
+}
+
+
+def _tools(agent):
+    return set(agent._function_toolset.tools.keys())
+
+
+class TestOrchestratorRouter:
+    def test_assistant_agent_is_orchestrator(self):
+        assert assistant_agent is orchestrator_agent
+
+    def test_has_only_delegation_tools(self):
+        tools = _tools(orchestrator_agent)
+        assert tools == {"delegate_registro", "delegate_analise", "delegate_planejamento"}
+
+    def test_system_prompt_is_router(self):
+        prompt = orchestrator_agent._system_prompts[0]
+        text = prompt if isinstance(prompt, str) else prompt.__doc__ or ""
+        assert "delegar" in text.lower() or "delegate" in text.lower()
+
+
+class TestRegistrarAgent:
+    def test_has_write_tools(self):
+        tools = _tools(registrar_agent)
+        assert WRITE_TOOLS.issubset(tools)
+        assert "register_entry" in tools
+
+    def test_has_memory_tools(self):
+        tools = _tools(registrar_agent)
+        assert {"check_memory", "save_memory_rule", "get_memory_rules"}.issubset(tools)
+
+    def test_system_prompt_has_legacy_rules(self):
+        prompt = registrar_agent._system_prompts[0]
+        text = prompt if isinstance(prompt, str) else prompt.__doc__ or ""
+        assert "sistemático" in text
+        assert "Álcool" in text  # cigarro -> Álcool legacy rule
+        assert "NÃO crie" in text or "não crie" in text.lower()
+
+
+class TestAnalystAgent:
+    def test_has_read_tools(self):
+        tools = _tools(analyst_agent)
+        assert "get_expenses" in tools
+        assert "get_category_breakdown" in tools
+        assert "compare_with_previous_month" in tools
+        assert "export_monthly_report" in tools
+        assert "find_anomalies" in tools
+
+    def test_is_read_only_no_write_tools(self):
+        assert not (_tools(analyst_agent) & WRITE_TOOLS)
+
+
+class TestPlannerAgent:
+    def test_has_planning_tools(self):
+        tools = _tools(planner_agent)
+        assert "project_month_end" in tools
+        assert "get_proactive_alerts" in tools
+        assert "get_upcoming_obligations" in tools
+
+    def test_is_read_only_no_write_tools(self):
+        assert not (_tools(planner_agent) & WRITE_TOOLS)
 
 
 @pytest.mark.django_db
-class TestOrchestratorAgent:
-    def test_agent_has_tools(self):
-        """Verify the agent is configured with the expected tools."""
-        tool_names = list(assistant_agent._function_toolset.tools.keys())
-        # 11 existing + 3 memory + 2 systemic = 16
-        assert len(tool_names) == 16
-        assert "get_categories" in tool_names
-        assert "get_payment_methods" in tool_names
-        assert "register_entry" in tool_names
-        assert "get_expenses" in tool_names
-        assert "get_balance" in tool_names
-        assert "get_budget_status" in tool_names
-        assert "get_installments" in tool_names
-        assert "add_category" in tool_names
-        assert "set_category_budget" in tool_names
-        assert "add_payment_method" in tool_names
-        assert "set_income" in tool_names
-        assert "get_systemic_expenses" in tool_names
-        assert "set_systemic_amount" in tool_names
-
-    def test_agent_has_memory_tools(self):
-        """Verify memory tools are registered."""
-        tool_names = list(assistant_agent._function_toolset.tools.keys())
-        assert "check_memory" in tool_names
-        assert "save_memory_rule" in tool_names
-        assert "get_memory_rules" in tool_names
-
-    def test_agent_has_system_prompt(self):
-        """Verify system prompt is set."""
-        assert assistant_agent._system_prompts
-
-    def test_system_prompt_includes_memory_instructions(self):
-        """Verify system prompt contains memory-related instructions."""
-        prompt = assistant_agent._system_prompts[0]
-        prompt_text = prompt if isinstance(prompt, str) else prompt.__doc__ or ""
-        assert "check_memory" in prompt_text
-
-    def test_system_prompt_includes_systemic_guardrails(self):
-        """Verify system prompt distinguishes systemic expenses and has guardrails."""
-        prompt = assistant_agent._system_prompts[0]
-        prompt_text = prompt if isinstance(prompt, str) else prompt.__doc__ or ""
-        assert "sistemático" in prompt_text
-        # Must have the guardrail preventing creating wrong entity type
-        assert "NÃO crie" in prompt_text or "não crie" in prompt_text.lower()
-
-    def test_system_prompt_includes_entity_lookup_rule(self):
-        """Verify system prompt requires confirming entity existence before mutation."""
-        prompt = assistant_agent._system_prompts[0]
-        prompt_text = prompt if isinstance(prompt, str) else prompt.__doc__ or ""
-        # Must require looking up entities before modifying them
-        assert "confirmar" in prompt_text or "liste" in prompt_text or "consulte" in prompt_text
+class TestRunsWithTestModel:
+    @pytest.mark.anyio
+    async def test_orchestrator_runs(self, seeded_user):
+        with agents_override(TestModel()):
+            result = await assistant_agent.run("gastei 50 no cosmos", deps=seeded_user)
+            assert result.output
 
     @pytest.mark.anyio
-    async def test_agent_runs_with_test_model(self, seeded_user):
-        """Verify agent can run without real LLM."""
-        with assistant_agent.override(model=TestModel()):
-            result = await assistant_agent.run(
-                "gastei 50 no cosmos",
-                deps=seeded_user,
-            )
-            assert result.output  # TestModel returns some output
-
-    @pytest.mark.anyio
-    async def test_agent_streaming_works(self, seeded_user):
-        """Verify streaming mode works."""
-        with assistant_agent.override(model=TestModel()):
+    async def test_streaming_works(self, seeded_user):
+        with agents_override(TestModel()):
             async with assistant_agent.run_stream(
-                "gastei 50 no cosmos",
-                deps=seeded_user,
+                "quanto gastei esse mês?", deps=seeded_user
             ) as stream:
-                chunks = []
-                async for text in stream.stream_text():
-                    chunks.append(text)
+                chunks = [text async for text in stream.stream_text()]
                 assert len(chunks) > 0
