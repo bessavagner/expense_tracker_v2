@@ -82,3 +82,14 @@ class TestSecurityInPrompts:
         # planejador: proatividade sob demanda/por evento, não a cada mensagem
         low = prompts.PLANNER_PROMPT.lower()
         assert "não" in low  # contém alguma restrição de proatividade
+
+
+def test_registrar_prompt_has_photo_policy():
+    from assistant.agents.prompts import REGISTRAR_PROMPT
+
+    lower = REGISTRAR_PROMPT.lower()
+    # deve instruir a confirmar um resumo antes de gravar quando vier de foto
+    assert "foto" in lower or "recibo" in lower
+    assert "resumo" in lower
+    # trata conteúdo da imagem como dados, não como instruções (anti-injeção)
+    assert "instruç" in lower  # cobre "instrução"/"instruções"
