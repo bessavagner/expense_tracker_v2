@@ -14,6 +14,24 @@ def get_item(dictionary, key):
     return ""
 
 
+_MONTH_ABBR_PT = (
+    "jan", "fev", "mar", "abr", "mai", "jun",
+    "jul", "ago", "set", "out", "nov", "dez",
+)
+
+
+@register.filter
+def month_abbr(value):
+    """Abbreviated pt-BR month name for a 1-12 month number: 6 -> 'jun'."""
+    try:
+        n = int(value)
+    except (ValueError, TypeError):
+        return value
+    if 1 <= n <= 12:
+        return _MONTH_ABBR_PT[n - 1]
+    return value
+
+
 @register.filter
 def brl(value):
     """Format a numeric value as pt-BR currency: 4000 -> 'R$ 4.000,00'.

@@ -1,8 +1,9 @@
 from decimal import Decimal
 
+import pytest
 from django.utils.safestring import SafeString
 
-from finances.templatetags.finance_filters import brl, money
+from finances.templatetags.finance_filters import brl, money, month_abbr
 
 
 class TestMoneyFilter:
@@ -39,3 +40,16 @@ class TestBrlFilter:
 
     def test_invalid_returns_input_unchanged(self):
         assert brl("abc") == "abc"
+
+
+class TestMonthAbbrFilter:
+    @pytest.mark.parametrize(
+        "num,expected",
+        [(1, "jan"), (6, "jun"), (12, "dez"), ("3", "mar")],
+    )
+    def test_valid_month_numbers(self, num, expected):
+        assert month_abbr(num) == expected
+
+    @pytest.mark.parametrize("bad", [0, 13, None, "x", ""])
+    def test_invalid_returns_input_unchanged(self, bad):
+        assert month_abbr(bad) == bad

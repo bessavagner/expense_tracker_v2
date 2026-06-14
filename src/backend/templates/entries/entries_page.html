@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load finance_filters %}
 
 {% block title %}Entradas — {{ current_year }}{% endblock %}
 
@@ -8,10 +9,10 @@
 </div>
 
 <div class="flex gap-2 items-center mb-4">
-    <select class="select select-bordered min-w-[8rem]"
+    <select class="select select-bordered min-w-[6rem]"
             onchange="window.location = '/entries/{{ current_year }}/' + this.value + '/'">
         {% for m in months %}
-        <option value="{{ m }}" {% if m == current_month %}selected{% endif %}>{{ m|stringformat:"02d" }}/{{ current_year }}</option>
+        <option value="{{ m }}" {% if m == current_month %}selected{% endif %}>{{ m|month_abbr }}</option>
         {% endfor %}
     </select>
     <select class="select select-bordered min-w-[6rem]"
