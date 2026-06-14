@@ -5,7 +5,7 @@
 {% block content %}
 <div class="flex justify-between items-center mb-4">
     <h2 class="text-2xl font-bold">Consolidado</h2>
-    <select class="select select-sm select-bordered"
+    <select class="select select-sm select-bordered w-24"
             onchange="htmx.ajax('GET', '/consolidated/{% if tab == 'systemics' %}systemics/{% endif %}?year=' + this.value, {target: '#consolidated-container', swap: 'innerHTML'})">
         {% for y in year_range %}
         <option value="{{ y }}" {% if y == current_year %}selected{% endif %}>{{ y }}</option>
