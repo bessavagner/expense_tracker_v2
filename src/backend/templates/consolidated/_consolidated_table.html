@@ -1,5 +1,5 @@
 {% load finance_filters %}
-<div class="overflow-x-auto">
+<div class="overflow-auto max-h-[70vh]" id="consolidated-scroll">
 <table class="table table-sm table-pin-rows">
     <thead>
         <tr>
@@ -41,7 +41,7 @@
         {% endfor %}
     </tbody>
     <tfoot>
-        <tr class="font-bold">
+        <tr class="font-bold sticky bottom-0 bg-base-200 z-10">
             <td>Total</td>
             {% for m in months %}
             <td class="text-right whitespace-nowrap">{{ column_totals|get_item:m|money }}</td>
