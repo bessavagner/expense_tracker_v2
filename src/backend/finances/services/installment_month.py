@@ -62,6 +62,7 @@ def installment_rows_for_month(user, year, month):
         rows.append(
             {
                 "plan": plan,
+                "entry": this_entry,
                 "parcela_num": parcela_num,
                 "num_installments": plan.num_installments,
                 "installment_amount": this_entry.amount,
