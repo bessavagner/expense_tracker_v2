@@ -57,7 +57,7 @@ def _sse_response(user, agent, prompt, *, message_history, user_text=None):
 
     async def stream_response():
         if user_text:
-            yield json.dumps({"type": "user_text", "content": user_text}) + "\n"
+            yield json.dumps({"type": "user_text", "content": user_text}, ensure_ascii=False) + "\n"
 
         full_response = ""
         try:
@@ -66,10 +66,10 @@ def _sse_response(user, agent, prompt, *, message_history, user_text=None):
             ) as stream:
                 async for text in stream.stream_text(delta=True):
                     full_response += text
-                    yield json.dumps({"type": "token", "content": text}) + "\n"
+                    yield json.dumps({"type": "token", "content": text}, ensure_ascii=False) + "\n"
         except Exception:
             error_msg = "Erro ao processar mensagem. Tente novamente."
-            yield json.dumps({"type": "error", "content": error_msg}) + "\n"
+            yield json.dumps({"type": "error", "content": error_msg}, ensure_ascii=False) + "\n"
             full_response = error_msg
 
         assistant_msg = await ChatMessage.objects.acreate(
@@ -77,7 +77,10 @@ def _sse_response(user, agent, prompt, *, message_history, user_text=None):
             role=MessageRole.ASSISTANT,
             content=full_response,
         )
-        yield json.dumps({"type": "done", "message_id": str(assistant_msg.id)}) + "\n"
+        yield (
+            json.dumps({"type": "done", "message_id": str(assistant_msg.id)}, ensure_ascii=False)
+            + "\n"
+        )
 
     response = StreamingHttpResponse(
         stream_response(),
