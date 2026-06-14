@@ -13,12 +13,11 @@
     <td>{{ entry.billing_month|date:"M" }}</td>
     <td>
         {% if entry.entry_type == 'regular' %}
-        {% if edit_url %}
         <button class="btn btn-ghost btn-xs"
-                hx-get="{{ edit_url }}"
-                hx-target="#entry-{{ entry.id }}"
-                hx-swap="outerHTML">✏️</button>
-        {% endif %}
+                hx-get="{% url 'finances:entry_edit_modal' entry.id %}"
+                hx-target="#entry-modal-content"
+                hx-swap="innerHTML"
+                onclick="document.getElementById('entry-modal').showModal()">✏️</button>
         {% if delete_url %}
         <button class="btn btn-ghost btn-xs text-error"
                 hx-delete="{{ delete_url }}"
