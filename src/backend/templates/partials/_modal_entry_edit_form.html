@@ -1,0 +1,16 @@
+<h3 class="font-bold text-lg mb-4">Editar Entrada</h3>
+<form id="entry-edit-form"
+      hx-post="{% url 'finances:entry_edit_modal' object.id %}"
+      hx-target="#entry-{{ object.id }}"
+      hx-swap="outerHTML"
+      class="space-y-3">
+    {% csrf_token %}
+    {% for field in form %}
+    <div class="form-control">
+        <label class="label"><span class="label-text">{{ field.label }}</span></label>
+        {{ field }}
+        {% if field.errors %}<span class="text-error text-sm">{{ field.errors.0 }}</span>{% endif %}
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn btn-accent w-full">Salvar</button>
+</form>
