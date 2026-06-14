@@ -37,22 +37,21 @@
 
     {% include "partials/_navbar.html" %}
 
-    <div class="flex" x-data="{ chatPinned: false, chatWidth: 380 }"
-         @chat:pin.window="chatPinned = true; chatWidth = $event.detail?.width || 380"
-         @chat:unpin.window="chatPinned = false"
-         @chat:resize.window="chatWidth = $event.detail.width">
-        <!-- Main content -->
-        <main class="flex-1 p-4 w-full" :class="chatPinned ? '' : 'max-w-7xl mx-auto'">
-            {% block content %}{% endblock %}
-        </main>
+    <main class="flex-1 p-4 w-full max-w-7xl mx-auto">
+        {% block content %}{% endblock %}
+    </main>
 
-        <!-- Chat widget (React island) -->
-        <aside class="flex flex-col shrink-0"
-               :class="chatPinned ? 'border-l border-base-300 min-h-[calc(100vh-4rem)]' : 'items-center pt-4'"
-               :style="chatPinned ? 'width:' + chatWidth + 'px' : ''">
-            <div data-react-component="ChatWidget" data-api-url="/api/assistant/"></div>
-        </aside>
-    </div>
+    <!-- Floating chat island (React) -->
+    <div data-react-component="ChatWidget" data-api-url="/api/assistant/"></div>
+
+    <!-- Floating "+" FAB: opens the shared entry modal; persists on every page -->
+    <button id="fab-new-entry"
+            class="fixed bottom-6 right-24 z-50 w-14 h-14 md:w-16 md:h-16 rounded-full bg-accent text-accent-content text-3xl shadow-lg hover:scale-110 transition-transform flex items-center justify-center"
+            title="Nova entrada" aria-label="Nova entrada"
+            hx-get="{% url 'finances:entry_modal' %}"
+            hx-target="#entry-modal-content"
+            hx-swap="innerHTML"
+            onclick="document.getElementById('entry-modal').showModal()">+</button>
 
     {% include "partials/_toast.html" %}
 
@@ -72,6 +71,12 @@
           navigator.serviceWorker.register('/sw.js');
         });
       }
+    </script>
+    <script>
+      document.body.addEventListener('entry-saved', function () {
+        const m = document.getElementById('entry-modal');
+        if (m) m.close();
+      });
     </script>
 </body>
 </html>
