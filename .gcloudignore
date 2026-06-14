@@ -1,0 +1,33 @@
+# Build context for `gcloud run deploy --source .` (Cloud Build).
+# The Dockerfile reinstalls deps and rebuilds frontend/tailwind in-image,
+# so none of the heavy local artifacts need to be uploaded.
+.git/
+.gcloudignore
+
+# Agent / tooling state (NOT needed for the build; .claude is ~700MB)
+.claude/
+.playwright-mcp/
+dash-snapshot.md
+
+# Python / Node build artifacts (rebuilt inside the image)
+.venv/
+**/.venv/
+**/__pycache__/
+**/*.py[cod]
+**/node_modules/
+.django_tailwind_cli/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Local-only / secrets
+.env
+.env.*
+!.env.example
+
+# Not used by the build
+qa-screenshots/
+docs/
+scripts/sync-to-friday.*
+scripts/copy-db-to-friday.sh
