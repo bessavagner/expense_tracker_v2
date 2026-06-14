@@ -1,0 +1,15 @@
+{% load finance_filters %}
+<table class="table table-xs">
+  <tbody>
+    {% for entry in entries %}
+    <tr>
+      <td class="whitespace-nowrap">{{ entry.date|date:"d/m" }}</td>
+      <td>{{ entry.description }}</td>
+      <td class="text-right whitespace-nowrap">{{ entry.amount|money }}</td>
+      <td>{{ entry.payment_method.name }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="4" class="text-center opacity-60">Sem entradas.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>

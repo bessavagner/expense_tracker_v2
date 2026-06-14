@@ -21,10 +21,11 @@ class TestConsolidatedDropdownToggle(TestCase):
             billing_month=date(2026, 1, 1),
         )
 
-    def test_detail_cell_loads_only_once(self):
+    def test_detail_loads_only_once(self):
         """htmx must load the detail once; Alpine handles open/close afterwards."""
-        resp = self.client.get("/consolidated/")
+        resp = self.client.get("/consolidated/?year=2026&month=1")
         self.assertEqual(resp.status_code, 200)
         html = resp.content.decode()
-        # The amount cell must use the `once` modifier so re-clicks don't re-fire htmx.
+        # The "ver lançamentos" toggle uses the `once` modifier so re-clicks
+        # don't re-fire htmx.
         self.assertIn('hx-trigger="click once"', html)

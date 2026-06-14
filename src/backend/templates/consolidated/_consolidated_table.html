@@ -1,65 +1,49 @@
 {% load finance_filters %}
-<div class="overflow-auto max-h-[70vh]" id="consolidated-scroll">
-<table class="table table-sm table-pin-rows">
-    <thead>
-        <tr>
-            <th>Categoria</th>
-            {% for m in months %}
-            <th class="text-right" data-month="{{ m }}">{{ m|stringformat:"02d" }}/{{ current_year }}</th>
-            {% endfor %}
-        </tr>
-    </thead>
-    <tbody>
-        {% for row in aggregation %}
-        <tr>
-            <td class="font-medium">{{ row.category__name }}</td>
-            {% for m in months %}
-            <td class="text-right whitespace-nowrap cursor-pointer hover:bg-base-200 {% if row.budget_status|get_item:m == 'danger' %}text-error font-bold{% elif row.budget_status|get_item:m == 'warning' %}text-warning font-bold{% endif %}"
-                hx-get="{% url 'finances:category_detail' row.category__id current_year m %}{% if tab == 'systemics' %}?type=systemic{% endif %}"
-                hx-target="#detail-{{ row.category__id }}-{{ m }}"
-                hx-swap="innerHTML"
-                hx-trigger="click once"
-                hx-on::after-request="document.getElementById('detail-{{ row.category__id }}-{{ m }}').style.display = 'table-row'"
-                @click="const r = document.getElementById('detail-{{ row.category__id }}-{{ m }}'); if (r && r.innerHTML.trim()) { r.style.display = r.style.display === 'table-row' ? 'none' : 'table-row'; }">
-                {% if row.months|get_item:m %}{{ row.months|get_item:m|money }}{% else %}—{% endif %}
-            </td>
-            {% endfor %}
-        </tr>
-        {% for m in months %}
-        <tr id="detail-{{ row.category__id }}-{{ m }}" style="display:none;"></tr>
-        {% endfor %}
-        {% empty %}
-        <tr>
-            <td colspan="{{ months|length|add:1 }}" class="text-center py-8">
-                <div class="flex flex-col items-center gap-2 text-base-content/60">
-                    <span class="text-3xl">📊</span>
-                    <p class="font-semibold">Nenhum gasto registrado</p>
-                    <p class="text-sm">Adicione entradas para ver o consolidado por categoria</p>
-                </div>
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-    <tfoot>
-        <tr class="font-bold sticky bottom-0 bg-base-200 z-10">
-            <td>Total</td>
-            {% for m in months %}
-            <td class="text-right whitespace-nowrap">{{ column_totals|get_item:m|money }}</td>
-            {% endfor %}
-        </tr>
-    </tfoot>
-</table>
+<div class="grid grid-cols-3 gap-2 mb-4">
+  <div class="stat bg-base-100 rounded-box p-3">
+    <div class="stat-title text-xs">Total gasto</div>
+    <div class="stat-value text-lg">{{ month_total|money }}</div>
+  </div>
+  <div class="stat bg-base-100 rounded-box p-3">
+    <div class="stat-title text-xs">Renda</div>
+    <div class="stat-value text-lg">{{ income_total|money }}</div>
+  </div>
+  <div class="stat bg-base-100 rounded-box p-3">
+    <div class="stat-title text-xs">Saldo</div>
+    <div class="stat-value text-lg {% if saldo < 0 %}text-error{% else %}text-success{% endif %}">{{ saldo|money }}</div>
+  </div>
 </div>
-<script>
-  (function () {
-    var scroller = document.getElementById('consolidated-scroll');
-    if (!scroller) return;
-    var month = new Date().getMonth() + 1;
-    var th = scroller.querySelector('th[data-month="' + month + '"]');
-    if (!th) return;
-    var left = th.offsetLeft - (scroller.clientWidth / 2) + (th.offsetWidth / 2);
-    setTimeout(function () {
-      scroller.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
-    }, 150);
-  })();
-</script>
+
+<div class="space-y-3">
+  {% for card in category_cards %}
+  <div class="card bg-base-100 border border-base-200 shadow-sm" x-data="{ open: false }">
+    <div class="card-body p-4">
+      <div class="flex items-center justify-between gap-2">
+        <h3 class="font-semibold">{{ card.name }}</h3>
+        <span class="font-bold whitespace-nowrap">{{ card.total|money }}</span>
+      </div>
+      {% if card.has_ceiling %}
+      <progress class="progress progress-{{ card.status }} w-full" value="{% if card.pct > 100 %}100{% else %}{{ card.pct }}{% endif %}" max="100"></progress>
+      <span class="text-xs opacity-70">{{ card.pct }}% de {{ card.budget_ceiling|money }}</span>
+      {% else %}
+      <span class="text-xs opacity-50">sem teto</span>
+      {% endif %}
+      <button class="btn btn-ghost btn-xs justify-start mt-1 w-fit"
+              hx-get="{% url 'finances:category_detail' card.id current_year current_month %}{% if tab == 'systemics' %}?type=systemic{% endif %}"
+              hx-target="#detail-{{ card.id }}"
+              hx-swap="innerHTML"
+              hx-trigger="click once"
+              @click="open = !open">
+        <span x-text="open ? '▾' : '▸'"></span> ver lançamentos
+      </button>
+      <div id="detail-{{ card.id }}" x-show="open" class="mt-2 overflow-x-auto"></div>
+    </div>
+  </div>
+  {% empty %}
+  <div class="text-center py-10 text-base-content/60">
+    <span class="text-3xl">📊</span>
+    <p class="font-semibold mt-2">Nenhum gasto neste mês</p>
+    <p class="text-sm">Selecione outro mês ou registre lançamentos.</p>
+  </div>
+  {% endfor %}
+</div>

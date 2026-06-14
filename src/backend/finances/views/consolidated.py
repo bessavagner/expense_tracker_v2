@@ -4,13 +4,14 @@ from decimal import Decimal
 from django.db.models import Sum
 from django.views.generic import ListView, TemplateView
 
-from finances.models import Entry
+from finances.models import Entry, Income
 from finances.models.entry import EntryType
 from finances.views.mixins import HtmxLoginRequiredMixin
 
 
 class ConsolidatedView(HtmxLoginRequiredMixin, TemplateView):
-    """Consolidated view of expenses by category, one column per month."""
+    """Month-scoped consolidated dashboard: category cards for the selected
+    month with budget bars plus a Total/Renda/Saldo summary."""
 
     template_name = "consolidated/consolidated_page.html"
     htmx_template_name = "consolidated/_consolidated_table.html"
@@ -21,62 +22,63 @@ class ConsolidatedView(HtmxLoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        year = int(self.request.GET.get("year", date.today().year))
-        context["current_year"] = year
-        context["tab"] = "systemics" if self.entry_type_filter == EntryType.SYSTEMIC else "diverse"
-        context["year_range"] = range(2024, date.today().year + 2)
+        today = date.today()
+        year = int(self.request.GET.get("year", today.year))
+        month = int(self.request.GET.get("month", today.month))
+        billing_month = date(year, month, 1)
 
-        # Get all entries for the year, grouped by category and month
-        entries_qs = Entry.objects.filter(
-            user=self.request.user,
-            billing_month__year=year,
-        )
+        context["current_year"] = year
+        context["current_month"] = month
+        context["months"] = list(range(1, 13))
+        context["year_range"] = range(2024, today.year + 2)
+        context["tab"] = "systemics" if self.entry_type_filter == EntryType.SYSTEMIC else "diverse"
+
+        entries_qs = Entry.objects.filter(user=self.request.user, billing_month=billing_month)
         if self.entry_type_filter == EntryType.SYSTEMIC:
             entries_qs = entries_qs.filter(entry_type=EntryType.SYSTEMIC)
         else:
             entries_qs = entries_qs.exclude(entry_type=EntryType.SYSTEMIC)
 
-        # Aggregate by category and month
         aggregated = (
-            entries_qs.values(
-                "category__id", "category__name", "category__budget_ceiling", "billing_month__month"
-            )
+            entries_qs.values("category__id", "category__name", "category__budget_ceiling")
             .annotate(total=Sum("amount"))
-            .order_by("category__name", "billing_month__month")
+            .order_by("-total")
         )
 
-        # Build rows: one per category with monthly totals
-        categories = {}
+        cards = []
         for row in aggregated:
-            cat_name = row["category__name"]
-            if cat_name not in categories:
-                categories[cat_name] = {
-                    "category__name": cat_name,
-                    "category__id": row["category__id"],
-                    "budget_ceiling": row["category__budget_ceiling"],
-                    "months": {m: Decimal("0") for m in range(1, 13)},
-                    "budget_status": dict.fromkeys(range(1, 13), "ok"),
+            total = row["total"] or Decimal("0")
+            ceiling = row["category__budget_ceiling"]
+            has_ceiling = bool(ceiling and ceiling > 0)
+            pct = int((total / ceiling * 100).to_integral_value()) if has_ceiling else 0
+            status = "success"
+            if has_ceiling:
+                if pct >= 100:
+                    status = "error"
+                elif pct >= 90:
+                    status = "warning"
+            cards.append(
+                {
+                    "id": row["category__id"],
+                    "name": row["category__name"],
+                    "total": total,
+                    "budget_ceiling": ceiling,
+                    "pct": pct,
+                    "status": status,
+                    "has_ceiling": has_ceiling,
                 }
-            categories[cat_name]["months"][row["billing_month__month"]] = row["total"]
+            )
 
-        # Compute budget status
-        for cat in categories.values():
-            ceiling = cat["budget_ceiling"]
-            if ceiling and ceiling > 0:
-                for m in range(1, 13):
-                    ratio = cat["months"][m] / ceiling
-                    if ratio >= 1:
-                        cat["budget_status"][m] = "danger"
-                    elif ratio >= Decimal("0.9"):
-                        cat["budget_status"][m] = "warning"
-
-        context["aggregation"] = sorted(categories.values(), key=lambda c: c["category__name"])
-        context["months"] = list(range(1, 13))
-
-        # Column totals
-        context["column_totals"] = {
-            m: sum(c["months"][m] for c in categories.values()) for m in range(1, 13)
-        }
+        context["category_cards"] = cards
+        context["month_total"] = sum((c["total"] for c in cards), Decimal("0"))
+        context["income_total"] = sum(
+            (
+                inc.amount
+                for inc in Income.objects.filter(user=self.request.user, month=billing_month)
+            ),
+            Decimal("0"),
+        )
+        context["saldo"] = context["income_total"] - context["month_total"]
 
         return context
 
@@ -91,8 +93,8 @@ class CategoryDetailView(HtmxLoginRequiredMixin, ListView):
     """Expandable detail: individual entries for a category in a month."""
 
     model = Entry
-    template_name = "consolidated/_category_detail.html"
-    htmx_template_name = "consolidated/_category_detail.html"
+    template_name = "consolidated/_category_entries.html"
+    htmx_template_name = "consolidated/_category_entries.html"
     context_object_name = "entries"
 
     def get_queryset(self):
