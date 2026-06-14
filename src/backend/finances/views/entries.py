@@ -156,11 +156,15 @@ class EntryEditModalView(HtmxLoginRequiredMixin, View):
     def _patch_form_querysets(self, form, entry):
         """Ensure the entry's existing category/pm are always valid choices."""
         from finances.models import Category, PaymentMethod
-        from django.db.models import Q
+
         cat_qs = form.fields["category"].queryset
-        form.fields["category"].queryset = cat_qs | Category.objects.filter(pk=entry.category_id)
+        form.fields["category"].queryset = cat_qs | Category.objects.filter(
+            pk=entry.category_id
+        )
         pm_qs = form.fields["payment_method"].queryset
-        form.fields["payment_method"].queryset = pm_qs | PaymentMethod.objects.filter(pk=entry.payment_method_id)
+        form.fields["payment_method"].queryset = pm_qs | PaymentMethod.objects.filter(
+            pk=entry.payment_method_id
+        )
 
     def post(self, request, pk):
         entry = self._get_entry(request, pk)
