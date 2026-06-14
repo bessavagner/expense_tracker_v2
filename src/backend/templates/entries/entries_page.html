@@ -22,23 +22,25 @@
     </select>
 </div>
 
-<!-- Monthly cockpit: income/vencimentos share a row (both short); systemic and
-     parcelamentos go full-width (long lists) above the entries table. -->
+<!-- Lançamentos (inline form lives at the top of this partial) -->
+<h3 class="text-lg font-semibold mb-2">🧾 Lançamentos</h3>
+<div id="entries-container">
+    {% include "entries/_entries_table.html" %}
+</div>
+
+<!-- Parcelamentos -->
+<div hx-get="{% url 'finances:cockpit_parcelamentos' current_year current_month %}"
+     hx-trigger="load" hx-swap="outerHTML"></div>
+
+<!-- Sistemáticos -->
+<div hx-get="{% url 'finances:cockpit_systemic' current_year current_month %}"
+     hx-trigger="load" hx-swap="outerHTML"></div>
+
+<!-- Renda + Vencimentos (final) -->
 <div class="grid gap-4 md:grid-cols-2 items-start">
     <div hx-get="{% url 'finances:cockpit_income' current_year current_month %}"
          hx-trigger="load" hx-swap="outerHTML"></div>
     <div hx-get="{% url 'finances:cockpit_vencimentos' current_year current_month %}"
          hx-trigger="load" hx-swap="outerHTML"></div>
-</div>
-
-<div hx-get="{% url 'finances:cockpit_systemic' current_year current_month %}"
-     hx-trigger="load" hx-swap="outerHTML"></div>
-
-<div hx-get="{% url 'finances:cockpit_parcelamentos' current_year current_month %}"
-     hx-trigger="load" hx-swap="outerHTML"></div>
-
-<h3 class="text-lg font-semibold mt-2 mb-2">🧾 Lançamentos</h3>
-<div id="entries-container">
-    {% include "entries/_entries_table.html" %}
 </div>
 {% endblock %}
