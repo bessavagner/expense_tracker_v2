@@ -7,14 +7,18 @@
     <table class="table table-sm">
       <tbody>
         {% for inc in incomes %}
-        <tr>
+        <tr class="cursor-pointer hover:bg-base-200"
+            hx-get="{% url 'finances:cockpit_income_edit_modal' current_year current_month inc.pk %}"
+            hx-target="#entry-modal-content" hx-swap="innerHTML"
+            onclick="document.getElementById('entry-modal').showModal()">
           <td>{{ inc.name }}</td>
           <td class="text-right whitespace-nowrap">{{ inc.amount|money }}</td>
           <td class="text-right">
             <button class="btn btn-ghost btn-xs"
                     hx-delete="{% url 'finances:cockpit_income_delete' current_year current_month inc.pk %}"
                     hx-target="#cockpit-income" hx-swap="outerHTML"
-                    hx-confirm="Excluir esta renda?">Excluir</button>
+                    hx-confirm="Excluir esta renda?"
+                    onclick="event.stopPropagation()">Excluir</button>
           </td>
         </tr>
         {% empty %}

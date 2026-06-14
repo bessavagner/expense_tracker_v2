@@ -3,10 +3,13 @@ from django.urls import include, path
 from finances.views.cockpit import (
     CockpitIncomeCreateView,
     CockpitIncomeDeleteView,
+    CockpitIncomeEditModalView,
     CockpitIncomeSectionView,
+    CockpitParcelamentoEditModalView,
     CockpitParcelamentosSectionView,
     CockpitSystemicCreateView,
     CockpitSystemicDeleteView,
+    CockpitSystemicEditModalView,
     CockpitSystemicPostView,
     CockpitSystemicSectionView,
     CockpitVencimentoSetView,
@@ -157,6 +160,11 @@ urlpatterns = [
         CockpitIncomeDeleteView.as_view(),
         name="cockpit_income_delete",
     ),
+    path(
+        "cockpit/<int:year>/<int:month>/income/<uuid:pk>/edit-modal/",
+        CockpitIncomeEditModalView.as_view(),
+        name="cockpit_income_edit_modal",
+    ),
     # Cockpit — systemics
     path(
         "cockpit/<int:year>/<int:month>/systemic/",
@@ -178,11 +186,21 @@ urlpatterns = [
         CockpitSystemicDeleteView.as_view(),
         name="cockpit_systemic_delete",
     ),
+    path(
+        "cockpit/<int:year>/<int:month>/systemic/<uuid:pk>/edit-modal/",
+        CockpitSystemicEditModalView.as_view(),
+        name="cockpit_systemic_edit_modal",
+    ),
     # Cockpit — parcelamentos
     path(
         "cockpit/<int:year>/<int:month>/parcelamentos/",
         CockpitParcelamentosSectionView.as_view(),
         name="cockpit_parcelamentos",
+    ),
+    path(
+        "cockpit/<int:year>/<int:month>/parcelamento/<uuid:entry_pk>/edit-modal/",
+        CockpitParcelamentoEditModalView.as_view(),
+        name="cockpit_parcelamento_edit_modal",
     ),
     # Cockpit — vencimentos
     path(

@@ -3,10 +3,17 @@ from decimal import Decimal, InvalidOperation
 
 from django.http import Http404, HttpResponse
 from django.template.loader import render_to_string
+from django.urls import reverse
 from django.views import View
 
-from finances.forms import CockpitIncomeForm, SystemicExpenseForm
-from finances.models import Entry, Income, PaymentMethod, SystemicExpense
+from finances.forms import (
+    CockpitIncomeForm,
+    EntryForm,
+    IncomeForm,
+    SystemicExpenseForm,
+)
+from finances.models import Category, Entry, Income, PaymentMethod, SystemicExpense
+from finances.models.entry import EntryType
 from finances.models.payment_method import PaymentType
 from finances.models.payment_method_closing_day import PaymentMethodClosingDay
 from finances.services.installment_month import installment_rows_for_month
@@ -63,6 +70,60 @@ class CockpitIncomeDeleteView(HtmxLoginRequiredMixin, View):
             raise Http404
         inc.delete()
         return _render_income_section(request, int(year), int(month), toast="Renda excluída!")
+
+
+class CockpitIncomeEditModalView(HtmxLoginRequiredMixin, View):
+    """Edit a single Income inside the shared #entry-modal."""
+
+    def _income(self, request, pk):
+        inc = Income.objects.filter(user=request.user, pk=pk).first()
+        if not inc:
+            raise Http404
+        return inc
+
+    def _modal_context(self, year, month, inc, form):
+        return {
+            "form": form,
+            "title": "Editar Renda",
+            "post_url": reverse(
+                "finances:cockpit_income_edit_modal", args=[year, month, inc.id]
+            ),
+            "swap_target": "#cockpit-income",
+            "swap_mode": "outerHTML",
+        }
+
+    def get(self, request, year, month, pk):
+        inc = self._income(request, pk)
+        form = IncomeForm(instance=inc)
+        html = render_to_string(
+            "partials/_modal_edit_form.html",
+            self._modal_context(year, month, inc, form),
+            request=request,
+        )
+        return HttpResponse(html)
+
+    def post(self, request, year, month, pk):
+        inc = self._income(request, pk)
+        form = IncomeForm(request.POST, instance=inc)
+        if form.is_valid():
+            form.save()
+            html = render_to_string(
+                "cockpit/_income_section.html",
+                _income_context(request, int(year), int(month)),
+                request=request,
+            )
+            response = HttpResponse(html)
+            response["HX-Trigger"] = (
+                '{"showToast": {"message": "Renda atualizada!", "type": "success"},'
+                ' "entry-saved": true}'
+            )
+            return response
+        html = render_to_string(
+            "partials/_modal_edit_form.html",
+            self._modal_context(year, month, inc, form),
+            request=request,
+        )
+        return HttpResponse(html)
 
 
 # ---------------------------------------------------------------------------
@@ -160,6 +221,80 @@ class CockpitSystemicCreateView(HtmxLoginRequiredMixin, View):
         return HttpResponse(html)
 
 
+def _patch_entry_querysets(form, entry):
+    """Keep the entry's current category/payment_method as valid choices."""
+    form.fields["category"].queryset = form.fields["category"].queryset | Category.objects.filter(
+        pk=entry.category_id
+    )
+    form.fields["payment_method"].queryset = form.fields[
+        "payment_method"
+    ].queryset | PaymentMethod.objects.filter(pk=entry.payment_method_id)
+
+
+class CockpitSystemicEditModalView(HtmxLoginRequiredMixin, View):
+    """Edit this month's systemic Entry inside the shared #entry-modal.
+
+    ``pk`` is the SystemicExpense id; the view resolves the month's lançado
+    Entry. 404 when the systemic was not lançado this month.
+    """
+
+    def _entry(self, request, year, month, pk):
+        entry = Entry.objects.filter(
+            user=request.user,
+            systemic_expense_id=pk,
+            billing_month=date(int(year), int(month), 1),
+        ).first()
+        if not entry:
+            raise Http404
+        return entry
+
+    def _modal_context(self, year, month, pk, form):
+        return {
+            "form": form,
+            "title": "Editar Sistemático",
+            "post_url": reverse(
+                "finances:cockpit_systemic_edit_modal", args=[year, month, pk]
+            ),
+            "swap_target": "#cockpit-systemic",
+            "swap_mode": "outerHTML",
+        }
+
+    def get(self, request, year, month, pk):
+        entry = self._entry(request, year, month, pk)
+        form = EntryForm(instance=entry, user=request.user)
+        _patch_entry_querysets(form, entry)
+        html = render_to_string(
+            "partials/_modal_edit_form.html",
+            self._modal_context(year, month, pk, form),
+            request=request,
+        )
+        return HttpResponse(html)
+
+    def post(self, request, year, month, pk):
+        entry = self._entry(request, year, month, pk)
+        form = EntryForm(request.POST, instance=entry, user=request.user)
+        _patch_entry_querysets(form, entry)
+        if form.is_valid():
+            form.save()
+            html = render_to_string(
+                "cockpit/_systemic_section.html",
+                _systemic_context(request, int(year), int(month)),
+                request=request,
+            )
+            response = HttpResponse(html)
+            response["HX-Trigger"] = (
+                '{"showToast": {"message": "Sistemático atualizado!", "type": "success"},'
+                ' "entry-saved": true}'
+            )
+            return response
+        html = render_to_string(
+            "partials/_modal_edit_form.html",
+            self._modal_context(year, month, pk, form),
+            request=request,
+        )
+        return HttpResponse(html)
+
+
 # ---------------------------------------------------------------------------
 # Vencimentos section (credit-card closing day per month)
 # ---------------------------------------------------------------------------
@@ -243,5 +378,73 @@ class CockpitParcelamentosSectionView(HtmxLoginRequiredMixin, View):
         }
         html = render_to_string(
             "cockpit/_parcelamentos_section.html", ctx, request=request
+        )
+        return HttpResponse(html)
+
+
+def _render_parcelamentos_section(request, year, month):
+    ctx = {
+        "current_year": year,
+        "current_month": month,
+        "parcelamento_rows": installment_rows_for_month(request.user, year, month),
+    }
+    return render_to_string("cockpit/_parcelamentos_section.html", ctx, request=request)
+
+
+class CockpitParcelamentoEditModalView(HtmxLoginRequiredMixin, View):
+    """Edit this month's installment Entry inside the shared #entry-modal.
+
+    ``entry_pk`` is the installment Entry id. Editing the parent plan's
+    structure (total / number of parcels) is out of scope.
+    """
+
+    def _entry(self, request, entry_pk):
+        entry = Entry.objects.filter(
+            user=request.user, pk=entry_pk, entry_type=EntryType.INSTALLMENT
+        ).first()
+        if not entry:
+            raise Http404
+        return entry
+
+    def _modal_context(self, year, month, entry, form):
+        return {
+            "form": form,
+            "title": "Editar Parcelamento",
+            "post_url": reverse(
+                "finances:cockpit_parcelamento_edit_modal", args=[year, month, entry.id]
+            ),
+            "swap_target": "#cockpit-parcelamentos",
+            "swap_mode": "outerHTML",
+        }
+
+    def get(self, request, year, month, entry_pk):
+        entry = self._entry(request, entry_pk)
+        form = EntryForm(instance=entry, user=request.user)
+        _patch_entry_querysets(form, entry)
+        html = render_to_string(
+            "partials/_modal_edit_form.html",
+            self._modal_context(year, month, entry, form),
+            request=request,
+        )
+        return HttpResponse(html)
+
+    def post(self, request, year, month, entry_pk):
+        entry = self._entry(request, entry_pk)
+        form = EntryForm(request.POST, instance=entry, user=request.user)
+        _patch_entry_querysets(form, entry)
+        if form.is_valid():
+            form.save()
+            response = HttpResponse(
+                _render_parcelamentos_section(request, int(year), int(month))
+            )
+            response["HX-Trigger"] = (
+                '{"showToast": {"message": "Parcelamento atualizado!", "type": "success"},'
+                ' "entry-saved": true}'
+            )
+            return response
+        html = render_to_string(
+            "partials/_modal_edit_form.html",
+            self._modal_context(year, month, entry, form),
+            request=request,
         )
         return HttpResponse(html)
