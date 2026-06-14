@@ -23,7 +23,7 @@
         <span class="font-bold whitespace-nowrap">{{ card.total|money }}</span>
       </div>
       {% if card.has_ceiling %}
-      <progress class="progress progress-{{ card.status }} w-full" value="{% if card.pct > 100 %}100{% else %}{{ card.pct }}{% endif %}" max="100"></progress>
+      <progress class="progress w-full {% if card.status == 'error' %}progress-error{% elif card.status == 'warning' %}progress-warning{% else %}progress-success{% endif %}" value="{% if card.pct > 100 %}100{% else %}{{ card.pct }}{% endif %}" max="100"></progress>
       <span class="text-xs opacity-70">{{ card.pct }}% de {{ card.budget_ceiling|money }}</span>
       {% else %}
       <span class="text-xs opacity-50">sem teto</span>

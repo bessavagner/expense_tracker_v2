@@ -236,20 +236,21 @@ def then_first_billing_month(ctx):
 
 @when(parsers.parse("I visit the consolidated page for {year:d}"))
 def when_visit_consolidated(ctx, year):
-    ctx["response"] = ctx["client"].get(f"/consolidated/?year={year}")
+    # The fixture creates March entries; the consolidated view is month-scoped.
+    ctx["response"] = ctx["client"].get(f"/consolidated/?year={year}&month=3")
 
 
 @then("I should see category totals per month")
 def then_see_category_totals(ctx):
-    data = ctx["response"].context["aggregation"]
-    assert len(data) >= 2
+    cards = ctx["response"].context["category_cards"]
+    assert len(cards) >= 2
 
 
 @then("categories over budget should be highlighted")
 def then_over_budget_highlighted(ctx):
-    data = ctx["response"].context["aggregation"]
-    food = next(r for r in data if r["category__name"] == "Alimentação")
-    assert food["budget_status"][3] == "danger"
+    cards = ctx["response"].context["category_cards"]
+    food = next(c for c in cards if c["name"] == "Alimentação")
+    assert food["status"] == "error"
 
 
 @when(parsers.parse("I change the budget ceiling to {new_ceiling:d}"))
