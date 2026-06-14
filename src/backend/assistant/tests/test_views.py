@@ -2,6 +2,7 @@ import json
 
 import pytest
 from asgiref.sync import async_to_sync
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client
 from model_bakery import baker
 from pydantic_ai.models.test import TestModel
@@ -75,6 +76,34 @@ class TestChatEndpoint:
             content_type="application/json",
         )
         assert response.status_code == 400
+
+    def test_multipart_audio_transcribes_and_streams(
+        self, logged_client, user, monkeypatch
+    ):
+        async def fake_transcribe(data, filename, content_type, *, client=None):
+            return "mercado 80 no pix"
+
+        monkeypatch.setattr(
+            "assistant.views.transcribe_audio", fake_transcribe
+        )
+
+        audio = SimpleUploadedFile(
+            "nota.webm", b"\x00\x01\x02", content_type="audio/webm"
+        )
+        with agents_override(TestModel()):
+            response = logged_client.post(
+                "/api/assistant/chat/", data={"audio": audio}
+            )
+            body = consume_streaming(response)
+
+        assert response.status_code == 200
+        assert response["Content-Type"] == "text/event-stream"
+        assert '"type": "user_text"' in body
+        assert "mercado 80 no pix" in body
+        assert ChatMessage.objects.filter(
+            user=user, role="user", content__icontains="mercado 80"
+        ).exists()
+        assert ChatMessage.objects.filter(user=user, role="assistant").exists()
 
 
 @pytest.mark.django_db
