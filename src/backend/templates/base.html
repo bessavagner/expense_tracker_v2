@@ -62,7 +62,7 @@
 
     <!-- Floating "+" FAB: opens the shared entry modal; persists on every page -->
     <button id="fab-new-entry"
-            class="fixed bottom-6 right-24 z-50 w-14 h-14 md:w-16 md:h-16 rounded-full bg-accent text-accent-content text-3xl shadow-lg hover:scale-110 transition-transform flex items-center justify-center"
+            class="fixed bottom-6 right-24 z-40 w-14 h-14 md:w-16 md:h-16 rounded-full bg-accent text-accent-content text-3xl shadow-lg hover:scale-110 transition-transform flex items-center justify-center"
             title="Nova entrada" aria-label="Nova entrada"
             hx-get="{% url 'finances:entry_modal' %}"
             hx-target="#entry-modal-content"

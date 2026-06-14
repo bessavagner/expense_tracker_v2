@@ -31,7 +31,7 @@
           <td class="text-right whitespace-nowrap">
             {% if row.entry %}{{ row.entry.amount|money }}{% else %}<span class="opacity-50">não lançado</span>{% endif %}
           </td>
-          <td class="text-right">
+          <td class="text-right whitespace-nowrap">
             {% if row.entry %}
               <form class="inline-flex gap-1"
                     hx-post="{% url 'finances:cockpit_systemic_post' current_year current_month row.systemic.pk %}"
