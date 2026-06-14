@@ -108,6 +108,14 @@ class IncomeForm(forms.ModelForm):
     class Meta:
         model = Income
         fields = ["name", "amount", "month", "is_recurring", "recurrence_start", "recurrence_end"]
+        labels = {
+            "name": "Nome",
+            "amount": "Valor",
+            "month": "Mês",
+            "is_recurring": "Recorrente",
+            "recurrence_start": "Início da recorrência",
+            "recurrence_end": "Fim da recorrência",
+        }
         widgets = {
             "name": forms.TextInput(attrs={"class": "input input-bordered input-sm w-full"}),
             "amount": forms.NumberInput(
