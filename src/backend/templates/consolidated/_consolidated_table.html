@@ -5,7 +5,7 @@
         <tr>
             <th>Categoria</th>
             {% for m in months %}
-            <th class="text-right">{{ m|stringformat:"02d" }}/{{ current_year }}</th>
+            <th class="text-right" data-month="{{ m }}">{{ m|stringformat:"02d" }}/{{ current_year }}</th>
             {% endfor %}
         </tr>
     </thead>
@@ -50,3 +50,16 @@
     </tfoot>
 </table>
 </div>
+<script>
+  (function () {
+    var scroller = document.getElementById('consolidated-scroll');
+    if (!scroller) return;
+    var month = new Date().getMonth() + 1;
+    var th = scroller.querySelector('th[data-month="' + month + '"]');
+    if (!th) return;
+    var left = th.offsetLeft - (scroller.clientWidth / 2) + (th.offsetWidth / 2);
+    setTimeout(function () {
+      scroller.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
+    }, 150);
+  })();
+</script>
