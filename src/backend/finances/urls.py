@@ -21,6 +21,7 @@ from finances.views.dashboard import DashboardView
 from finances.views.entries import (
     EntryCreateView,
     EntryDeleteView,
+    EntryEditModalView,
     EntryListView,
     EntryModalView,
     EntryRedirectView,
@@ -62,6 +63,11 @@ urlpatterns = [
     path("entries/<uuid:pk>/edit/", EntryUpdateView.as_view(), name="entry_edit"),
     path("entries/<uuid:pk>/delete/", EntryDeleteView.as_view(), name="entry_delete"),
     path("entries/modal/", EntryModalView.as_view(), name="entry_modal"),
+    path(
+        "entries/<uuid:pk>/edit-modal/",
+        EntryEditModalView.as_view(),
+        name="entry_edit_modal",
+    ),
     # Consolidated
     path("consolidated/", ConsolidatedView.as_view(), name="consolidated"),
     path(

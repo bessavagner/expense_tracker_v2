@@ -7,15 +7,14 @@
     <h2 class="text-2xl font-bold">Entradas</h2>
 </div>
 
-<!-- Month tabs (full-page nav so the whole monthly cockpit reflects the month) -->
-<div class="tabs tabs-bordered mb-4">
-    {% for m in months %}
-    <a class="tab {% if m == current_month %}tab-active{% endif %}"
-       href="{% url 'finances:entries_month' current_year m %}">
-        {{ m|stringformat:"02d" }}
-    </a>
-    {% endfor %}
-    <select class="select select-sm select-bordered ml-2"
+<div class="flex gap-2 items-center mb-4">
+    <select class="select select-bordered min-w-[8rem]"
+            onchange="window.location = '/entries/{{ current_year }}/' + this.value + '/'">
+        {% for m in months %}
+        <option value="{{ m }}" {% if m == current_month %}selected{% endif %}>{{ m|stringformat:"02d" }}/{{ current_year }}</option>
+        {% endfor %}
+    </select>
+    <select class="select select-bordered min-w-[6rem]"
             onchange="window.location = '/entries/' + this.value + '/{{ current_month }}/'">
         {% for y in year_range %}
         <option value="{{ y }}" {% if y == current_year %}selected{% endif %}>{{ y }}</option>
@@ -23,23 +22,25 @@
     </select>
 </div>
 
-<!-- Monthly cockpit: income/vencimentos share a row (both short); systemic and
-     parcelamentos go full-width (long lists) above the entries table. -->
+<!-- Lançamentos (inline form lives at the top of this partial) -->
+<h3 class="text-lg font-semibold mb-2">🧾 Lançamentos</h3>
+<div id="entries-container">
+    {% include "entries/_entries_table.html" %}
+</div>
+
+<!-- Parcelamentos -->
+<div hx-get="{% url 'finances:cockpit_parcelamentos' current_year current_month %}"
+     hx-trigger="load" hx-swap="outerHTML"></div>
+
+<!-- Sistemáticos -->
+<div hx-get="{% url 'finances:cockpit_systemic' current_year current_month %}"
+     hx-trigger="load" hx-swap="outerHTML"></div>
+
+<!-- Renda + Vencimentos (final) -->
 <div class="grid gap-4 md:grid-cols-2 items-start">
     <div hx-get="{% url 'finances:cockpit_income' current_year current_month %}"
          hx-trigger="load" hx-swap="outerHTML"></div>
     <div hx-get="{% url 'finances:cockpit_vencimentos' current_year current_month %}"
          hx-trigger="load" hx-swap="outerHTML"></div>
-</div>
-
-<div hx-get="{% url 'finances:cockpit_systemic' current_year current_month %}"
-     hx-trigger="load" hx-swap="outerHTML"></div>
-
-<div hx-get="{% url 'finances:cockpit_parcelamentos' current_year current_month %}"
-     hx-trigger="load" hx-swap="outerHTML"></div>
-
-<h3 class="text-lg font-semibold mt-2 mb-2">🧾 Lançamentos</h3>
-<div id="entries-container">
-    {% include "entries/_entries_table.html" %}
 </div>
 {% endblock %}

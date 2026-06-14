@@ -133,6 +133,62 @@ class EntryDeleteView(HtmxLoginRequiredMixin, View):
         return response
 
 
+class EntryEditModalView(HtmxLoginRequiredMixin, View):
+    """Edit a regular entry inside the shared #entry-modal."""
+
+    def _get_entry(self, request, pk):
+        entry = Entry.objects.filter(user=request.user, pk=pk).first()
+        if not entry:
+            raise Http404
+        return entry
+
+    def get(self, request, pk):
+        entry = self._get_entry(request, pk)
+        form = EntryForm(instance=entry, user=request.user)
+        self._patch_form_querysets(form, entry)
+        html = render_to_string(
+            "partials/_modal_entry_edit_form.html",
+            {"form": form, "object": entry},
+            request=request,
+        )
+        return HttpResponse(html)
+
+    def _patch_form_querysets(self, form, entry):
+        """Ensure the entry's existing category/pm are always valid choices."""
+        from finances.models import Category, PaymentMethod
+
+        cat_qs = form.fields["category"].queryset
+        form.fields["category"].queryset = cat_qs | Category.objects.filter(
+            pk=entry.category_id
+        )
+        pm_qs = form.fields["payment_method"].queryset
+        form.fields["payment_method"].queryset = pm_qs | PaymentMethod.objects.filter(
+            pk=entry.payment_method_id
+        )
+
+    def post(self, request, pk):
+        entry = self._get_entry(request, pk)
+        form = EntryForm(request.POST, instance=entry, user=request.user)
+        self._patch_form_querysets(form, entry)
+        if form.is_valid():
+            entry = form.save()
+            html = render_to_string(
+                "entries/_entry_row.html", {"entry": entry}, request=request
+            )
+            response = HttpResponse(html)
+            response["HX-Trigger"] = (
+                '{"showToast": {"message": "Entrada atualizada!", "type": "success"},'
+                ' "entry-saved": true}'
+            )
+            return response
+        html = render_to_string(
+            "partials/_modal_entry_edit_form.html",
+            {"form": form, "object": entry},
+            request=request,
+        )
+        return HttpResponse(html)
+
+
 class EntryModalView(HtmxLoginRequiredMixin, View):
     """Serve modal form and handle both regular and installment creation."""
 

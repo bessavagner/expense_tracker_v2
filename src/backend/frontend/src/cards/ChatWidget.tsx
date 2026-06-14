@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
-import { useChatPinned } from "../hooks/useChatPinned";
+import { useEffect, useRef, useState } from "react";
 
 interface Message {
   id: string;
@@ -18,19 +17,7 @@ export default function ChatWidget({ apiUrl }: Props) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
-  const { isPinned, setIsPinned } = useChatPinned();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
-
-  // Restore pinned state on mount
-  useEffect(() => {
-    if (isPinned) {
-      setIsOpen(true);
-      window.dispatchEvent(
-        new CustomEvent("chat:pin", { detail: { width: 380 } }),
-      );
-    }
-  }, []);
 
   // Load history on first open
   useEffect(() => {
@@ -138,53 +125,9 @@ export default function ChatWidget({ apiUrl }: Props) {
     }
   };
 
-  // Resize handlers for pinned mode
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const aside = (e.target as HTMLElement).closest("aside");
-    const startWidth = aside?.getBoundingClientRect().width || 380;
-    resizeRef.current = { startX: e.clientX, startWidth };
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!resizeRef.current) return;
-      const delta = resizeRef.current.startX - e.clientX;
-      const newWidth = Math.max(
-        300,
-        Math.min(600, resizeRef.current.startWidth + delta),
-      );
-      window.dispatchEvent(
-        new CustomEvent("chat:resize", { detail: { width: newWidth } }),
-      );
-    };
-
-    const handleMouseUp = () => {
-      resizeRef.current = null;
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-    };
-
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-  }, []);
-
-  const handlePin = () => {
-    if (isPinned) {
-      setIsPinned(false);
-    } else {
-      setIsPinned(true);
-      setIsOpen(true);
-      setIsMinimized(false);
-    }
-  };
-
   const handleClose = () => {
     setIsOpen(false);
     setIsMinimized(false);
-    if (isPinned) setIsPinned(false);
   };
 
   // --- Collapsed state: floating button ---
@@ -192,35 +135,26 @@ export default function ChatWidget({ apiUrl }: Props) {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="w-12 h-12 bg-neutral text-neutral-content rounded-full flex items-center justify-center text-xl shadow-lg hover:scale-110 transition-transform cursor-pointer"
-        title="Abrir chat"
+        className="fixed bottom-6 right-6 z-50 w-14 h-14 md:w-16 md:h-16 bg-neutral text-neutral-content rounded-full flex items-center justify-center text-2xl shadow-lg hover:scale-110 transition-transform cursor-pointer"
+        title="Abrir assistente"
       >
-        💬
+        🤖
       </button>
     );
   }
 
-  // --- Chat content (shared between pinned and floating) ---
+  // --- Chat content ---
   const chatHeader = (
     <div className="flex items-center justify-between p-3 bg-neutral text-neutral-content shrink-0">
-      <span className="font-bold text-sm">💬 Assistente</span>
+      <span className="font-bold text-sm">🤖 Assistente</span>
       <div className="flex gap-1">
         <button
-          onClick={handlePin}
-          className={`btn btn-ghost btn-xs text-neutral-content ${isPinned ? "opacity-100" : "opacity-60"}`}
-          title={isPinned ? "Desafixar" : "Fixar"}
+          onClick={() => setIsMinimized(!isMinimized)}
+          className="btn btn-ghost btn-xs text-neutral-content"
+          title={isMinimized ? "Expandir" : "Minimizar"}
         >
-          📌
+          {isMinimized ? "▲" : "▼"}
         </button>
-        {isPinned && (
-          <button
-            onClick={() => setIsMinimized(!isMinimized)}
-            className="btn btn-ghost btn-xs text-neutral-content"
-            title={isMinimized ? "Expandir" : "Minimizar"}
-          >
-            {isMinimized ? "▲" : "▼"}
-          </button>
-        )}
         <button
           onClick={handleClose}
           className="btn btn-ghost btn-xs text-neutral-content"
@@ -300,38 +234,16 @@ export default function ChatWidget({ apiUrl }: Props) {
     </div>
   );
 
-  // --- Pinned mode ---
-  if (isPinned) {
-    return (
-      <div className="flex h-full">
-        {/* Resize handle */}
-        <div
-          className="w-1 hover:bg-accent/30 cursor-col-resize transition-colors group relative shrink-0"
-          onMouseDown={handleResizeStart}
-        >
-          <div className="absolute inset-y-0 -left-1 -right-1" />
-        </div>
-        <div className="flex flex-col flex-1 bg-base-100 min-w-0">
-          {chatHeader}
-          {!isMinimized && (
-            <>
-              {chatMessages}
-              {quickReplies}
-              {chatInput}
-            </>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // --- Floating mode (popup) ---
   return (
-    <div className="fixed bottom-6 right-6 z-50 w-96 h-[32rem] flex flex-col bg-base-100 border border-base-300 rounded-lg shadow-xl">
+    <div className="fixed bottom-6 right-6 z-50 w-96 max-w-[calc(100vw-2rem)] h-[32rem] max-h-[calc(100vh-6rem)] flex flex-col bg-base-100 border border-base-300 rounded-lg shadow-xl">
       {chatHeader}
-      {chatMessages}
-      {quickReplies}
-      {chatInput}
+      {!isMinimized && (
+        <>
+          {chatMessages}
+          {quickReplies}
+          {chatInput}
+        </>
+      )}
     </div>
   );
 }

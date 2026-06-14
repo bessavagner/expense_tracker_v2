@@ -35,24 +35,39 @@
 <body class="min-h-screen bg-base-200" x-data="{ showToast: false, toastMessage: '', toastType: 'success' }"
       @show-toast.window="showToast = true; toastMessage = $event.detail.message; toastType = $event.detail.type || 'success'; setTimeout(() => showToast = false, 3000)">
 
-    {% include "partials/_navbar.html" %}
-
-    <div class="flex" x-data="{ chatPinned: false, chatWidth: 380 }"
-         @chat:pin.window="chatPinned = true; chatWidth = $event.detail?.width || 380"
-         @chat:unpin.window="chatPinned = false"
-         @chat:resize.window="chatWidth = $event.detail.width">
-        <!-- Main content -->
-        <main class="flex-1 p-4 w-full" :class="chatPinned ? '' : 'max-w-7xl mx-auto'">
-            {% block content %}{% endblock %}
-        </main>
-
-        <!-- Chat widget (React island) -->
-        <aside class="flex flex-col shrink-0"
-               :class="chatPinned ? 'border-l border-base-300 min-h-[calc(100vh-4rem)]' : 'items-center pt-4'"
-               :style="chatPinned ? 'width:' + chatWidth + 'px' : ''">
-            <div data-react-component="ChatWidget" data-api-url="/api/assistant/"></div>
-        </aside>
+    <!-- Side drawer (hamburger) wrapping the page -->
+    <div class="drawer">
+        <input id="nav-drawer" type="checkbox" class="drawer-toggle" />
+        <div class="drawer-content flex flex-col min-h-screen">
+            {% include "partials/_navbar.html" %}
+            <main class="flex-1 p-4 w-full max-w-7xl mx-auto">
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+        <div class="drawer-side z-[100]">
+            <label for="nav-drawer" aria-label="Fechar menu" class="drawer-overlay"></label>
+            <ul class="menu bg-neutral text-neutral-content min-h-full w-64 p-4 gap-1">
+                <li class="menu-title text-neutral-content/80 text-base mb-2">Expense Tracker</li>
+                <li><a href="{% url 'finances:dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">Dashboard</a></li>
+                <li><a href="{% url 'finances:entries' %}" class="{% if request.resolver_match.url_name and 'entries' in request.resolver_match.url_name %}active{% endif %}">Entradas</a></li>
+                <li><a href="{% url 'finances:consolidated' %}" class="{% if request.resolver_match.url_name and 'consolidated' in request.resolver_match.url_name %}active{% endif %}">Consolidado</a></li>
+                <li><a href="{% url 'finances:settings' %}" class="{% if request.resolver_match.url_name and 'settings' in request.resolver_match.url_name %}active{% endif %}">Configurações</a></li>
+                <li><a href="{% url 'finances:import_upload' %}" class="{% if request.resolver_match.url_name and 'import' in request.resolver_match.url_name %}active{% endif %}">Importar</a></li>
+            </ul>
+        </div>
     </div>
+
+    <!-- Floating chat island (React) -->
+    <div data-react-component="ChatWidget" data-api-url="/api/assistant/"></div>
+
+    <!-- Floating "+" FAB: opens the shared entry modal; persists on every page -->
+    <button id="fab-new-entry"
+            class="fixed bottom-6 right-24 z-50 w-14 h-14 md:w-16 md:h-16 rounded-full bg-accent text-accent-content text-3xl shadow-lg hover:scale-110 transition-transform flex items-center justify-center"
+            title="Nova entrada" aria-label="Nova entrada"
+            hx-get="{% url 'finances:entry_modal' %}"
+            hx-target="#entry-modal-content"
+            hx-swap="innerHTML"
+            onclick="document.getElementById('entry-modal').showModal()">+</button>
 
     {% include "partials/_toast.html" %}
 
@@ -72,6 +87,12 @@
           navigator.serviceWorker.register('/sw.js');
         });
       }
+    </script>
+    <script>
+      document.body.addEventListener('entry-saved', function () {
+        const m = document.getElementById('entry-modal');
+        if (m) m.close();
+      });
     </script>
 </body>
 </html>

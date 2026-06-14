@@ -1,6 +1,7 @@
 <div id="cockpit-vencimentos" class="card bg-base-100 border border-base-200 shadow-sm mb-4">
   <div class="card-body p-4">
     <h3 class="font-semibold flex items-center gap-2">📅 Vencimentos do mês (cartões)</h3>
+    <div class="overflow-x-auto">
     <table class="table table-sm">
       <tbody>
         {% for row in venc_rows %}
@@ -23,5 +24,6 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
   </div>
 </div>

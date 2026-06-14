@@ -1,7 +1,10 @@
 {% load finance_filters %}
 {% url 'finances:entry_edit' entry.id as edit_url %}
 {% url 'finances:entry_delete' entry.id as delete_url %}
-<tr id="entry-{{ entry.id }}" class="{% if entry.amount < 0 %}text-success{% endif %} {% if entry.entry_type == 'systemic' %}bg-base-200{% endif %}">
+<tr id="entry-{{ entry.id }}"
+    x-show="q === '' || $el.dataset.search.includes(q.toLowerCase())"
+    data-search="{{ entry.description|lower }} {{ entry.category.name|lower }} {{ entry.amount }}"
+    class="{% if entry.amount < 0 %}text-success{% endif %} {% if entry.entry_type == 'systemic' %}bg-base-200{% endif %}">
     <td>{{ entry.date|date:"d/m" }}</td>
     <td class="whitespace-nowrap">{{ entry.amount|money }}</td>
     <td>{{ entry.description }}</td>
@@ -10,12 +13,11 @@
     <td>{{ entry.billing_month|date:"M" }}</td>
     <td>
         {% if entry.entry_type == 'regular' %}
-        {% if edit_url %}
         <button class="btn btn-ghost btn-xs"
-                hx-get="{{ edit_url }}"
-                hx-target="#entry-{{ entry.id }}"
-                hx-swap="outerHTML">✏️</button>
-        {% endif %}
+                hx-get="{% url 'finances:entry_edit_modal' entry.id %}"
+                hx-target="#entry-modal-content"
+                hx-swap="innerHTML"
+                onclick="document.getElementById('entry-modal').showModal()">✏️</button>
         {% if delete_url %}
         <button class="btn btn-ghost btn-xs text-error"
                 hx-delete="{{ delete_url }}"

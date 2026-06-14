@@ -3,12 +3,12 @@
       hx-target="#entries-tbody"
       hx-swap="afterbegin"
       hx-on::after-request="if(event.detail.successful) this.reset()"
-      class="flex gap-2 p-2 bg-success/10 rounded-lg mb-2 items-end">
+      class="grid grid-cols-2 md:grid-cols-6 gap-2 p-2 bg-success/10 rounded-lg mb-2 items-end">
     {% csrf_token %}
     {{ form.date }}
     {{ form.amount }}
     {{ form.description }}
     {{ form.category }}
     {{ form.payment_method }}
-    <button type="submit" class="btn btn-sm btn-accent">Salvar</button>
+    <button type="submit" class="btn btn-sm btn-accent col-span-2 md:col-span-1">Salvar</button>
 </form>
