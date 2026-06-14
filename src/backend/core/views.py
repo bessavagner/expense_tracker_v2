@@ -1,5 +1,7 @@
+from django.conf import settings
 from django.db import connection
 from django.http import JsonResponse
+from django.views import View
 from django.views.generic import TemplateView
 
 
@@ -43,3 +45,22 @@ class OfflineView(TemplateView):
     No DB, no auth — must render from cache."""
 
     template_name = "offline.html"
+
+
+class AssetLinksView(View):
+    """Digital Asset Links for the TWA (Android app) — served at
+    /.well-known/assetlinks.json on the app host so Chrome verifies the app
+    and opens it without the URL bar. Fingerprints come from settings."""
+
+    def get(self, request, *args, **kwargs):
+        statement = [
+            {
+                "relation": ["delegate_permission/common.handle_all_urls"],
+                "target": {
+                    "namespace": "android_app",
+                    "package_name": settings.TWA_PACKAGE_NAME,
+                    "sha256_cert_fingerprints": settings.TWA_CERT_FINGERPRINTS,
+                },
+            }
+        ]
+        return JsonResponse(statement, safe=False)
