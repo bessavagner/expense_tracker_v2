@@ -7,7 +7,7 @@
 <div class="flex justify-between items-center mb-4">
     <h2 class="text-2xl font-bold">Dashboard</h2>
     <div class="flex gap-2 items-center">
-        <select class="select select-sm select-bordered"
+        <select class="select select-bordered min-w-[8rem]"
                 onchange="window.location.href='/?year={{ current_year }}&month=' + this.value">
             {% for m in months %}
             <option value="{{ m }}" {% if m == current_month %}selected{% endif %}>
@@ -15,7 +15,7 @@
             </option>
             {% endfor %}
         </select>
-        <select class="select select-sm select-bordered"
+        <select class="select select-bordered min-w-[6rem]"
                 onchange="window.location.href='/?year=' + this.value + '&month={{ current_month }}'">
             {% for y in year_range %}
             <option value="{{ y }}" {% if y == current_year %}selected{% endif %}>{{ y }}</option>
