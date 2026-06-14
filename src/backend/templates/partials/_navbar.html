@@ -1,14 +1,14 @@
 <nav class="navbar bg-neutral text-neutral-content">
     <div class="flex flex-1 items-center gap-2">
-        <a href="/" class="btn btn-ghost text-xl">Expense Tracker</a>
-        <!-- Mobile hamburger -->
-        <div class="dropdown lg:hidden">
-            <div tabindex="0" role="button" class="btn btn-ghost">
+        <!-- Hamburger menu (all viewports) -->
+        <div class="dropdown">
+            <div tabindex="0" role="button" class="btn btn-ghost" aria-label="Menu">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
             </div>
-            <ul tabindex="0" class="menu menu-sm dropdown-content bg-neutral rounded-box z-10 mt-3 w-52 p-2 shadow">
+            <ul tabindex="0" class="menu menu-sm dropdown-content bg-neutral rounded-box z-10 mt-3 w-56 p-2 shadow">
+                <li class="menu-title text-neutral-content/80">Expense Tracker</li>
                 <li><a href="{% url 'finances:dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">Dashboard</a></li>
                 <li><a href="{% url 'finances:entries' %}" class="{% if request.resolver_match.url_name and 'entries' in request.resolver_match.url_name %}active{% endif %}">Entradas</a></li>
                 <li><a href="{% url 'finances:consolidated' %}" class="{% if request.resolver_match.url_name and 'consolidated' in request.resolver_match.url_name %}active{% endif %}">Consolidado</a></li>
@@ -16,24 +16,8 @@
                 <li><a href="{% url 'finances:import_upload' %}" class="{% if request.resolver_match.url_name and 'import' in request.resolver_match.url_name %}active{% endif %}">Importar</a></li>
             </ul>
         </div>
-        <!-- Desktop menu -->
-        <ul class="menu menu-horizontal px-1 gap-1 hidden lg:flex">
-            <li><a href="{% url 'finances:dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">Dashboard</a></li>
-            <li><a href="{% url 'finances:entries' %}" class="{% if request.resolver_match.url_name and 'entries' in request.resolver_match.url_name %}active{% endif %}">Entradas</a></li>
-            <li><a href="{% url 'finances:consolidated' %}" class="{% if request.resolver_match.url_name and 'consolidated' in request.resolver_match.url_name %}active{% endif %}">Consolidado</a></li>
-            <li><a href="{% url 'finances:settings' %}" class="{% if request.resolver_match.url_name and 'settings' in request.resolver_match.url_name %}active{% endif %}">Configurações</a></li>
-            <li><a href="{% url 'finances:import_upload' %}" class="{% if request.resolver_match.url_name and 'import' in request.resolver_match.url_name %}active{% endif %}">Importar</a></li>
-        </ul>
     </div>
     <div class="flex-none items-center gap-1">
-        <button class="btn btn-sm btn-accent"
-                hx-get="{% url 'finances:entry_modal' %}"
-                hx-target="#entry-modal-content"
-                hx-swap="innerHTML"
-                onclick="document.getElementById('entry-modal').showModal()">
-            + Nova Entrada
-        </button>
-
         <!-- Theme toggle (persisted in localStorage; defaults to OS preference) -->
         <button class="btn btn-ghost btn-sm btn-circle"
                 title="Alternar tema" aria-label="Alternar tema (claro/escuro)"
@@ -41,10 +25,7 @@
                 @click="theme = theme === 'ledger-dark' ? 'ledger' : 'ledger-dark'; document.documentElement.setAttribute('data-theme', theme); try { localStorage.setItem('theme', theme); } catch (e) {}">
             <span x-text="theme === 'ledger-dark' ? '☀️' : '🌙'">🌙</span>
         </button>
-
         <span class="text-sm opacity-70 truncate max-w-32 hidden sm:inline">{{ request.user.username }}</span>
-
-        <!-- Logout (Django requires POST) -->
         <form method="post" action="{% url 'logout' %}" class="inline">
             {% csrf_token %}
             <button type="submit" class="btn btn-ghost btn-sm" title="Sair">Sair</button>
