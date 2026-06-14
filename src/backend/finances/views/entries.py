@@ -5,6 +5,7 @@ from decimal import Decimal
 from django.http import Http404, HttpResponse
 from django.shortcuts import redirect
 from django.template.loader import render_to_string
+from django.urls import reverse
 from django.views import View
 from django.views.generic import ListView, UpdateView
 
@@ -142,13 +143,22 @@ class EntryEditModalView(HtmxLoginRequiredMixin, View):
             raise Http404
         return entry
 
+    def _modal_context(self, entry, form):
+        return {
+            "form": form,
+            "title": "Editar Entrada",
+            "post_url": reverse("finances:entry_edit_modal", args=[entry.id]),
+            "swap_target": f"#entry-{entry.id}",
+            "swap_mode": "outerHTML",
+        }
+
     def get(self, request, pk):
         entry = self._get_entry(request, pk)
         form = EntryForm(instance=entry, user=request.user)
         self._patch_form_querysets(form, entry)
         html = render_to_string(
-            "partials/_modal_entry_edit_form.html",
-            {"form": form, "object": entry},
+            "partials/_modal_edit_form.html",
+            self._modal_context(entry, form),
             request=request,
         )
         return HttpResponse(html)
@@ -182,8 +192,8 @@ class EntryEditModalView(HtmxLoginRequiredMixin, View):
             )
             return response
         html = render_to_string(
-            "partials/_modal_entry_edit_form.html",
-            {"form": form, "object": entry},
+            "partials/_modal_edit_form.html",
+            self._modal_context(entry, form),
             request=request,
         )
         return HttpResponse(html)

@@ -1,10 +1,15 @@
 {% load finance_filters %}
-{% url 'finances:entry_edit' entry.id as edit_url %}
 {% url 'finances:entry_delete' entry.id as delete_url %}
 <tr id="entry-{{ entry.id }}"
     x-show="q === '' || $el.dataset.search.includes(q.toLowerCase())"
     data-search="{{ entry.description|lower }} {{ entry.category.name|lower }} {{ entry.amount }}"
-    class="{% if entry.amount < 0 %}text-success{% endif %} {% if entry.entry_type == 'systemic' %}bg-base-200{% endif %}">
+    class="{% if entry.entry_type == 'regular' %}cursor-pointer hover:bg-base-200 {% endif %}{% if entry.amount < 0 %}text-success {% endif %}{% if entry.entry_type == 'systemic' %}bg-base-200{% endif %}"
+    {% if entry.entry_type == 'regular' %}
+    hx-get="{% url 'finances:entry_edit_modal' entry.id %}"
+    hx-target="#entry-modal-content"
+    hx-swap="innerHTML"
+    onclick="document.getElementById('entry-modal').showModal()"
+    {% endif %}>
     <td>{{ entry.date|date:"d/m" }}</td>
     <td class="whitespace-nowrap">{{ entry.amount|money }}</td>
     <td>{{ entry.description }}</td>
@@ -12,19 +17,13 @@
     <td>{{ entry.payment_method.name }}</td>
     <td>{{ entry.billing_month|date:"M" }}</td>
     <td>
-        {% if entry.entry_type == 'regular' %}
-        <button class="btn btn-ghost btn-xs"
-                hx-get="{% url 'finances:entry_edit_modal' entry.id %}"
-                hx-target="#entry-modal-content"
-                hx-swap="innerHTML"
-                onclick="document.getElementById('entry-modal').showModal()">✏️</button>
-        {% if delete_url %}
+        {% if entry.entry_type == 'regular' and delete_url %}
         <button class="btn btn-ghost btn-xs text-error"
                 hx-delete="{{ delete_url }}"
                 hx-target="#entry-{{ entry.id }}"
                 hx-swap="outerHTML swap:1s"
-                hx-confirm="Excluir esta entrada?">🗑️</button>
-        {% endif %}
+                hx-confirm="Excluir esta entrada?"
+                onclick="event.stopPropagation()">🗑️</button>
         {% endif %}
     </td>
 </tr>

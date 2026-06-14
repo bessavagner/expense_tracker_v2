@@ -34,7 +34,7 @@ def test_get_returns_prefilled_form(client, user, entry):
     resp = client.get(url)
     assert resp.status_code == 200
     assert b"Old desc" in resp.content
-    assert b"entry-edit-form" in resp.content
+    assert b"modal-edit-form" in resp.content
 
 
 def test_post_valid_updates_and_returns_row(client, user, entry):
@@ -63,7 +63,7 @@ def test_post_invalid_returns_form_with_errors(client, user, entry):
     url = reverse("finances:entry_edit_modal", args=[entry.id])
     resp = client.post(url, {"date": "", "amount": "", "description": ""})
     assert resp.status_code == 200
-    assert b"entry-edit-form" in resp.content
+    assert b"modal-edit-form" in resp.content
     entry.refresh_from_db()
     assert entry.description == "Old desc"
 
@@ -73,3 +73,15 @@ def test_cannot_edit_other_users_entry(client, django_user_model, entry):
     client.force_login(other)
     url = reverse("finances:entry_edit_modal", args=[entry.id])
     assert client.get(url).status_code == 404
+
+
+def test_regular_entry_row_is_clickable_to_edit_modal(entry):
+    """The whole regular-entry row opens the edit modal; delete button must
+    stop propagation so it doesn't also trigger the row edit."""
+    from django.template.loader import render_to_string
+
+    html = render_to_string("entries/_entry_row.html", {"entry": entry})
+    edit_url = reverse("finances:entry_edit_modal", args=[entry.id])
+    assert f'hx-get="{edit_url}"' in html
+    assert "cursor-pointer" in html
+    assert "event.stopPropagation()" in html

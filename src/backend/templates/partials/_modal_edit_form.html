@@ -1,8 +1,8 @@
-<h3 class="font-bold text-lg mb-4">Editar Entrada</h3>
-<form id="entry-edit-form"
-      hx-post="{% url 'finances:entry_edit_modal' object.id %}"
-      hx-target="#entry-{{ object.id }}"
-      hx-swap="outerHTML"
+<h3 class="font-bold text-lg mb-4">{{ title|default:"Editar" }}</h3>
+<form id="modal-edit-form"
+      hx-post="{{ post_url }}"
+      hx-target="{{ swap_target }}"
+      hx-swap="{{ swap_mode|default:'outerHTML' }}"
       class="space-y-3">
     {% csrf_token %}
     {% for field in form %}
