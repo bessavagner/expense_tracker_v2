@@ -16,6 +16,9 @@ const GENERIC_ERROR = "Erro de conexão. Tente novamente.";
 // Modo "fixado à direita" com resize mútuo (item #2).
 const CHAT_PINNED_KEY = "chat_pinned";
 const CHAT_WIDTH_KEY = "chat_width";
+// Estado aberto/fechado persistido: páginas sem cards recarregam ao mudar dados
+// (ver mount.tsx) e remontariam o chat fechado, "minimizando-o" sozinho.
+const CHAT_OPEN_KEY = "chat_open";
 const MD_BREAKPOINT = 768; // abaixo disto: sempre flutuante
 const MIN_PANEL_PX = 320;
 const MAX_PANEL_FRAC = 0.6; // no máximo 60% da largura da janela
@@ -184,6 +187,7 @@ export default function ChatWidget({ apiUrl }: Props) {
   // Estado inicial de pin/largura + acompanha o breakpoint md.
   useEffect(() => {
     try {
+      setIsOpen(localStorage.getItem(CHAT_OPEN_KEY) === "true");
       setIsPinned(localStorage.getItem(CHAT_PINNED_KEY) === "true");
       const w = parseInt(localStorage.getItem(CHAT_WIDTH_KEY) || "", 10);
       if (!Number.isNaN(w)) setPanelWidth(clampPanelWidth(w));
@@ -503,8 +507,19 @@ export default function ChatWidget({ apiUrl }: Props) {
     }
   };
 
+  // Abre/fecha o chat persistindo o estado, para sobreviver ao reload das
+  // páginas sem cards (mount.tsx) — senão o chat reabre fechado ("minimizado").
+  const setOpen = (open: boolean) => {
+    setIsOpen(open);
+    try {
+      localStorage.setItem(CHAT_OPEN_KEY, String(open));
+    } catch {
+      // localStorage indisponível → estado apenas em memória
+    }
+  };
+
   const handleClose = () => {
-    setIsOpen(false);
+    setOpen(false);
     setIsMinimized(false);
   };
 
@@ -512,7 +527,7 @@ export default function ChatWidget({ apiUrl }: Props) {
   if (!isOpen) {
     return (
       <button
-        onClick={() => setIsOpen(true)}
+        onClick={() => setOpen(true)}
         className="fixed bottom-6 right-6 z-50 w-14 h-14 md:w-16 md:h-16 bg-neutral text-neutral-content rounded-full flex items-center justify-center text-2xl shadow-lg hover:scale-110 transition-transform cursor-pointer"
         title="Abrir assistente"
       >
