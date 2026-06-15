@@ -109,20 +109,27 @@ def extraction_to_prompt(
         )
     else:
         head = (
-            "Recibo lido da foto (dados já extraídos abaixo). Mapeie cada item à "
-            "categoria correta (regras-legado) e use a ferramenta register_receipt "
-            "para gravar em UMA linha por categoria, rateando o desconto. Mostre a "
-            "tabela item → categoria → valor e confirme."
+            "Recibo lido da foto (itens NUMERADOS abaixo). Atribua cada item à sua "
+            "categoria e grave com register_receipt passando items_by_category como "
+            "{categoria: [índices]} — cada índice em UMA só categoria — e summaries "
+            "{categoria: resumo curto do conteúdo}. NÃO redigite valores: a soma e o "
+            "rateio do desconto saem do recibo. Uma linha por categoria, descrição "
+            "'<loja> - <resumo>'. Mostre a tabela e confirme UMA vez."
         )
-    item_lines = [f"- {it.description} | R$ {it.line_total}" for it in ext.items]
+    item_lines = [
+        f"[{idx}] {it.description} | R$ {it.line_total}"
+        for idx, it in enumerate(ext.items)
+    ]
     parts = [
         head,
         f"Loja: {ext.store or '?'}",
         f"Data: {ext.date or '?'}",
-        f"Forma de pagamento (sugestão): {ext.payment_hint or '?'}",
+        f"Forma de pagamento (do cupom): {ext.payment_hint or '?'} — se for "
+        "genérico (ex.: 'Cartão Crédito') e houver vários cartões, PERGUNTE qual "
+        "antes de gravar; nunca assuma.",
         f"Desconto: {ext.discount}",
         f"Valor pago: {ext.amount_paid}",
-        "Itens:",
+        "Itens (índice):",
         *item_lines,
     ]
     if caption:

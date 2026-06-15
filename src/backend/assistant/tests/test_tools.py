@@ -526,83 +526,156 @@ class TestReceiptContext:
 
 @pytest.mark.django_db
 class TestRegisterReceipt:
-    """register_receipt: split multi-categoria com rateio determinístico de desconto."""
+    """register_receipt: registra a partir do ReceiptDraft pendente, atribuindo
+    cada item (por ÍNDICE) a exatamente uma categoria — impede dupla contagem."""
 
-    def _add_roupa(self, user):
+    def _add(self, user, name):
         from model_bakery import baker
 
-        baker.make("finances.Category", user=user, name="Roupa")
+        baker.make("finances.Category", user=user, name=name)
 
-    def test_splits_categories_and_prorates_discount(self, seeded_user):
+    def _draft(
+        self,
+        user,
+        items,
+        *,
+        discount="0",
+        amount_paid=None,
+        store="LOJA X",
+        date="2026-06-12",
+        payment_hint="Cartão Crédito",
+    ):
+        from assistant.models import ReceiptDraft
+
+        total = sum((Decimal(v) for _, v in items), Decimal("0"))
+        payload = {
+            "store": store,
+            "date": date,
+            "discount": discount,
+            "payment_hint": payment_hint,
+            "amount_paid": amount_paid
+            if amount_paid is not None
+            else str(total - Decimal(discount)),
+            "items": [{"description": d, "line_total": v} for d, v in items],
+        }
+        return ReceiptDraft.objects.create(user=user, payload=payload)
+
+    def test_registers_one_line_per_category_from_draft_values(self, seeded_user):
         from django.db.models import Sum
 
         from assistant.agents.tools import register_receipt
         from finances.models import Entry
 
-        self._add_roupa(seeded_user)
+        self._add(seeded_user, "Pets")
+        draft = self._draft(
+            seeded_user, [("MASSA", "9.95"), ("ENERG", "14.50"), ("RACAO", "9.45")]
+        )
         register_receipt(
             user=seeded_user,
-            date_str="2026-06-12",
-            store="Lojas Americanas",
+            items_by_category={"Alimentação": [0], "Lanche": [1], "Pets": [2]},
             payment_method_name="Crédito C6",
-            items_by_category={
-                "Roupa": ["9.99"],
-                "Lanche": ["9.99", "9.99", "6.19", "9.99"],
-            },
-            discount="3.99",
+            summaries={"Alimentação": "massa"},
         )
         entries = Entry.objects.filter(user=seeded_user)
-        assert entries.count() == 2
-        # soma das linhas bate EXATAMENTE com o valor pago (46.15 - 3.99)
+        assert entries.count() == 3
+        assert entries.aggregate(s=Sum("amount"))["s"] == Decimal("33.90")
+        assert entries.get(category__name="Alimentação").amount == Decimal("9.95")
+        assert entries.get(category__name="Lanche").amount == Decimal("14.50")
+        assert entries.get(category__name="Pets").amount == Decimal("9.45")
+        # descrição: estabelecimento + resumo do conteúdo
+        assert entries.get(category__name="Alimentação").description == "LOJA X - massa"
+        assert entries.get(category__name="Alimentação").payment_method.name == "Crédito C6"
+        draft.refresh_from_db()
+        assert draft.status == "registered"
+
+    def test_double_counting_is_rejected(self, seeded_user):
+        from assistant.agents.tools import register_receipt
+        from finances.models import Entry
+
+        self._add(seeded_user, "Pets")
+        draft = self._draft(
+            seeded_user, [("MASSA", "9.95"), ("ENERG", "14.50"), ("RACAO", "9.45")]
+        )
+        # idx 2 em duas categorias; idx 1 faltando
+        msg = register_receipt(
+            user=seeded_user,
+            items_by_category={"Alimentação": [0, 2], "Pets": [2]},
+            payment_method_name="Crédito C6",
+        )
+        assert "erro" in msg.lower()
+        assert Entry.objects.filter(user=seeded_user).count() == 0
+        draft.refresh_from_db()
+        assert draft.status == "pending"
+
+    def test_missing_item_is_rejected(self, seeded_user):
+        from assistant.agents.tools import register_receipt
+        from finances.models import Entry
+
+        self._draft(seeded_user, [("MASSA", "9.95"), ("ENERG", "14.50")])
+        msg = register_receipt(
+            user=seeded_user,
+            items_by_category={"Alimentação": [0]},  # falta o índice 1
+            payment_method_name="Crédito C6",
+        )
+        assert "erro" in msg.lower()
+        assert Entry.objects.filter(user=seeded_user).count() == 0
+
+    def test_prorates_discount_to_amount_paid(self, seeded_user):
+        from django.db.models import Sum
+
+        from assistant.agents.tools import register_receipt
+        from finances.models import Entry
+
+        self._add(seeded_user, "Roupa")
+        self._draft(
+            seeded_user,
+            [("SOUTIEN", "9.99"), ("A", "9.99"), ("B", "9.99"), ("C", "6.19"), ("D", "9.99")],
+            discount="3.99",
+            amount_paid="42.16",
+        )
+        register_receipt(
+            user=seeded_user,
+            items_by_category={"Roupa": [0], "Lanche": [1, 2, 3, 4]},
+            payment_method_name="Crédito C6",
+        )
+        entries = Entry.objects.filter(user=seeded_user)
         assert entries.aggregate(s=Sum("amount"))["s"] == Decimal("42.16")
-        # desconto rateado proporcionalmente; resíduo de centavo na maior categoria
         assert entries.get(category__name="Roupa").amount == Decimal("9.13")
         assert entries.get(category__name="Lanche").amount == Decimal("33.03")
 
-    def test_no_discount_keeps_category_sums(self, seeded_user):
+    def test_payment_falls_back_to_unambiguous_hint(self, seeded_user):
         from assistant.agents.tools import register_receipt
         from finances.models import Entry
 
-        self._add_roupa(seeded_user)
+        self._draft(seeded_user, [("ENERG", "14.50")], payment_hint="Pix")
         register_receipt(
             user=seeded_user,
-            date_str="2026-06-12",
-            store="Loja X",
-            payment_method_name="Crédito C6",
-            items_by_category={"Roupa": ["10.00"], "Lanche": ["5.00", "2.50"]},
-            discount="0",
+            items_by_category={"Lanche": [0]},
+            payment_method_name="",  # vazio → cai no hint do recibo
         )
-        entries = Entry.objects.filter(user=seeded_user)
-        assert entries.get(category__name="Roupa").amount == Decimal("10.00")
-        assert entries.get(category__name="Lanche").amount == Decimal("7.50")
+        assert Entry.objects.get(user=seeded_user).payment_method.name == "Pix"
 
-    def test_unknown_category_creates_nothing(self, seeded_user):
+    def test_generic_credit_hint_asks_which_card(self, seeded_user):
         from assistant.agents.tools import register_receipt
         from finances.models import Entry
 
+        self._draft(seeded_user, [("ENERG", "14.50")], payment_hint="Cartão Crédito")
         msg = register_receipt(
             user=seeded_user,
-            date_str="2026-06-12",
-            store="Loja X",
-            payment_method_name="Crédito C6",
-            items_by_category={"Inexistente": ["10.00"]},
-            discount="0",
+            items_by_category={"Lanche": [0]},
+            payment_method_name="",  # genérico não resolve → pergunta
         )
-        assert "não encontrada" in msg.lower() or "erro" in msg.lower()
+        assert "pagamento" in msg.lower() or "cartão" in msg.lower()
         assert Entry.objects.filter(user=seeded_user).count() == 0
 
-    def test_unknown_payment_method_creates_nothing(self, seeded_user):
+    def test_no_pending_draft_errors(self, seeded_user):
         from assistant.agents.tools import register_receipt
         from finances.models import Entry
 
-        self._add_roupa(seeded_user)
         msg = register_receipt(
             user=seeded_user,
-            date_str="2026-06-12",
-            store="Loja X",
-            payment_method_name="NãoExiste",
-            items_by_category={"Roupa": ["10.00"]},
-            discount="0",
+            items_by_category={"Lanche": [0]},
+            payment_method_name="Pix",
         )
-        assert "não encontrada" in msg.lower() or "erro" in msg.lower()
+        assert "erro" in msg.lower() and "recibo" in msg.lower()
         assert Entry.objects.filter(user=seeded_user).count() == 0
