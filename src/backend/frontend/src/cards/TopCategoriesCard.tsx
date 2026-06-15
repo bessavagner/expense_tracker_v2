@@ -1,20 +1,15 @@
-import { useEffect, useState } from "react";
-import { fetchApi } from "../api";
 import { formatBRL } from "../format";
 import type { CategoryData } from "../types";
 import EmptyState from "../components/EmptyState";
 import { CHART_COLORS } from "../theme";
+import { useApiData } from "../useApiData";
 
 interface Props {
   apiUrl: string;
 }
 
 export default function TopCategoriesCard({ apiUrl }: Props) {
-  const [data, setData] = useState<CategoryData[] | null>(null);
-
-  useEffect(() => {
-    fetchApi<CategoryData[]>(apiUrl).then(setData);
-  }, [apiUrl]);
+  const data = useApiData<CategoryData[]>(apiUrl);
 
   if (!data)
     return (

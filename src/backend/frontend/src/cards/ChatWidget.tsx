@@ -29,6 +29,11 @@ function errorText(err: unknown): string {
   return err instanceof Error && err.message ? err.message : GENERIC_ERROR;
 }
 
+/** Avisa a página que dados financeiros mudaram, para cards/HTMX recarregarem. */
+function notifyDataChanged() {
+  window.dispatchEvent(new CustomEvent("data-changed"));
+}
+
 /** Clipe de papel (anexar). */
 const PaperclipIcon = () => (
   <svg
@@ -212,6 +217,8 @@ export default function ChatWidget({ apiUrl }: Props) {
                     : m,
                 ),
               );
+            } else if (event.type === "done") {
+              if (event.data_changed) notifyDataChanged();
             }
           } catch {
             // Skip unparseable lines
@@ -272,6 +279,8 @@ export default function ChatWidget({ apiUrl }: Props) {
                   : m,
               ),
             );
+          } else if (event.type === "done") {
+            if (event.data_changed) notifyDataChanged();
           }
         } catch {
           // skip

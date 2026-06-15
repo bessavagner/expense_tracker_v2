@@ -1,19 +1,14 @@
-import { useEffect, useState } from "react";
-import { fetchApi } from "../api";
 import { formatBRL } from "../format";
 import type { EntryData } from "../types";
 import EmptyState from "../components/EmptyState";
+import { useApiData } from "../useApiData";
 
 interface Props {
   apiUrl: string;
 }
 
 export default function RecentEntriesCard({ apiUrl }: Props) {
-  const [data, setData] = useState<EntryData[] | null>(null);
-
-  useEffect(() => {
-    fetchApi<EntryData[]>(apiUrl).then(setData);
-  }, [apiUrl]);
+  const data = useApiData<EntryData[]>(apiUrl);
 
   if (!data)
     return (

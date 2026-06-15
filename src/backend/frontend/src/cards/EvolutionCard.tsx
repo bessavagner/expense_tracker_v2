@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import EmptyState from "../components/EmptyState";
 import {
   LineChart,
@@ -9,21 +8,17 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
-import { fetchApi } from "../api";
 import { formatBRL, formatBRLCompact } from "../format";
 import { SERIES } from "../theme";
 import type { EvolutionPoint } from "../types";
+import { useApiData } from "../useApiData";
 
 interface Props {
   apiUrl: string;
 }
 
 export default function EvolutionCard({ apiUrl }: Props) {
-  const [data, setData] = useState<EvolutionPoint[] | null>(null);
-
-  useEffect(() => {
-    fetchApi<EvolutionPoint[]>(apiUrl).then(setData);
-  }, [apiUrl]);
+  const data = useApiData<EvolutionPoint[]>(apiUrl);
 
   if (!data)
     return (

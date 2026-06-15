@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
-import { fetchApi } from "../api";
+import { useState } from "react";
 import { formatBRL } from "../format";
 import type { InstallmentsResponse } from "../types";
+import { useApiData } from "../useApiData";
 
 interface Props {
   apiUrl: string;
@@ -10,12 +10,8 @@ interface Props {
 const LIMIT = 5;
 
 export default function InstallmentsCard({ apiUrl }: Props) {
-  const [data, setData] = useState<InstallmentsResponse | null>(null);
+  const data = useApiData<InstallmentsResponse>(apiUrl);
   const [expanded, setExpanded] = useState(false);
-
-  useEffect(() => {
-    fetchApi<InstallmentsResponse>(apiUrl).then(setData);
-  }, [apiUrl]);
 
   if (!data)
     return (
