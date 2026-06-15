@@ -29,6 +29,74 @@ function errorText(err: unknown): string {
   return err instanceof Error && err.message ? err.message : GENERIC_ERROR;
 }
 
+/** Clipe de papel (anexar). */
+const PaperclipIcon = () => (
+  <svg
+    className="w-5 h-5"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+  >
+    <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+  </svg>
+);
+
+/** Microfone (gravar áudio). */
+const MicIcon = () => (
+  <svg
+    className="w-5 h-5"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+  >
+    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+    <line x1="12" y1="19" x2="12" y2="22" />
+  </svg>
+);
+
+/** Câmera (tirar foto). */
+const CameraIcon = () => (
+  <svg
+    className="w-4 h-4"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+  >
+    <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+    <circle cx="12" cy="13" r="3" />
+  </svg>
+);
+
+/** Documento/arquivo (escolher da galeria). */
+const FileIcon = () => (
+  <svg
+    className="w-4 h-4"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+  >
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <path d="M14 2v6h6" />
+  </svg>
+);
+
 export default function ChatWidget({ apiUrl }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -43,6 +111,9 @@ export default function ChatWidget({ apiUrl }: Props) {
   const chunksRef = useRef<Blob[]>([]);
   const recTimerRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const attachMenuRef = useRef<HTMLDivElement>(null);
   const canRecord =
     typeof navigator !== "undefined" &&
     !!navigator.mediaDevices &&
@@ -63,6 +134,18 @@ export default function ChatWidget({ apiUrl }: Props) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Fecha o menu de anexo ao clicar fora
+  useEffect(() => {
+    if (!attachMenuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (!attachMenuRef.current?.contains(e.target as Node)) {
+        setAttachMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [attachMenuOpen]);
 
   const sendMessage = async (overrideMessage?: string) => {
     const text = overrideMessage ?? input;
@@ -387,8 +470,17 @@ export default function ChatWidget({ apiUrl }: Props) {
 
   const chatInput = (
     <div className="p-3 border-t border-base-300 shrink-0">
+      {/* Galeria/arquivo: sem capture, deixa o usuário escolher um arquivo existente */}
       <input
         ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleImagePick}
+      />
+      {/* Câmera: capture força a câmera no mobile */}
+      <input
+        ref={cameraInputRef}
         type="file"
         accept="image/*"
         capture="environment"
@@ -418,22 +510,55 @@ export default function ChatWidget({ apiUrl }: Props) {
         </div>
       ) : (
         <div className="flex gap-1 items-center">
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="btn btn-sm btn-ghost btn-square"
-            disabled={isStreaming}
-            title="Enviar foto"
-          >
-            📷
-          </button>
+          {/* Clipe de papel: abre menu com "Arquivo" ou "Câmera" */}
+          <div className="relative" ref={attachMenuRef}>
+            <button
+              onClick={() => setAttachMenuOpen((v) => !v)}
+              className="btn btn-sm btn-ghost btn-square"
+              disabled={isStreaming}
+              title="Anexar"
+              aria-label="Anexar arquivo ou foto"
+              aria-haspopup="menu"
+              aria-expanded={attachMenuOpen}
+            >
+              <PaperclipIcon />
+            </button>
+            {attachMenuOpen && (
+              <ul className="menu menu-sm absolute bottom-full left-0 mb-1 z-10 w-40 rounded-box bg-base-100 border border-base-300 shadow-lg p-1">
+                <li>
+                  <button
+                    onClick={() => {
+                      setAttachMenuOpen(false);
+                      fileInputRef.current?.click();
+                    }}
+                  >
+                    <FileIcon />
+                    Arquivo
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => {
+                      setAttachMenuOpen(false);
+                      cameraInputRef.current?.click();
+                    }}
+                  >
+                    <CameraIcon />
+                    Câmera
+                  </button>
+                </li>
+              </ul>
+            )}
+          </div>
           {canRecord && (
             <button
               onClick={startRecording}
               className="btn btn-sm btn-ghost btn-square"
               disabled={isStreaming}
               title="Gravar áudio"
+              aria-label="Gravar áudio"
             >
-              🎤
+              <MicIcon />
             </button>
           )}
           <input
@@ -458,7 +583,13 @@ export default function ChatWidget({ apiUrl }: Props) {
   );
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 w-96 max-w-[calc(100vw-2rem)] h-[32rem] max-h-[calc(100vh-6rem)] flex flex-col bg-base-100 border border-base-300 rounded-lg shadow-xl">
+    <div
+      className={`fixed bottom-6 right-6 z-50 max-w-[calc(100vw-2rem)] flex flex-col bg-base-100 border border-base-300 rounded-lg shadow-xl ${
+        isMinimized
+          ? "w-64 h-auto"
+          : "w-96 h-[32rem] max-h-[calc(100vh-6rem)]"
+      }`}
+    >
       {chatHeader}
       {!isMinimized && (
         <>
