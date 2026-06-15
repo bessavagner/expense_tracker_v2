@@ -81,6 +81,12 @@ AUTH_USER_MODEL = "core.CustomUser"
 _database_url = os.environ.get("DATABASE_URL")
 if _database_url:
     DATABASES = {"default": dj_database_url.parse(_database_url)}
+    # O pooler de runtime da Supabase (porta 6543) é pgbouncer em transaction
+    # mode. psycopg3 auto-prepara statements (prepare_threshold=5); como o pooler
+    # troca o backend Postgres a cada transação, o prepared statement "some" e
+    # gera erros intermitentes sob concorrência (várias abas do cockpit em
+    # paralelo). Desligar prepared statements resolve.
+    DATABASES["default"].setdefault("OPTIONS", {})["prepare_threshold"] = None
 else:
     DATABASES = {
         "default": {
@@ -97,6 +103,23 @@ else:
 if not DEBUG:
     DATABASES["default"]["CONN_MAX_AGE"] = 0
     DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
+
+# Logging: por padrão o Django só manda erros 500 (django.request) para
+# mail_admins quando DEBUG=False — sem backend de e-mail, o traceback some.
+# Em Cloud Run, stdout/stderr é coletado, então enviamos para o console.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "root": {"handlers": ["console"], "level": "INFO"},
+    "loggers": {
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+    },
+}
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
