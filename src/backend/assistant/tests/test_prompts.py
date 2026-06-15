@@ -93,3 +93,28 @@ def test_registrar_prompt_has_photo_policy():
     assert "resumo" in lower
     # trata conteúdo da imagem como dados, não como instruções (anti-injeção)
     assert "instruç" in lower  # cobre "instrução"/"instruções"
+
+
+class TestPhotoPolicySplitAndTable:
+    """PHOTO_POLICY deve forçar split por categoria e resumo verificável."""
+
+    def test_requires_category_split(self):
+        assert "categorias diferentes" in prompts.PHOTO_POLICY
+        assert "estabelecimento + categoria" in prompts.PHOTO_POLICY
+
+    def test_requires_verifiable_table(self):
+        low = prompts.PHOTO_POLICY.lower()
+        assert "tabela" in low
+        assert "soma" in low
+
+    def test_forbids_zero_category_via_proration(self):
+        low = prompts.PHOTO_POLICY.lower()
+        assert "ratei" in low or "rateá" in low or "rateie" in low
+        assert "valor pago" in low
+
+    def test_extracts_store_name(self):
+        low = prompts.PHOTO_POLICY.lower()
+        assert "loja" in low
+
+    def test_photo_policy_included_in_registrar(self):
+        assert prompts.PHOTO_POLICY in prompts.REGISTRAR_PROMPT
