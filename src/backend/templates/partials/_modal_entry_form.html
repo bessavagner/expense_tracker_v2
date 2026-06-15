@@ -30,10 +30,12 @@
           x-data="{
             manual: false,
             lastHint: '',
+            preview: [],
+            previewNote: '',
+            _timer: null,
+            _f(name) { return this.$refs.form.querySelector('[name=' + name + ']'); },
             recalc() {
-              const t = this.$refs.form.querySelector('[name=total_amount]');
-              const n = this.$refs.form.querySelector('[name=num_installments]');
-              const p = this.$refs.form.querySelector('[name=installment_amount]');
+              const t = this._f('total_amount'), n = this._f('num_installments'), p = this._f('installment_amount');
               if (!t || !n || !p) return;
               const tv = parseFloat(t.value), nv = parseInt(n.value, 10);
               if (!(tv > 0) || !(nv > 0)) { this.lastHint = ''; return; }
@@ -44,12 +46,29 @@
               this.lastHint = (Math.abs(ultima - usado) > 0.005)
                 ? `Última parcela: R$ ${ultima.toFixed(2)} (ajuste de arredondamento)`
                 : '';
+            },
+            fetchPreview() {
+              const d = this._f('date'), pm = this._f('payment_method'), n = this._f('num_installments');
+              const dv = d && d.value, pmv = pm && pm.value, nv = n && parseInt(n.value, 10);
+              if (!dv || !pmv || !(nv > 0)) { this.preview = []; this.previewNote = ''; return; }
+              const url = `{% url 'finances:installment_preview' %}?date=${encodeURIComponent(dv)}&payment_method=${encodeURIComponent(pmv)}&num_installments=${nv}`;
+              fetch(url, { credentials: 'same-origin', headers: { 'HX-Request': 'true' } })
+                .then(r => r.json())
+                .then(data => { this.preview = data.months || []; this.previewNote = data.note || ''; })
+                .catch(() => { this.preview = []; this.previewNote = ''; });
+            },
+            onChange() {
+              this.recalc();
+              clearTimeout(this._timer);
+              this._timer = setTimeout(() => this.fetchPreview(), 250);
             }
           }"
           x-init="$nextTick(() => {
             const p = $refs.form.querySelector('[name=installment_amount]');
             if (p) p.addEventListener('input', () => { manual = p.value.trim() !== ''; recalc(); });
           })"
+          @input="onChange()"
+          @change="onChange()"
           hx-post="{% url 'finances:entry_modal' %}"
           hx-target="#entry-modal-content"
           hx-swap="innerHTML"
@@ -60,15 +79,21 @@
         {% for field in installment_form %}
         <div class="form-control">
             <label class="label"><span class="label-text">{{ field.label }}</span></label>
-            {% if field.name == 'total_amount' or field.name == 'num_installments' %}
-            <div @input="recalc()">{{ field }}</div>
-            {% else %}
             {{ field }}
-            {% endif %}
             {% if field.errors %}<span class="text-error text-sm">{{ field.errors.0 }}</span>{% endif %}
         </div>
         {% endfor %}
         <p class="text-xs opacity-70" x-show="lastHint" x-text="lastHint"></p>
+        <!-- Preview das faturas: em qual mês cada parcela cai -->
+        <div x-show="preview.length" class="rounded-box bg-base-200 p-2 text-xs">
+            <div class="font-medium mb-1">Faturas das parcelas</div>
+            <div class="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                <template x-for="(m, i) in preview" :key="i">
+                    <div><span class="opacity-70" x-text="'Parcela ' + (i + 1) + ':'"></span> <span x-text="m"></span></div>
+                </template>
+            </div>
+            <p class="opacity-70 mt-1" x-show="previewNote" x-text="previewNote"></p>
+        </div>
         <button type="submit" class="btn btn-accent w-full">Criar Parcelamento</button>
     </form>
 </div>

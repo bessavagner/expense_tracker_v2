@@ -1,10 +1,9 @@
 import uuid
-from datetime import date
 
 from django.conf import settings
 from django.db import models, transaction
 
-from finances.services.billing import compute_billing_month, resolve_closing_day
+from finances.services.billing import installment_billing_months
 
 
 class InstallmentPlan(models.Model):
@@ -41,33 +40,28 @@ class InstallmentPlan(models.Model):
         if self.entries.exists():
             raise ValueError("Entries already generated for this installment plan.")
 
-        billing_month = compute_billing_month(
-            self.date,
-            self.payment_method.type,
-            resolve_closing_day(self.payment_method, self.date),
+        months = installment_billing_months(
+            self.date, self.payment_method, self.num_installments
         )
         entries = []
-        for i in range(self.num_installments):
+        for i, billing_month in enumerate(months):
             if i == self.num_installments - 1:
                 amount = self.total_amount - (self.installment_amount * (self.num_installments - 1))
             else:
                 amount = self.installment_amount
-            entry = Entry(
-                user=self.user,
-                date=self.date,
-                amount=amount,
-                description=f"{self.description} ({i + 1}/{self.num_installments})",
-                category=self.category,
-                payment_method=self.payment_method,
-                entry_type=EntryType.INSTALLMENT,
-                billing_month=billing_month,
-                billing_month_override=True,
-                installment_plan=self,
+            entries.append(
+                Entry(
+                    user=self.user,
+                    date=self.date,
+                    amount=amount,
+                    description=f"{self.description} ({i + 1}/{self.num_installments})",
+                    category=self.category,
+                    payment_method=self.payment_method,
+                    entry_type=EntryType.INSTALLMENT,
+                    billing_month=billing_month,
+                    billing_month_override=True,
+                    installment_plan=self,
+                )
             )
-            entries.append(entry)
-            if billing_month.month == 12:
-                billing_month = date(billing_month.year + 1, 1, 1)
-            else:
-                billing_month = date(billing_month.year, billing_month.month + 1, 1)
         Entry.objects.bulk_create(entries)
         return list(Entry.objects.filter(installment_plan=self).order_by("billing_month"))

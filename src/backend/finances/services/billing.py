@@ -33,3 +33,34 @@ def compute_billing_month(
         return date(entry_date.year, entry_date.month + 1, 1)
 
     return first_of_month
+
+
+def _next_month(d: date) -> date:
+    """First day of the month after ``d``."""
+    if d.month == 12:
+        return date(d.year + 1, 1, 1)
+    return date(d.year, d.month + 1, 1)
+
+
+def installment_billing_months(
+    start_date: date,
+    payment_method,
+    num_installments: int,
+) -> list[date]:
+    """Billing month (first-of-month date) for each installment of a plan.
+
+    The first installment is placed on the billing month that results from
+    crossing ``start_date`` with the card's closing day (see
+    :func:`compute_billing_month`); each subsequent installment falls on the
+    following month. Single source of truth shared by
+    ``InstallmentPlan.generate_entries`` and the modal preview.
+    """
+    first = compute_billing_month(
+        start_date,
+        payment_method.type,
+        resolve_closing_day(payment_method, start_date),
+    )
+    months = [first]
+    for _ in range(1, max(num_installments, 0)):
+        months.append(_next_month(months[-1]))
+    return months

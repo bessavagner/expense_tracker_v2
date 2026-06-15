@@ -29,6 +29,7 @@ from finances.views.entries import (
     EntryModalView,
     EntryRedirectView,
     EntryUpdateView,
+    InstallmentPreviewView,
 )
 from finances.views.importer import (
     ImportExecuteView,
@@ -66,6 +67,11 @@ urlpatterns = [
     path("entries/<uuid:pk>/edit/", EntryUpdateView.as_view(), name="entry_edit"),
     path("entries/<uuid:pk>/delete/", EntryDeleteView.as_view(), name="entry_delete"),
     path("entries/modal/", EntryModalView.as_view(), name="entry_modal"),
+    path(
+        "entries/installment-preview/",
+        InstallmentPreviewView.as_view(),
+        name="installment_preview",
+    ),
     path(
         "entries/<uuid:pk>/edit-modal/",
         EntryEditModalView.as_view(),
