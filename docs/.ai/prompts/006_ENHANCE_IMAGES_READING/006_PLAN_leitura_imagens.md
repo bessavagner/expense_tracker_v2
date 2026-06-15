@@ -538,6 +538,15 @@ def register_receipt(
 
 ### Task 11: Caminho QR/NFC-e (leitura oficial quando o QR estiver legível)
 
+> **STATUS: ADIADO (decisão do usuário, 2026-06-15).** O bloqueio não é `pip`, e sim
+> infra: `pyzbar` exige a lib de sistema **`libzbar0`** (ausente no dev e no Cloud
+> Run → precisaria de linha no Dockerfile + setup local), e ler a NFC-e oficial
+> depende de **scraping da SEFAZ por estado** (CE aqui), frágil e variável por UF.
+> P0/P1/P2-12/13 já resolvem o caso real (split correto, rateio determinístico,
+> fallback de baixa confiança). Retomar quando valer o custo de infra: `libzbar0`
+> na imagem, `pyzbar` no projeto, parser puro da chave de 44 dígitos (testável) e
+> fetch SEFAZ com degradação para visão.
+
 **Files:**
 - Create: `src/backend/assistant/services/qr_nfce.py`
 - Modify: `pyproject.toml` (`pyzbar`/`opencv-python-headless`), `views.py`
