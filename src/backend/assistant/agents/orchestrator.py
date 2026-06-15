@@ -18,7 +18,7 @@ from pydantic_ai.usage import UsageLimits
 
 from assistant.agents.analyst import analyst_agent
 from assistant.agents.planner import planner_agent
-from assistant.agents.prompts import ORCHESTRATOR_PROMPT
+from assistant.agents.prompts import ORCHESTRATOR_PROMPT, build_date_instructions
 from assistant.agents.registrar import registrar_agent
 
 User = get_user_model()
@@ -31,6 +31,9 @@ orchestrator_agent = Agent(
     deps_type=User,
     system_prompt=ORCHESTRATOR_PROMPT,
 )
+
+# Injeta a data de hoje a cada execução (resolução de referências relativas).
+orchestrator_agent.instructions(build_date_instructions)
 
 
 @orchestrator_agent.tool

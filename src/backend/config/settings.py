@@ -140,7 +140,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "/admin/login/"
 
 # AI Assistant
-LLM_MODEL = os.environ.get("LLM_MODEL", "openai:gpt-4o-mini")
+LLM_MODEL = os.environ.get("LLM_MODEL", "openai:gpt-5.4-mini")
 # Sistema de agentes (prompt 004): orquestrador/registrador usam um modelo leve e
 # barato; analista/planejador usam um modelo mais capaz. Provider-agnóstico — por
 # padrão herdam LLM_MODEL para não exigir configuração extra nem chaves novas.

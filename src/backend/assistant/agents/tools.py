@@ -38,6 +38,25 @@ def list_payment_methods(user) -> list[str]:
     )
 
 
+def _resolve_by_name(queryset, raw_name: str):
+    """Resolve a single model instance by name, leniently.
+
+    Tries an exact case-insensitive match first, then a unique
+    case-insensitive substring match (so "c6" → "Crédito C6"). Returns a
+    tuple ``(obj, matches)``: ``obj`` is the unique match or ``None``, and
+    ``matches`` lists the candidate names (used to build an ambiguity message
+    when more than one partial match exists).
+    """
+    name = (raw_name or "").strip()
+    exact = queryset.filter(name__iexact=name).first()
+    if exact is not None:
+        return exact, [exact.name]
+    partial = list(queryset.filter(name__icontains=name)) if name else []
+    if len(partial) == 1:
+        return partial[0], [partial[0].name]
+    return None, [p.name for p in partial]
+
+
 def create_entry(
     user,
     date_str: str,
@@ -47,19 +66,27 @@ def create_entry(
     payment_method_name: str,
 ) -> str:
     """Create an expense entry. Returns a confirmation or error message."""
-    # Validate category
-    try:
-        category = Category.objects.get(user=user, name=category_name)
-    except Category.DoesNotExist:
+    # Validate category (lenient: case-insensitive / unique partial match)
+    category, cat_matches = _resolve_by_name(Category.objects.filter(user=user), category_name)
+    if category is None:
+        if len(cat_matches) > 1:
+            return (
+                f"Erro: categoria '{category_name}' é ambígua. "
+                f"Você quis dizer: {', '.join(cat_matches)}?"
+            )
         available = ", ".join(list_categories(user))
         return f"Erro: categoria '{category_name}' não encontrada. Disponíveis: {available}"
 
-    # Validate payment method
-    try:
-        payment_method = PaymentMethod.objects.get(
-            user=user, name=payment_method_name, is_active=True
-        )
-    except PaymentMethod.DoesNotExist:
+    # Validate payment method (lenient resolution)
+    payment_method, pm_matches = _resolve_by_name(
+        PaymentMethod.objects.filter(user=user, is_active=True), payment_method_name
+    )
+    if payment_method is None:
+        if len(pm_matches) > 1:
+            return (
+                f"Erro: forma de pagamento '{payment_method_name}' é ambígua. "
+                f"Você quis dizer: {', '.join(pm_matches)}?"
+            )
         available = ", ".join(list_payment_methods(user))
         return (
             f"Erro: forma de pagamento '{payment_method_name}' não encontrada. "

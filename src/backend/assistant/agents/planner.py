@@ -11,7 +11,7 @@ from django.contrib.auth import get_user_model
 from pydantic_ai import Agent, RunContext
 
 from assistant.agents import analytics
-from assistant.agents.prompts import PLANNER_PROMPT
+from assistant.agents.prompts import PLANNER_PROMPT, build_date_instructions
 from assistant.agents.tools import query_balance, query_budget_status, query_installments
 
 User = get_user_model()
@@ -21,6 +21,9 @@ planner_agent = Agent(
     deps_type=User,
     system_prompt=PLANNER_PROMPT,
 )
+
+# Injeta a data de hoje (projeções e referências relativas).
+planner_agent.instructions(build_date_instructions)
 
 
 @planner_agent.tool

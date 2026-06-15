@@ -11,7 +11,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from pydantic_ai import Agent, RunContext
 
-from assistant.agents.prompts import REGISTRAR_PROMPT
+from assistant.agents.prompts import REGISTRAR_PROMPT, build_date_instructions
 from assistant.agents.tools import (
     create_category,
     create_entry,
@@ -36,6 +36,9 @@ registrar_agent = Agent(
     deps_type=User,
     system_prompt=REGISTRAR_PROMPT,
 )
+
+# Injeta a data de hoje a cada execução (corrige gravação com ano errado).
+registrar_agent.instructions(build_date_instructions)
 
 
 @registrar_agent.tool

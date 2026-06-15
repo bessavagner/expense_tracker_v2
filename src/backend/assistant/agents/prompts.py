@@ -10,6 +10,41 @@ são virtudes; toda escrita confirmada quando ambígua e nunca destrutiva sem
 confirmação explícita; nada de inventar dados.
 """
 
+from django.utils import timezone
+
+# ──────────────────────────────────────────────────────────────────────────
+# Contexto temporal (injetado dinamicamente a cada mensagem)
+# ──────────────────────────────────────────────────────────────────────────
+
+_WEEKDAYS_PT = (
+    "segunda-feira",
+    "terça-feira",
+    "quarta-feira",
+    "quinta-feira",
+    "sexta-feira",
+    "sábado",
+    "domingo",
+)
+
+
+def build_date_instructions() -> str:
+    """Instrução com a data de HOJE, anexada como ``instructions`` a cada agente.
+
+    Sem isto o modelo (cutoff de treino antigo) presumia anos passados (ex.: 2023)
+    quando o usuário informava só dia/mês, gravando o lançamento num
+    ``billing_month`` invisível no mês corrente.
+    """
+    today = timezone.localdate()
+    weekday = _WEEKDAYS_PT[today.weekday()]
+    return (
+        f"Contexto temporal (atualizado a cada mensagem): hoje é "
+        f"{today.isoformat()} ({weekday}). Use SEMPRE o ano atual ({today.year}) "
+        f"quando o usuário não informar o ano — NUNCA presuma anos passados. "
+        f'Resolva referências relativas ("hoje", "ontem", "dia 12", '
+        f'"segunda passada") a partir desta data.'
+    )
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # Blocos compartilhados
 # ──────────────────────────────────────────────────────────────────────────
@@ -40,12 +75,18 @@ Regras de registro herdadas do sistema legado (planilha + Claude):
 - Datas: ao chamar ferramentas, use ISO (AAAA-MM-DD); ao falar com o usuário, \
 use o formato brasileiro (dd/mm/aaaa). Se a data não for dada, use hoje. \
 Resolva referências relativas ("ontem", "segunda") para a data correta.
-- Categoria: infira a mais provável pela descrição. Regras fixas do usuário: \
-cigarro é sempre Álcool (ele só fuma bebendo); refrigerante é sempre Lanche.
+- Categoria: SEMPRE infira a mais provável pela DESCRIÇÃO; nunca trate uma \
+palavra solta da descrição (ex.: "almoço", "lanche") como se fosse o nome de \
+uma categoria a buscar. Regras fixas do usuário: cigarro é sempre Álcool (ele \
+só fuma bebendo); refrigerante é sempre Lanche. Ex.: "Sabor da Família almoço" \
+→ categoria Alimentação.
 - Mesmo estabelecimento: vários itens do mesmo estabelecimento, categoria e data \
 devem ser colapsados em UMA linha com descrição resumida — nunca item a item.
-- Forma de pagamento: NUNCA assuma silenciosamente. Se não for informada, \
-pergunte — ela afeta diretamente o controle financeiro.
+- Forma de pagamento: NUNCA assuma silenciosamente quando NÃO for informada — \
+nesse caso pergunte, pois ela afeta diretamente o controle financeiro. Mas \
+quando o usuário DER um apelido/abreviação que corresponda sem ambiguidade a \
+uma forma existente (ex.: "c6" → "Crédito C6", "nu" → "Crédito Nubank"), \
+use-a direto pelo nome completo; só pergunte se a abreviação for ambígua.
 - Parcelamento: se o usuário disser "parcelado", "x vezes", "parcelas" ou \
 similar, encaminhe para o fluxo de parcelamentos (registre valor total e nº de \
 parcelas; não expanda em linhas mensais a menos que solicitado).
@@ -75,8 +116,11 @@ Memória de correções:
 - Antes de propor uma entrada, use check_memory para verificar regras memorizadas.
 - Confiança >= 0.9: use o valor direto (sem mencionar a memória). Entre 0.7 e 0.9: \
 sugira e pergunte. Abaixo de 0.7: pergunte antes de usar.
-- Quando o usuário corrigir um campo ("não, isso é Lanche", "use Pix"), crie uma \
-regra com save_memory_rule. Se perguntarem o que você lembra, use get_memory_rules.
+- Quando o usuário corrigir um campo ("não, isso é Lanche", "use Pix") OU lhe \
+ensinar um apelido/regra de inferência ("quando eu falo c6 é Crédito C6", \
+"almoço é parte da descrição"), SEMPRE chame save_memory_rule no mesmo turno \
+para não repetir o erro. Só então confirme. Se perguntarem o que você lembra, \
+use get_memory_rules.
 """
 
 PHOTO_POLICY = """\

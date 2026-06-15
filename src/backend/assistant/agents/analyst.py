@@ -12,7 +12,7 @@ from django.contrib.auth import get_user_model
 from pydantic_ai import Agent, RunContext
 
 from assistant.agents import analytics
-from assistant.agents.prompts import ANALYST_PROMPT
+from assistant.agents.prompts import ANALYST_PROMPT, build_date_instructions
 from assistant.agents.tools import (
     list_categories,
     list_payment_methods,
@@ -30,6 +30,9 @@ analyst_agent = Agent(
     deps_type=User,
     system_prompt=ANALYST_PROMPT,
 )
+
+# Injeta a data de hoje (mês corrente como padrão, referências relativas).
+analyst_agent.instructions(build_date_instructions)
 
 
 @analyst_agent.tool
