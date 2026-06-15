@@ -10,6 +10,7 @@ from assistant.agents.extraction import (
     extraction_agent,
     extraction_to_prompt,
     receipt_is_consistent,
+    receipt_needs_review,
 )
 
 
@@ -53,6 +54,42 @@ def test_consistent_false_when_mismatch():
 def test_consistent_within_small_tolerance():
     ext = _extraction([("a", "10.00")], discount="0", amount_paid="10.03")
     assert receipt_is_consistent(ext) is True  # 0.03 <= 0.05
+
+
+def test_needs_review_when_confidence_low():
+    ext = _extraction([("a", "10.00")], discount="0", amount_paid="10.00")
+    ext.confidence = 0.3
+    assert receipt_needs_review(ext, min_confidence=0.6) is True
+
+
+def test_needs_review_when_sum_does_not_close():
+    ext = _extraction([("a", "10.00")], discount="0", amount_paid="42.16")
+    ext.confidence = 0.99
+    assert receipt_needs_review(ext, min_confidence=0.6) is True
+
+
+def test_needs_review_when_no_items():
+    ext = ReceiptExtraction(items=[], confidence=0.99, amount_paid=Decimal("0"))
+    assert receipt_needs_review(ext, min_confidence=0.6) is True
+
+
+def test_no_review_when_confident_and_consistent():
+    ext = _extraction(
+        [("a", "9.99"), ("b", "9.99"), ("c", "9.99"), ("d", "6.19"), ("e", "9.99")],
+        discount="3.99",
+        amount_paid="42.16",
+    )
+    ext.confidence = 0.9
+    assert receipt_needs_review(ext, min_confidence=0.6) is False
+
+
+def test_extraction_to_prompt_review_adds_caution():
+    ext = _extraction([("a", "10.00")], discount="0")
+    prompt = extraction_to_prompt(ext, needs_review=True)
+    low = prompt.lower()
+    assert "incerta" in low
+    assert "confirm" in low
+    assert "não use register_receipt" in low
 
 
 def test_extraction_to_prompt_lists_items_and_tool():

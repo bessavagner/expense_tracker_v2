@@ -68,6 +68,20 @@ def receipt_is_consistent(
     return abs(items_sum - extraction.discount - extraction.amount_paid) <= tolerance
 
 
+def receipt_needs_review(
+    extraction: ReceiptExtraction, min_confidence: float
+) -> bool:
+    """True se a leitura é incerta: confiança baixa, sem itens, ou soma não fecha.
+
+    Nesses casos o bot confirma campo a campo em vez de auto-registrar.
+    """
+    if not extraction.items:
+        return True
+    if extraction.confidence < min_confidence:
+        return True
+    return not receipt_is_consistent(extraction)
+
+
 async def extract_receipt(data: bytes, media_type: str) -> ReceiptExtraction:
     """Lê a foto do recibo e devolve a extração estruturada."""
     result = await extraction_agent.run(
@@ -76,18 +90,33 @@ async def extract_receipt(data: bytes, media_type: str) -> ReceiptExtraction:
     return result.output
 
 
-def extraction_to_prompt(ext: ReceiptExtraction, caption: str = "") -> str:
+def extraction_to_prompt(
+    ext: ReceiptExtraction, caption: str = "", needs_review: bool = False
+) -> str:
     """Monta o prompt (fase 2) para o registrador a partir da extração.
 
     Entrega os itens já lidos como TEXTO, para o bookkeeping rodar no modelo
     leve (a visão já foi usada na fase 1). Instrui o uso de ``register_receipt``.
+    Quando ``needs_review`` é True (leitura incerta), pede confirmação campo a
+    campo ANTES de gravar.
     """
+    if needs_review:
+        head = (
+            "Recibo lido da foto, mas a LEITURA ESTÁ INCERTA (confiança baixa ou a "
+            "soma não fechou). Mostre a tabela item → categoria → valor, aponte o "
+            "que ficou duvidoso e PEÇA CONFIRMAÇÃO campo a campo. NÃO use "
+            "register_receipt nem grave nada até o usuário confirmar."
+        )
+    else:
+        head = (
+            "Recibo lido da foto (dados já extraídos abaixo). Mapeie cada item à "
+            "categoria correta (regras-legado) e use a ferramenta register_receipt "
+            "para gravar em UMA linha por categoria, rateando o desconto. Mostre a "
+            "tabela item → categoria → valor e confirme."
+        )
     item_lines = [f"- {it.description} | R$ {it.line_total}" for it in ext.items]
     parts = [
-        "Recibo lido da foto (dados já extraídos abaixo). Mapeie cada item à "
-        "categoria correta (regras-legado) e use a ferramenta register_receipt "
-        "para gravar em UMA linha por categoria, rateando o desconto. Mostre a "
-        "tabela item → categoria → valor e confirme.",
+        head,
         f"Loja: {ext.store or '?'}",
         f"Data: {ext.date or '?'}",
         f"Forma de pagamento (sugestão): {ext.payment_hint or '?'}",

@@ -6,7 +6,11 @@ from django.http import JsonResponse, StreamingHttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
-from assistant.agents.extraction import extract_receipt, extraction_to_prompt
+from assistant.agents.extraction import (
+    extract_receipt,
+    extraction_to_prompt,
+    receipt_needs_review,
+)
 from assistant.agents.orchestrator import assistant_agent
 from assistant.agents.registrar import registrar_agent
 from assistant.models import ChatMessage, MessageRole, ReceiptDraft
@@ -268,7 +272,10 @@ async def _handle_image(request, user, image, caption):
             payload=extraction.model_dump(mode="json"),
         )
         # Fase 2: bookkeeping no modelo leve — a visão já foi usada na fase 1.
-        prompt = extraction_to_prompt(extraction, caption)
+        needs_review = receipt_needs_review(
+            extraction, settings.ASSISTANT_RECEIPT_MIN_CONFIDENCE
+        )
+        prompt = extraction_to_prompt(extraction, caption, needs_review=needs_review)
         return _sse_response(
             user,
             registrar_agent,
