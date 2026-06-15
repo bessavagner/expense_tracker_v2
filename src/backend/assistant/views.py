@@ -9,6 +9,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 from assistant.agents.orchestrator import assistant_agent
 from assistant.agents.registrar import registrar_agent
 from assistant.models import ChatMessage, MessageRole
+from assistant.services.image_prep import prepare_receipt_image
 from assistant.services.transcription import transcribe_audio
 
 logger = logging.getLogger(__name__)
@@ -79,11 +80,15 @@ async def _load_history(user):
     return pydantic_messages
 
 
-def _sse_response(user, agent, prompt, *, message_history, user_text=None):
+def _sse_response(user, agent, prompt, *, message_history, user_text=None, model=None):
     """Monta a StreamingHttpResponse SSE para qualquer agente/prompt.
 
     Se ``user_text`` for dado, emite um evento ``user_text`` antes dos tokens
     (para o widget substituir o balão placeholder pela transcrição/legenda).
+
+    ``model`` faz override por execução do modelo do agente (usado no fluxo de
+    foto para ler o recibo com ``LLM_VISION_MODEL``). Em testes,
+    ``agent.override(model=...)`` tem precedência sobre este argumento.
     """
 
     async def stream_response():
@@ -94,7 +99,7 @@ def _sse_response(user, agent, prompt, *, message_history, user_text=None):
         data_changed = False
         try:
             async with agent.run_stream(
-                prompt, deps=user, message_history=message_history
+                prompt, deps=user, message_history=message_history, model=model
             ) as stream:
                 async for text in stream.stream_text(delta=True):
                     full_response += text
@@ -236,6 +241,7 @@ async def _handle_image(request, user, image, caption):
         return JsonResponse({"error": "Formato de imagem não suportado."}, status=400)
 
     data = image.read()
+    data, media_type = prepare_receipt_image(data, image.content_type)
     instruction = (
         "Esta é a foto de um recibo/cupom. Extraia os lançamentos seguindo as "
         "regras e confirme um resumo antes de gravar."
@@ -248,10 +254,16 @@ async def _handle_image(request, user, image, caption):
         user=user, role=MessageRole.USER, content=user_label
     )
 
-    prompt = [instruction, BinaryContent(data=data, media_type=image.content_type)]
-    # Registro a partir de foto é pontual: sem histórico de conversa.
+    prompt = [instruction, BinaryContent(data=data, media_type=media_type)]
+    # Registro a partir de foto é pontual: sem histórico de conversa. O recibo é
+    # lido com o modelo de visão (LLM_VISION_MODEL), não com o modelo leve.
     return _sse_response(
-        user, registrar_agent, prompt, message_history=None, user_text=user_label
+        user,
+        registrar_agent,
+        prompt,
+        message_history=None,
+        user_text=user_label,
+        model=settings.LLM_VISION_MODEL,
     )
 
 
