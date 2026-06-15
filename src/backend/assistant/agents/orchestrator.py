@@ -11,6 +11,7 @@ Ver docs/.ai/reports/000_aprimoramento_chatbot/000_aprimoramento_chatbot.md
 
 from contextlib import ExitStack, contextmanager
 
+from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from pydantic_ai import Agent, RunContext
@@ -20,6 +21,7 @@ from assistant.agents.analyst import analyst_agent
 from assistant.agents.planner import planner_agent
 from assistant.agents.prompts import ORCHESTRATOR_PROMPT, build_date_instructions
 from assistant.agents.registrar import registrar_agent
+from assistant.agents.tools import build_receipt_context
 
 User = get_user_model()
 
@@ -44,8 +46,12 @@ async def delegate_registro(ctx: RunContext[User], request: str) -> str:
     Args:
         request: A mensagem/instrução do usuário, repassada ao Registrador.
     """
+    # Anexa o recibo pendente (extraído de foto) para o registrador não rodar
+    # cego no turno de correção ("separe as categorias").
+    context = await sync_to_async(build_receipt_context)(ctx.deps)
+    full_request = f"{context}\n\n{request}" if context else request
     result = await registrar_agent.run(
-        request, deps=ctx.deps, usage=ctx.usage, usage_limits=_DELEGATION_LIMITS
+        full_request, deps=ctx.deps, usage=ctx.usage, usage_limits=_DELEGATION_LIMITS
     )
     return result.output
 

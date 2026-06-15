@@ -485,3 +485,124 @@ class TestSystemicTools:
         self._make_systemic(seeded_user, "Análise - Vagner", "300.00")
         result = set_systemic_amount(seeded_user, "Análise - Vagner", "300.00", "not-a-date")
         assert "inválido" in result.lower() or "erro" in result.lower()
+
+
+@pytest.mark.django_db
+class TestReceiptContext:
+    """build_receipt_context: anexa o recibo pendente à delegação."""
+
+    def test_empty_when_no_draft(self, user):
+        from assistant.agents.tools import build_receipt_context
+
+        assert build_receipt_context(user) == ""
+
+    def test_includes_store_and_items_for_pending_draft(self, user):
+        from assistant.agents.tools import build_receipt_context
+        from assistant.models import ReceiptDraft
+
+        ReceiptDraft.objects.create(
+            user=user,
+            payload={
+                "store": "Lojas Americanas",
+                "discount": "3.99",
+                "amount_paid": "42.16",
+                "items": [{"description": "Soutien", "line_total": "9.99"}],
+            },
+        )
+        ctx = build_receipt_context(user)
+        assert "Lojas Americanas" in ctx
+        assert "Soutien" in ctx
+        assert "register_receipt" in ctx
+
+    def test_ignores_non_pending_draft(self, user):
+        from assistant.agents.tools import build_receipt_context
+        from assistant.models import ReceiptDraft
+
+        ReceiptDraft.objects.create(
+            user=user, status="registered", payload={"store": "Já gravado"}
+        )
+        assert build_receipt_context(user) == ""
+
+
+@pytest.mark.django_db
+class TestRegisterReceipt:
+    """register_receipt: split multi-categoria com rateio determinístico de desconto."""
+
+    def _add_roupa(self, user):
+        from model_bakery import baker
+
+        baker.make("finances.Category", user=user, name="Roupa")
+
+    def test_splits_categories_and_prorates_discount(self, seeded_user):
+        from django.db.models import Sum
+
+        from assistant.agents.tools import register_receipt
+        from finances.models import Entry
+
+        self._add_roupa(seeded_user)
+        register_receipt(
+            user=seeded_user,
+            date_str="2026-06-12",
+            store="Lojas Americanas",
+            payment_method_name="Crédito C6",
+            items_by_category={
+                "Roupa": ["9.99"],
+                "Lanche": ["9.99", "9.99", "6.19", "9.99"],
+            },
+            discount="3.99",
+        )
+        entries = Entry.objects.filter(user=seeded_user)
+        assert entries.count() == 2
+        # soma das linhas bate EXATAMENTE com o valor pago (46.15 - 3.99)
+        assert entries.aggregate(s=Sum("amount"))["s"] == Decimal("42.16")
+        # desconto rateado proporcionalmente; resíduo de centavo na maior categoria
+        assert entries.get(category__name="Roupa").amount == Decimal("9.13")
+        assert entries.get(category__name="Lanche").amount == Decimal("33.03")
+
+    def test_no_discount_keeps_category_sums(self, seeded_user):
+        from assistant.agents.tools import register_receipt
+        from finances.models import Entry
+
+        self._add_roupa(seeded_user)
+        register_receipt(
+            user=seeded_user,
+            date_str="2026-06-12",
+            store="Loja X",
+            payment_method_name="Crédito C6",
+            items_by_category={"Roupa": ["10.00"], "Lanche": ["5.00", "2.50"]},
+            discount="0",
+        )
+        entries = Entry.objects.filter(user=seeded_user)
+        assert entries.get(category__name="Roupa").amount == Decimal("10.00")
+        assert entries.get(category__name="Lanche").amount == Decimal("7.50")
+
+    def test_unknown_category_creates_nothing(self, seeded_user):
+        from assistant.agents.tools import register_receipt
+        from finances.models import Entry
+
+        msg = register_receipt(
+            user=seeded_user,
+            date_str="2026-06-12",
+            store="Loja X",
+            payment_method_name="Crédito C6",
+            items_by_category={"Inexistente": ["10.00"]},
+            discount="0",
+        )
+        assert "não encontrada" in msg.lower() or "erro" in msg.lower()
+        assert Entry.objects.filter(user=seeded_user).count() == 0
+
+    def test_unknown_payment_method_creates_nothing(self, seeded_user):
+        from assistant.agents.tools import register_receipt
+        from finances.models import Entry
+
+        self._add_roupa(seeded_user)
+        msg = register_receipt(
+            user=seeded_user,
+            date_str="2026-06-12",
+            store="Loja X",
+            payment_method_name="NãoExiste",
+            items_by_category={"Roupa": ["10.00"]},
+            discount="0",
+        )
+        assert "não encontrada" in msg.lower() or "erro" in msg.lower()
+        assert Entry.objects.filter(user=seeded_user).count() == 0

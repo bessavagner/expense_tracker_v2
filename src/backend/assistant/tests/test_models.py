@@ -60,3 +60,30 @@ class TestChatMessage:
             metadata={"agent": "entry", "entry_id": "abc-123"},
         )
         assert msg.metadata["agent"] == "entry"
+
+
+@pytest.mark.django_db
+class TestReceiptDraft:
+    def test_stores_payload_and_defaults_pending(self, user):
+        from assistant.models import ReceiptDraft
+
+        chat = baker.make("assistant.ChatMessage", user=user, role="user")
+        payload = {
+            "store": "Lojas Americanas",
+            "items": [{"description": "Soutien", "line_total": "9.99"}],
+            "amount_paid": "42.16",
+        }
+        draft = ReceiptDraft.objects.create(user=user, chat_message=chat, payload=payload)
+        draft.refresh_from_db()
+        assert draft.status == "pending"
+        assert draft.payload["store"] == "Lojas Americanas"
+        assert draft.payload["items"][0]["line_total"] == "9.99"
+
+    def test_can_be_marked_registered(self, user):
+        from assistant.models import ReceiptDraft
+
+        draft = ReceiptDraft.objects.create(user=user, payload={})
+        draft.status = "registered"
+        draft.save(update_fields=["status"])
+        draft.refresh_from_db()
+        assert draft.status == "registered"

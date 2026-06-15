@@ -128,6 +128,30 @@ class TestChatEndpoint:
             user=user, role="user", content__icontains="foto"
         ).exists()
 
+    def test_image_creates_receipt_draft(self, logged_client, user):
+        """Fase 1: a foto gera um ReceiptDraft persistido com a extração."""
+        from assistant.agents.extraction import extraction_agent
+        from assistant.agents.registrar import registrar_agent
+        from assistant.models import ReceiptDraft
+
+        png = (
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00"
+            b"\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9c"
+            b"c\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+        image = SimpleUploadedFile("recibo.png", png, content_type="image/png")
+        with (
+            extraction_agent.override(model=TestModel()),
+            registrar_agent.override(model=TestModel()),
+        ):
+            response = logged_client.post(
+                "/api/assistant/chat/", data={"image": image}
+            )
+            consume_streaming(response)
+
+        assert response.status_code == 200
+        assert ReceiptDraft.objects.filter(user=user, status="pending").exists()
+
     def test_multipart_rejects_two_files(self, logged_client, user):
         a = SimpleUploadedFile("n.webm", b"\x00", content_type="audio/webm")
         i = SimpleUploadedFile("r.png", b"\x00", content_type="image/png")
@@ -174,6 +198,57 @@ class TestChatEndpoint:
             "/api/assistant/chat/", data={"image": big}
         )
         assert response.status_code == 400
+
+    def test_image_uses_vision_model_setting(
+        self, logged_client, user, monkeypatch, settings
+    ):
+        """A foto deve ser lida com LLM_VISION_MODEL, não com o modelo do registrador."""
+        settings.LLM_VISION_MODEL = "openai:vision-sentinel"
+        captured = {}
+
+        def fake_sse(user_, agent, prompt, *, message_history, user_text=None, model=None):
+            captured["model"] = model
+            from django.http import HttpResponse
+
+            return HttpResponse("ok")
+
+        monkeypatch.setattr("assistant.views._sse_response", fake_sse)
+        png = (
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00"
+            b"\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9c"
+            b"c\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+        image = SimpleUploadedFile("recibo.png", png, content_type="image/png")
+        logged_client.post("/api/assistant/chat/", data={"image": image})
+        assert captured["model"] == "openai:vision-sentinel"
+
+    def test_image_is_preprocessed_before_send(
+        self, logged_client, user, monkeypatch
+    ):
+        """_handle_image deve passar a imagem por prepare_receipt_image."""
+        calls = {}
+
+        def fake_prepare(data, media_type):
+            calls["called"] = True
+            return b"PREPPED", "image/jpeg"
+
+        monkeypatch.setattr("assistant.views.prepare_receipt_image", fake_prepare)
+
+        def fake_sse(user_, agent, prompt, *, message_history, user_text=None, model=None):
+            calls["prompt"] = prompt
+            from django.http import HttpResponse
+
+            return HttpResponse("ok")
+
+        monkeypatch.setattr("assistant.views._sse_response", fake_sse)
+        png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+        image = SimpleUploadedFile("recibo.png", png, content_type="image/png")
+        logged_client.post("/api/assistant/chat/", data={"image": image})
+        assert calls.get("called") is True
+        # o BinaryContent deve carregar os bytes pré-processados
+        binary = calls["prompt"][1]
+        assert binary.data == b"PREPPED"
+        assert binary.media_type == "image/jpeg"
 
 
 @pytest.mark.django_db

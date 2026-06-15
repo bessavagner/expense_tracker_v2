@@ -186,9 +186,15 @@ LLM_TRANSCRIBE_MODEL = os.environ.get("LLM_TRANSCRIBE_MODEL", "gpt-4o-mini-trans
 # Fallback de transcrição: whisper-1 é mais tolerante ao webm/opus de navegador
 # (que o modelo primário às vezes rejeita como "corrupted or unsupported").
 LLM_TRANSCRIBE_FALLBACK_MODEL = os.environ.get("LLM_TRANSCRIBE_FALLBACK_MODEL", "whisper-1")
-# Modelo usado para LER imagem (recibo). Default = modelo leve do registrador;
-# escape hatch caso o modelo leve leia recibo mal.
-LLM_VISION_MODEL = os.environ.get("LLM_VISION_MODEL", LLM_ORCHESTRATOR_MODEL)
+# Modelo usado para LER imagem (recibo). Default = modelo de visão capaz (recibo
+# térmico/girado/baixo contraste vai mal no modelo leve). Herda a mesma
+# LLM_API_KEY OpenAI; override por env para trocar de provider/modelo.
+LLM_VISION_MODEL = os.environ.get("LLM_VISION_MODEL", "openai:gpt-5.4")
+# Abaixo deste nível de confiança (ou se a soma do recibo não fecha), o bot
+# confirma campo a campo antes de gravar, em vez de auto-registrar.
+ASSISTANT_RECEIPT_MIN_CONFIDENCE = float(
+    os.environ.get("ASSISTANT_RECEIPT_MIN_CONFIDENCE", "0.6")
+)
 
 ASSISTANT_MAX_IMAGE_MB = int(os.environ.get("ASSISTANT_MAX_IMAGE_MB", "10"))
 ASSISTANT_MAX_AUDIO_MB = int(os.environ.get("ASSISTANT_MAX_AUDIO_MB", "25"))

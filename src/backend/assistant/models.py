@@ -62,6 +62,52 @@ class MemoryRule(models.Model):
         return f"{self.trigger} → {self.field}={self.value}"
 
 
+class ReceiptDraftStatus(models.TextChoices):
+    PENDING = "pending", "Pendente"
+    REGISTERED = "registered", "Registrado"
+    DISCARDED = "discarded", "Descartado"
+
+
+class ReceiptDraft(models.Model):
+    """Recibo extraído de uma foto, persistido para sobreviver ao turno.
+
+    Guardar a extração estruturada (itens + valores) permite que o turno de
+    correção ("separe as categorias") tenha os dados por item — sem isto o
+    registrador roda cego e não consegue ratear/repartir.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="receipt_drafts",
+    )
+    chat_message = models.ForeignKey(
+        ChatMessage,
+        on_delete=models.CASCADE,
+        related_name="receipt_drafts",
+        null=True,
+        blank=True,
+    )
+    payload = models.JSONField()
+    status = models.CharField(
+        max_length=20,
+        choices=ReceiptDraftStatus.choices,
+        default=ReceiptDraftStatus.PENDING,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "rascunho de recibo"
+        verbose_name_plural = "rascunhos de recibo"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        store = (self.payload or {}).get("store", "?")
+        return f"Recibo {store} ({self.status})"
+
+
 class MemoryEmbedding(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(

@@ -17,6 +17,7 @@ dependencies = [
     "uvicorn[standard]>=0.42",
     "dj-database-url>=2.3",
     "pgvector>=0.4",
+    "pillow>=10",
 ]
 
 [tool.pytest.ini_options]
