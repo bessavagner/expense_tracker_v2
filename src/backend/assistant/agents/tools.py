@@ -1,7 +1,8 @@
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from asgiref.sync import sync_to_async as _sync_to_async
+from django.db import transaction
 from django.db.models import Sum
 
 from assistant.agents.memory import (
@@ -119,6 +120,128 @@ def create_entry(
         f"Entrada criada! {entry.description} — R$ {entry.amount} "
         f"em {category.name} via {payment_method.name} "
         f"(fatura: {entry.billing_month:%m/%Y})"
+    )
+
+
+_CENTS = Decimal("0.01")
+
+
+def _prorate_discount(
+    category_sums: dict[str, Decimal], discount: Decimal
+) -> dict[str, Decimal]:
+    """Rateia ``discount`` entre categorias na proporção de seus subtotais.
+
+    Arredonda cada parcela a 2 casas; o resíduo de centavos vai para a MAIOR
+    categoria, de modo que ``sum(parcelas) == discount`` exatamente.
+    """
+    total = sum(category_sums.values(), Decimal("0"))
+    if discount <= 0 or total <= 0:
+        return {cat: Decimal("0.00") for cat in category_sums}
+
+    # Maior subtotal absorve o resíduo de arredondamento.
+    order = sorted(category_sums, key=lambda c: category_sums[c], reverse=True)
+    largest, rest = order[0], order[1:]
+    allocated: dict[str, Decimal] = {}
+    acc = Decimal("0.00")
+    for cat in rest:
+        share = (discount * category_sums[cat] / total).quantize(
+            _CENTS, rounding=ROUND_HALF_UP
+        )
+        allocated[cat] = share
+        acc += share
+    allocated[largest] = (discount - acc).quantize(_CENTS, rounding=ROUND_HALF_UP)
+    return allocated
+
+
+def register_receipt(
+    user,
+    date_str: str,
+    store: str,
+    payment_method_name: str,
+    items_by_category: dict[str, list[str]],
+    discount: str = "0",
+) -> str:
+    """Registra um recibo em N linhas (uma por categoria), rateando o desconto.
+
+    ``items_by_category`` mapeia o NOME da categoria para a lista de valores
+    (strings decimais) dos itens daquela categoria. O desconto do cupom é
+    rateado proporcionalmente entre as categorias em Python (determinístico), de
+    modo que a soma das linhas registradas bata com o valor pago. Tudo numa
+    transação: se qualquer categoria/forma de pagamento não resolver, nada é
+    gravado.
+    """
+    try:
+        entry_date = date.fromisoformat(date_str)
+    except ValueError:
+        return f"Erro: data inválida '{date_str}'. Use formato AAAA-MM-DD."
+
+    try:
+        discount_val = Decimal(discount)
+    except InvalidOperation:
+        return f"Erro: desconto inválido '{discount}'."
+
+    payment_method, pm_matches = _resolve_by_name(
+        PaymentMethod.objects.filter(user=user, is_active=True), payment_method_name
+    )
+    if payment_method is None:
+        if len(pm_matches) > 1:
+            return (
+                f"Erro: forma de pagamento '{payment_method_name}' é ambígua. "
+                f"Você quis dizer: {', '.join(pm_matches)}?"
+            )
+        available = ", ".join(list_payment_methods(user))
+        return (
+            f"Erro: forma de pagamento '{payment_method_name}' não encontrada. "
+            f"Disponíveis: {available}"
+        )
+
+    # Resolve categorias e soma cada grupo ANTES de criar qualquer entrada.
+    resolved: dict[str, Category] = {}
+    category_sums: dict[str, Decimal] = {}
+    for cat_name, values in items_by_category.items():
+        category, cat_matches = _resolve_by_name(
+            Category.objects.filter(user=user), cat_name
+        )
+        if category is None:
+            if len(cat_matches) > 1:
+                return (
+                    f"Erro: categoria '{cat_name}' é ambígua. "
+                    f"Você quis dizer: {', '.join(cat_matches)}?"
+                )
+            available = ", ".join(list_categories(user))
+            return f"Erro: categoria '{cat_name}' não encontrada. Disponíveis: {available}"
+        try:
+            subtotal = sum((Decimal(v) for v in values), Decimal("0"))
+        except InvalidOperation:
+            return f"Erro: valor inválido em '{cat_name}': {values}."
+        resolved[category.name] = category
+        category_sums[category.name] = subtotal
+
+    if not category_sums:
+        return "Erro: nenhum item para registrar."
+
+    discount_by_cat = _prorate_discount(category_sums, discount_val)
+    safe_store = (store or "Recibo").replace(",", " -").strip()
+
+    created = []
+    with transaction.atomic():
+        for cat_name, category in resolved.items():
+            net = (category_sums[cat_name] - discount_by_cat[cat_name]).quantize(_CENTS)
+            entry = Entry.objects.create(
+                user=user,
+                date=entry_date,
+                amount=net,
+                description=safe_store,
+                category=category,
+                payment_method=payment_method,
+            )
+            created.append((category.name, entry.amount))
+
+    total_paid = sum((amt for _, amt in created), Decimal("0"))
+    lines = "; ".join(f"{name} R$ {amt:.2f}" for name, amt in created)
+    return (
+        f"✅ Registrado de {safe_store} em {entry_date:%d/%m/%Y} via "
+        f"{payment_method.name}: {lines} (total R$ {total_paid:.2f})"
     )
 
 

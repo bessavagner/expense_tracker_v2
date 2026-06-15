@@ -26,6 +26,9 @@ from assistant.agents.tools import (
     update_income,
 )
 from assistant.agents.tools import (
+    register_receipt as _register_receipt,
+)
+from assistant.agents.tools import (
     set_systemic_amount as _set_systemic_amount,
 )
 
@@ -78,6 +81,40 @@ async def register_entry(
         description=description,
         category_name=category_name,
         payment_method_name=payment_method_name,
+    )
+
+
+@registrar_agent.tool
+async def register_receipt(
+    ctx: RunContext[User],
+    date: str,
+    store: str,
+    payment_method_name: str,
+    items_by_category: dict[str, list[str]],
+    discount: str = "0",
+) -> str:
+    """Registra um recibo em N linhas (uma por categoria), rateando o desconto.
+
+    Use isto para FOTOS de cupom com itens de categorias diferentes: o rateio do
+    desconto e a soma são feitos de forma determinística (sem cálculo de cabeça),
+    garantindo que a soma das linhas bata com o valor pago.
+
+    Args:
+        date: Data no formato AAAA-MM-DD
+        store: Nome da loja/estabelecimento
+        payment_method_name: Nome exato da forma de pagamento
+        items_by_category: Mapa categoria -> lista de valores (str decimal) dos
+            itens daquela categoria (ex.: {"Roupa": ["9.99"], "Lanche": ["9.99",
+            "6.19"]})
+        discount: Desconto total do cupom (str decimal); "0" se não houver
+    """
+    return await sync_to_async(_register_receipt)(
+        user=ctx.deps,
+        date_str=date,
+        store=store,
+        payment_method_name=payment_method_name,
+        items_by_category=items_by_category,
+        discount=discount,
     )
 
 
