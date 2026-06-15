@@ -87,34 +87,33 @@ async def register_entry(
 @registrar_agent.tool
 async def register_receipt(
     ctx: RunContext[User],
-    date: str,
-    store: str,
-    payment_method_name: str,
-    items_by_category: dict[str, list[str]],
-    discount: str = "0",
+    items_by_category: dict[str, list[int]],
+    payment_method_name: str = "",
+    summaries: dict[str, str] | None = None,
 ) -> str:
-    """Registra um recibo em N linhas (uma por categoria), rateando o desconto.
+    """Registra o recibo de FOTO pendente em N linhas (uma por categoria).
 
-    Use isto para FOTOS de cupom com itens de categorias diferentes: o rateio do
-    desconto e a soma são feitos de forma determinística (sem cálculo de cabeça),
-    garantindo que a soma das linhas bata com o valor pago.
+    Use para cupom de foto: loja, data, desconto e VALORES dos itens vêm do
+    recibo já lido (não redigite valores). Você só atribui cada item à sua
+    categoria, por ÍNDICE. A soma e o rateio do desconto são determinísticos.
 
     Args:
-        date: Data no formato AAAA-MM-DD
-        store: Nome da loja/estabelecimento
-        payment_method_name: Nome exato da forma de pagamento
-        items_by_category: Mapa categoria -> lista de valores (str decimal) dos
-            itens daquela categoria (ex.: {"Roupa": ["9.99"], "Lanche": ["9.99",
-            "6.19"]})
-        discount: Desconto total do cupom (str decimal); "0" se não houver
+        items_by_category: Mapa categoria -> lista de ÍNDICES (0-based, na ordem
+            do recibo) dos itens daquela categoria. Cada índice deve aparecer em
+            EXATAMENTE uma categoria (ex.: {"Alimentação": [0,1,4], "Lanche":
+            [2], "Pets": [3]}).
+        payment_method_name: Forma de pagamento (ex.: "Crédito Santander").
+            Vazio usa o que foi lido no cupom; se o cupom só disser "Cartão
+            Crédito" e houver vários cartões, pergunte ao usuário qual antes.
+        summaries: Mapa categoria -> resumo curto do conteúdo (ex.:
+            {"Alimentação": "grãos, legumes e verduras, laticínios"}). Vira a
+            descrição "<loja> - <resumo>".
     """
     return await sync_to_async(_register_receipt)(
         user=ctx.deps,
-        date_str=date,
-        store=store,
-        payment_method_name=payment_method_name,
         items_by_category=items_by_category,
-        discount=discount,
+        payment_method_name=payment_method_name,
+        summaries=summaries,
     )
 
 
