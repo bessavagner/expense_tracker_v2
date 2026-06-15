@@ -82,10 +82,15 @@ _database_url = os.environ.get("DATABASE_URL")
 if _database_url:
     DATABASES = {"default": dj_database_url.parse(_database_url)}
     # O pooler de runtime da Supabase (porta 6543) é pgbouncer em transaction
-    # mode. psycopg3 auto-prepara statements (prepare_threshold=5); como o pooler
-    # troca o backend Postgres a cada transação, o prepared statement "some" e
-    # gera erros intermitentes sob concorrência (várias abas do cockpit em
-    # paralelo). Desligar prepared statements resolve.
+    # mode, que roteia cada transação para um backend Postgres diferente.
+    # 1) Server-side cursors (cursores nomeados, usados ao iterar querysets —
+    #    ex.: os ModelChoiceField do form do cockpit) somem quando a próxima
+    #    transação cai em outro backend: "InvalidCursorName: cursor ... does not
+    #    exist" (500 intermitente sob concorrência). Django manda desligá-los
+    #    em transaction pooling.
+    DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
+    # 2) psycopg3 auto-prepara statements; pelo mesmo motivo eles "somem" entre
+    #    backends. Desligar prepared statements evita a variante desse erro.
     DATABASES["default"].setdefault("OPTIONS", {})["prepare_threshold"] = None
 else:
     DATABASES = {
