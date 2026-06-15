@@ -155,6 +155,9 @@ ASSISTANT_DELEGATION_REQUEST_LIMIT = int(
 
 # Multimodal (áudio + foto). Transcrição via API da OpenAI; sem chaves novas.
 LLM_TRANSCRIBE_MODEL = os.environ.get("LLM_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe")
+# Fallback de transcrição: whisper-1 é mais tolerante ao webm/opus de navegador
+# (que o modelo primário às vezes rejeita como "corrupted or unsupported").
+LLM_TRANSCRIBE_FALLBACK_MODEL = os.environ.get("LLM_TRANSCRIBE_FALLBACK_MODEL", "whisper-1")
 # Modelo usado para LER imagem (recibo). Default = modelo leve do registrador;
 # escape hatch caso o modelo leve leia recibo mal.
 LLM_VISION_MODEL = os.environ.get("LLM_VISION_MODEL", LLM_ORCHESTRATOR_MODEL)

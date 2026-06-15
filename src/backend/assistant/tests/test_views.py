@@ -143,6 +143,30 @@ class TestChatEndpoint:
         )
         assert response.status_code == 400
 
+    def test_multipart_accepts_audio_with_codecs_param(
+        self, logged_client, user, monkeypatch
+    ):
+        """MediaRecorder envia content_type 'audio/webm;codecs=opus' — o
+        parâmetro de codec não pode fazer a validação rejeitar (era 400 →
+        'Erro de conexão' no widget)."""
+
+        async def fake_transcribe(data, filename, content_type, *, client=None):
+            return "mercado 80 no pix"
+
+        monkeypatch.setattr("assistant.views.transcribe_audio", fake_transcribe)
+
+        audio = SimpleUploadedFile(
+            "nota.webm", b"\x00\x01\x02", content_type="audio/webm;codecs=opus"
+        )
+        with agents_override(TestModel()):
+            response = logged_client.post(
+                "/api/assistant/chat/", data={"audio": audio}
+            )
+            consume_streaming(response)
+
+        assert response.status_code == 200
+        assert response["Content-Type"] == "text/event-stream"
+
     def test_multipart_rejects_oversized_image(self, logged_client, user, settings):
         settings.ASSISTANT_MAX_IMAGE_MB = 0  # tudo é grande demais
         big = SimpleUploadedFile("r.png", b"\x00" * 1024, content_type="image/png")

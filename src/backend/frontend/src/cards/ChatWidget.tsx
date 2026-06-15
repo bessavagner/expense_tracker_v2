@@ -11,6 +11,24 @@ interface Props {
   apiUrl: string;
 }
 
+const GENERIC_ERROR = "Erro de conexão. Tente novamente.";
+
+/** Lê a mensagem de erro do corpo JSON ({error}) de uma resposta não-OK. */
+async function serverError(response: Response): Promise<string> {
+  try {
+    const data = await response.json();
+    if (data && typeof data.error === "string" && data.error) return data.error;
+  } catch {
+    // corpo não-JSON (ex.: queda de rede) → mensagem genérica
+  }
+  return GENERIC_ERROR;
+}
+
+/** Texto a exibir a partir de um erro capturado (mensagem do servidor ou genérica). */
+function errorText(err: unknown): string {
+  return err instanceof Error && err.message ? err.message : GENERIC_ERROR;
+}
+
 export default function ChatWidget({ apiUrl }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -77,7 +95,7 @@ export default function ChatWidget({ apiUrl }: Props) {
         body: JSON.stringify({ message: userMsg.content }),
       });
 
-      if (!response.ok || !response.body) throw new Error("Request failed");
+      if (!response.ok || !response.body) throw new Error(await serverError(response));
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -117,12 +135,10 @@ export default function ChatWidget({ apiUrl }: Props) {
           }
         }
       }
-    } catch {
+    } catch (err) {
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === assistantId
-            ? { ...m, content: "Erro de conexão. Tente novamente." }
-            : m,
+          m.id === assistantId ? { ...m, content: errorText(err) } : m,
         ),
       );
     } finally {
@@ -135,7 +151,7 @@ export default function ChatWidget({ apiUrl }: Props) {
     assistantId: string,
     userPlaceholderId: string,
   ) => {
-    if (!response.ok || !response.body) throw new Error("Request failed");
+    if (!response.ok || !response.body) throw new Error(await serverError(response));
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -199,12 +215,10 @@ export default function ChatWidget({ apiUrl }: Props) {
         body: form,
       });
       await streamFromResponse(response, assistantId, userId);
-    } catch {
+    } catch (err) {
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === assistantId
-            ? { ...m, content: "Erro de conexão. Tente novamente." }
-            : m,
+          m.id === assistantId ? { ...m, content: errorText(err) } : m,
         ),
       );
     } finally {

@@ -1,4 +1,5 @@
 import json
+import logging
 
 from django.conf import settings
 from django.http import JsonResponse, StreamingHttpResponse
@@ -9,6 +10,8 @@ from assistant.agents.orchestrator import assistant_agent
 from assistant.agents.registrar import registrar_agent
 from assistant.models import ChatMessage, MessageRole
 from assistant.services.transcription import transcribe_audio
+
+logger = logging.getLogger(__name__)
 
 
 def _check_auth(request):
@@ -163,6 +166,11 @@ async def _handle_audio(request, user, audio, caption):
     try:
         text = await transcribe_audio(data, audio.name, audio.content_type)
     except Exception:
+        logger.exception(
+            "Falha ao transcrever áudio (content_type=%s, %d bytes)",
+            audio.content_type,
+            len(data),
+        )
         return JsonResponse(
             {"error": "Não consegui transcrever o áudio. Tente novamente."},
             status=502,
