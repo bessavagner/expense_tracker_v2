@@ -74,3 +74,28 @@ async def extract_receipt(data: bytes, media_type: str) -> ReceiptExtraction:
         [EXTRACTION_INSTRUCTION, BinaryContent(data=data, media_type=media_type)]
     )
     return result.output
+
+
+def extraction_to_prompt(ext: ReceiptExtraction, caption: str = "") -> str:
+    """Monta o prompt (fase 2) para o registrador a partir da extração.
+
+    Entrega os itens já lidos como TEXTO, para o bookkeeping rodar no modelo
+    leve (a visão já foi usada na fase 1). Instrui o uso de ``register_receipt``.
+    """
+    item_lines = [f"- {it.description} | R$ {it.line_total}" for it in ext.items]
+    parts = [
+        "Recibo lido da foto (dados já extraídos abaixo). Mapeie cada item à "
+        "categoria correta (regras-legado) e use a ferramenta register_receipt "
+        "para gravar em UMA linha por categoria, rateando o desconto. Mostre a "
+        "tabela item → categoria → valor e confirme.",
+        f"Loja: {ext.store or '?'}",
+        f"Data: {ext.date or '?'}",
+        f"Forma de pagamento (sugestão): {ext.payment_hint or '?'}",
+        f"Desconto: {ext.discount}",
+        f"Valor pago: {ext.amount_paid}",
+        "Itens:",
+        *item_lines,
+    ]
+    if caption:
+        parts.append(f"Observação do usuário: {caption}")
+    return "\n".join(parts)

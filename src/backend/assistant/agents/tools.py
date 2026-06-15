@@ -11,7 +11,7 @@ from assistant.agents.memory import (
     find_matching_rules,
     find_semantic_matches,
 )
-from assistant.models import MemoryRule, MemorySource
+from assistant.models import MemoryRule, MemorySource, ReceiptDraft, ReceiptDraftStatus
 from assistant.services.embedding import get_embedding
 from finances.models import (
     Category,
@@ -242,6 +242,34 @@ def register_receipt(
     return (
         f"✅ Registrado de {safe_store} em {entry_date:%d/%m/%Y} via "
         f"{payment_method.name}: {lines} (total R$ {total_paid:.2f})"
+    )
+
+
+def build_receipt_context(user) -> str:
+    """Bloco de contexto do recibo pendente mais recente do usuário (ou "").
+
+    Usado na delegação orquestrador→registrador para que o turno de correção
+    ("separe as categorias") tenha os itens já lidos da foto — sem isto o
+    registrador roda cego e não consegue ratear.
+    """
+    draft = (
+        ReceiptDraft.objects.filter(user=user, status=ReceiptDraftStatus.PENDING)
+        .order_by("-created_at")
+        .first()
+    )
+    if draft is None:
+        return ""
+    payload = draft.payload or {}
+    items = payload.get("items", [])
+    item_lines = "; ".join(
+        f"{i.get('description', '?')} R$ {i.get('line_total', '?')}" for i in items
+    )
+    return (
+        "Contexto de recibo pendente (extraído de foto recente): "
+        f"loja={payload.get('store', '?')}, data={payload.get('date', '?')}, "
+        f"desconto={payload.get('discount', '0')}, "
+        f"valor_pago={payload.get('amount_paid', '?')}, "
+        f"itens=[{item_lines}]. Use register_receipt para gravar por categoria."
     )
 
 

@@ -6,9 +6,10 @@ from django.http import JsonResponse, StreamingHttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
+from assistant.agents.extraction import extract_receipt, extraction_to_prompt
 from assistant.agents.orchestrator import assistant_agent
 from assistant.agents.registrar import registrar_agent
-from assistant.models import ChatMessage, MessageRole
+from assistant.models import ChatMessage, MessageRole, ReceiptDraft
 from assistant.services.image_prep import prepare_receipt_image
 from assistant.services.transcription import transcribe_audio
 
@@ -243,21 +244,48 @@ async def _handle_image(request, user, image, caption):
 
     data = image.read()
     data, media_type = prepare_receipt_image(data, image.content_type)
+
+    user_label = f"📷 [foto] {caption}".strip() if caption else "📷 [foto enviada]"
+    chat_msg = await ChatMessage.objects.acreate(
+        user=user, role=MessageRole.USER, content=user_label
+    )
+
+    # Fase 1: extração estruturada com o modelo de visão. Em caso de falha,
+    # cai no fluxo de turno único (manda a imagem direto ao registrador).
+    extraction = None
+    try:
+        extraction = await extract_receipt(data, media_type)
+    except Exception:
+        logger.exception(
+            "Falha na extração estruturada do recibo; fallback para leitura direta."
+        )
+
+    if extraction is not None:
+        # Persiste o recibo para sobreviver ao turno (correções têm os itens).
+        await ReceiptDraft.objects.acreate(
+            user=user,
+            chat_message=chat_msg,
+            payload=extraction.model_dump(mode="json"),
+        )
+        # Fase 2: bookkeeping no modelo leve — a visão já foi usada na fase 1.
+        prompt = extraction_to_prompt(extraction, caption)
+        return _sse_response(
+            user,
+            registrar_agent,
+            prompt,
+            message_history=None,
+            user_text=user_label,
+        )
+
+    # Fallback (extração indisponível): manda a foto ao registrador com o
+    # modelo de visão, como no fluxo anterior.
     instruction = (
         "Esta é a foto de um recibo/cupom. Extraia os lançamentos seguindo as "
         "regras e confirme um resumo antes de gravar."
     )
     if caption:
         instruction += f" Observação do usuário: {caption}"
-
-    user_label = f"📷 [foto] {caption}".strip() if caption else "📷 [foto enviada]"
-    await ChatMessage.objects.acreate(
-        user=user, role=MessageRole.USER, content=user_label
-    )
-
     prompt = [instruction, BinaryContent(data=data, media_type=media_type)]
-    # Registro a partir de foto é pontual: sem histórico de conversa. O recibo é
-    # lido com o modelo de visão (LLM_VISION_MODEL), não com o modelo leve.
     return _sse_response(
         user,
         registrar_agent,

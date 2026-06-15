@@ -128,6 +128,30 @@ class TestChatEndpoint:
             user=user, role="user", content__icontains="foto"
         ).exists()
 
+    def test_image_creates_receipt_draft(self, logged_client, user):
+        """Fase 1: a foto gera um ReceiptDraft persistido com a extração."""
+        from assistant.agents.extraction import extraction_agent
+        from assistant.agents.registrar import registrar_agent
+        from assistant.models import ReceiptDraft
+
+        png = (
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00"
+            b"\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9c"
+            b"c\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+        image = SimpleUploadedFile("recibo.png", png, content_type="image/png")
+        with (
+            extraction_agent.override(model=TestModel()),
+            registrar_agent.override(model=TestModel()),
+        ):
+            response = logged_client.post(
+                "/api/assistant/chat/", data={"image": image}
+            )
+            consume_streaming(response)
+
+        assert response.status_code == 200
+        assert ReceiptDraft.objects.filter(user=user, status="pending").exists()
+
     def test_multipart_rejects_two_files(self, logged_client, user):
         a = SimpleUploadedFile("n.webm", b"\x00", content_type="audio/webm")
         i = SimpleUploadedFile("r.png", b"\x00", content_type="image/png")

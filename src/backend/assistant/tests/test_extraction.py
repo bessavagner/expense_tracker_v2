@@ -8,6 +8,7 @@ from assistant.agents.extraction import (
     ReceiptItem,
     extract_receipt,
     extraction_agent,
+    extraction_to_prompt,
     receipt_is_consistent,
 )
 
@@ -52,6 +53,15 @@ def test_consistent_false_when_mismatch():
 def test_consistent_within_small_tolerance():
     ext = _extraction([("a", "10.00")], discount="0", amount_paid="10.03")
     assert receipt_is_consistent(ext) is True  # 0.03 <= 0.05
+
+
+def test_extraction_to_prompt_lists_items_and_tool():
+    ext = _extraction([("Soutien", "9.99"), ("Lays", "9.99")], discount="0")
+    prompt = extraction_to_prompt(ext, caption="paguei no c6")
+    assert "Soutien" in prompt and "Lays" in prompt
+    assert "register_receipt" in prompt
+    assert "Loja X" in prompt
+    assert "paguei no c6" in prompt
 
 
 @pytest.mark.anyio

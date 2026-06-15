@@ -488,6 +488,43 @@ class TestSystemicTools:
 
 
 @pytest.mark.django_db
+class TestReceiptContext:
+    """build_receipt_context: anexa o recibo pendente à delegação."""
+
+    def test_empty_when_no_draft(self, user):
+        from assistant.agents.tools import build_receipt_context
+
+        assert build_receipt_context(user) == ""
+
+    def test_includes_store_and_items_for_pending_draft(self, user):
+        from assistant.agents.tools import build_receipt_context
+        from assistant.models import ReceiptDraft
+
+        ReceiptDraft.objects.create(
+            user=user,
+            payload={
+                "store": "Lojas Americanas",
+                "discount": "3.99",
+                "amount_paid": "42.16",
+                "items": [{"description": "Soutien", "line_total": "9.99"}],
+            },
+        )
+        ctx = build_receipt_context(user)
+        assert "Lojas Americanas" in ctx
+        assert "Soutien" in ctx
+        assert "register_receipt" in ctx
+
+    def test_ignores_non_pending_draft(self, user):
+        from assistant.agents.tools import build_receipt_context
+        from assistant.models import ReceiptDraft
+
+        ReceiptDraft.objects.create(
+            user=user, status="registered", payload={"store": "Já gravado"}
+        )
+        assert build_receipt_context(user) == ""
+
+
+@pytest.mark.django_db
 class TestRegisterReceipt:
     """register_receipt: split multi-categoria com rateio determinístico de desconto."""
 
