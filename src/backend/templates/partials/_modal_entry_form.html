@@ -27,19 +27,48 @@
 
     <!-- Installment form -->
     <form x-show="mode === 'installment'"
+          x-data="{
+            manual: false,
+            lastHint: '',
+            recalc() {
+              const t = this.$refs.form.querySelector('[name=total_amount]');
+              const n = this.$refs.form.querySelector('[name=num_installments]');
+              const p = this.$refs.form.querySelector('[name=installment_amount]');
+              if (!t || !n || !p) return;
+              const tv = parseFloat(t.value), nv = parseInt(n.value, 10);
+              if (!(tv > 0) || !(nv > 0)) { this.lastHint = ''; return; }
+              const parcela = Math.floor((tv / nv) * 100) / 100;
+              if (!this.manual) p.value = parcela.toFixed(2);
+              const usado = parseFloat(p.value);
+              const ultima = tv - usado * (nv - 1);
+              this.lastHint = (Math.abs(ultima - usado) > 0.005)
+                ? `Última parcela: R$ ${ultima.toFixed(2)} (ajuste de arredondamento)`
+                : '';
+            }
+          }"
+          x-init="$nextTick(() => {
+            const p = $refs.form.querySelector('[name=installment_amount]');
+            if (p) p.addEventListener('input', () => { manual = p.value.trim() !== ''; recalc(); });
+          })"
           hx-post="{% url 'finances:entry_modal' %}"
           hx-target="#entry-modal-content"
           hx-swap="innerHTML"
+          x-ref="form"
           class="space-y-3">
         {% csrf_token %}
         <input type="hidden" name="entry_mode" value="installment">
         {% for field in installment_form %}
         <div class="form-control">
             <label class="label"><span class="label-text">{{ field.label }}</span></label>
+            {% if field.name == 'total_amount' or field.name == 'num_installments' %}
+            <div @input="recalc()">{{ field }}</div>
+            {% else %}
             {{ field }}
+            {% endif %}
             {% if field.errors %}<span class="text-error text-sm">{{ field.errors.0 }}</span>{% endif %}
         </div>
         {% endfor %}
+        <p class="text-xs opacity-70" x-show="lastHint" x-text="lastHint"></p>
         <button type="submit" class="btn btn-accent w-full">Criar Parcelamento</button>
     </form>
 </div>
