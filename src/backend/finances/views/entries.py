@@ -228,7 +228,8 @@ class EntryModalView(HtmxLoginRequiredMixin, View):
                                 f"Parcelamento criado com {plan.num_installments} parcelas!"
                             ),
                             "type": "success",
-                        }
+                        },
+                        "entry-saved": True,
                     }
                 )
                 response["HX-Trigger"] = trigger
@@ -241,7 +242,8 @@ class EntryModalView(HtmxLoginRequiredMixin, View):
                 entry.save()
                 response = HttpResponse("")
                 response["HX-Trigger"] = (
-                    '{"showToast": {"message": "Entrada criada!", "type": "success"}}'
+                    '{"showToast": {"message": "Entrada criada!", "type": "success"},'
+                    ' "entry-saved": true}'
                 )
                 return response
 
