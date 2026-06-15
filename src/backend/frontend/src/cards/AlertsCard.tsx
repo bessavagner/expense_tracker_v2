@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import { fetchApi } from "../api";
+import { useState } from "react";
 import type { AlertData } from "../types";
+import { useApiData } from "../useApiData";
 
 interface Props {
   apiUrl: string;
@@ -24,12 +24,8 @@ const SEVERITY_RANK: Record<string, number> = {
 const LIMIT = 5;
 
 export default function AlertsCard({ apiUrl }: Props) {
-  const [data, setData] = useState<AlertData[] | null>(null);
+  const data = useApiData<AlertData[]>(apiUrl);
   const [expanded, setExpanded] = useState(false);
-
-  useEffect(() => {
-    fetchApi<AlertData[]>(apiUrl).then(setData);
-  }, [apiUrl]);
 
   if (!data)
     return (

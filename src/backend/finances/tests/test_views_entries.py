@@ -304,3 +304,26 @@ class TestModalEntryForm:
 
         assert InstallmentPlan.objects.filter(user=user).count() == 1
         assert Entry.objects.filter(user=user, entry_type="installment").count() == 3
+        assert "entry-saved" in response.headers.get("HX-Trigger", "")
+
+    def test_create_regular_via_modal_closes_modal(self, logged_client, user):
+        category = baker.make("finances.Category", user=user)
+        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+        response = logged_client.post(
+            "/entries/modal/",
+            data={
+                "entry_mode": "regular",
+                "date": "2026-03-15",
+                "amount": "50.00",
+                "description": "Almoço",
+                "category": str(category.id),
+                "payment_method": str(pm.id),
+            },
+            HTTP_HX_REQUEST="true",
+        )
+        assert response.status_code == 200
+        from finances.models import Entry
+
+        assert Entry.objects.filter(user=user, description="Almoço").count() == 1
+        # HX-Trigger must include entry-saved so base.html closes the modal.
+        assert "entry-saved" in response.headers.get("HX-Trigger", "")

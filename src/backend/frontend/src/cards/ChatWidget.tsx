@@ -13,6 +13,20 @@ interface Props {
 
 const GENERIC_ERROR = "Erro de conexão. Tente novamente.";
 
+// Modo "fixado à direita" com resize mútuo (item #2).
+const CHAT_PINNED_KEY = "chat_pinned";
+const CHAT_WIDTH_KEY = "chat_width";
+const MD_BREAKPOINT = 768; // abaixo disto: sempre flutuante
+const MIN_PANEL_PX = 320;
+const MAX_PANEL_FRAC = 0.6; // no máximo 60% da largura da janela
+const DEFAULT_PANEL_PX = 420;
+
+/** Largura do painel, presa entre o mínimo e 60% da janela. */
+function clampPanelWidth(px: number): number {
+  const max = Math.max(MIN_PANEL_PX, Math.floor(window.innerWidth * MAX_PANEL_FRAC));
+  return Math.min(Math.max(px, MIN_PANEL_PX), max);
+}
+
 /** Lê a mensagem de erro do corpo JSON ({error}) de uma resposta não-OK. */
 async function serverError(response: Response): Promise<string> {
   try {
@@ -29,6 +43,97 @@ function errorText(err: unknown): string {
   return err instanceof Error && err.message ? err.message : GENERIC_ERROR;
 }
 
+/** Avisa a página que dados financeiros mudaram, para cards/HTMX recarregarem. */
+function notifyDataChanged() {
+  window.dispatchEvent(new CustomEvent("data-changed"));
+}
+
+/** Clipe de papel (anexar). */
+const PaperclipIcon = () => (
+  <svg
+    className="w-5 h-5"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+  >
+    <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+  </svg>
+);
+
+/** Microfone (gravar áudio). */
+const MicIcon = () => (
+  <svg
+    className="w-5 h-5"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+  >
+    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+    <line x1="12" y1="19" x2="12" y2="22" />
+  </svg>
+);
+
+/** Câmera (tirar foto). */
+const CameraIcon = () => (
+  <svg
+    className="w-4 h-4"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+  >
+    <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+    <circle cx="12" cy="13" r="3" />
+  </svg>
+);
+
+/** Painel à direita (fixar/desfixar o chat na lateral). */
+const DockIcon = ({ active }: { active: boolean }) => (
+  <svg
+    className="w-4 h-4"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+  >
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <line x1="15" y1="3" x2="15" y2="21" />
+    {active && <rect x="15" y="3" width="6" height="18" fill="currentColor" stroke="none" />}
+  </svg>
+);
+
+/** Documento/arquivo (escolher da galeria). */
+const FileIcon = () => (
+  <svg
+    className="w-4 h-4"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+  >
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <path d="M14 2v6h6" />
+  </svg>
+);
+
 export default function ChatWidget({ apiUrl }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -43,6 +148,18 @@ export default function ChatWidget({ apiUrl }: Props) {
   const chunksRef = useRef<Blob[]>([]);
   const recTimerRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const attachMenuRef = useRef<HTMLDivElement>(null);
+
+  // Pin/resize (item #2)
+  const [isPinned, setIsPinned] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_PX);
+  const [isWide, setIsWide] = useState(true);
+  const [isResizing, setIsResizing] = useState(false);
+  // Só "encaixa" de fato quando aberto, fixado e em tela larga.
+  const docked = isOpen && isPinned && isWide;
+
   const canRecord =
     typeof navigator !== "undefined" &&
     !!navigator.mediaDevices &&
@@ -63,6 +180,89 @@ export default function ChatWidget({ apiUrl }: Props) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Estado inicial de pin/largura + acompanha o breakpoint md.
+  useEffect(() => {
+    try {
+      setIsPinned(localStorage.getItem(CHAT_PINNED_KEY) === "true");
+      const w = parseInt(localStorage.getItem(CHAT_WIDTH_KEY) || "", 10);
+      if (!Number.isNaN(w)) setPanelWidth(clampPanelWidth(w));
+    } catch {
+      // localStorage indisponível → mantém padrões
+    }
+    const mq = window.matchMedia(`(min-width: ${MD_BREAKPOINT}px)`);
+    const onChange = () => setIsWide(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  // Encaixe: empurra o conteúdo principal abrindo espaço para o painel.
+  useEffect(() => {
+    const container = document.querySelector<HTMLElement>(".drawer-content");
+    if (!container) return;
+    if (docked) {
+      container.style.paddingRight = `${panelWidth}px`;
+    } else {
+      container.style.paddingRight = "";
+    }
+    return () => {
+      container.style.paddingRight = "";
+    };
+  }, [docked, panelWidth]);
+
+  // Arrastar a alça de redimensionamento (resize mútuo).
+  useEffect(() => {
+    if (!isResizing) return;
+    const onMove = (e: MouseEvent) => {
+      setPanelWidth(clampPanelWidth(window.innerWidth - e.clientX));
+    };
+    const onUp = () => {
+      setIsResizing(false);
+      setPanelWidth((w) => {
+        try {
+          localStorage.setItem(CHAT_WIDTH_KEY, String(w));
+        } catch {
+          // ignore
+        }
+        return w;
+      });
+    };
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    return () => {
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+  }, [isResizing]);
+
+  const togglePin = () => {
+    setIsPinned((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(CHAT_PINNED_KEY, String(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+
+  // Fecha o menu de anexo ao clicar fora
+  useEffect(() => {
+    if (!attachMenuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (!attachMenuRef.current?.contains(e.target as Node)) {
+        setAttachMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [attachMenuOpen]);
 
   const sendMessage = async (overrideMessage?: string) => {
     const text = overrideMessage ?? input;
@@ -129,6 +329,8 @@ export default function ChatWidget({ apiUrl }: Props) {
                     : m,
                 ),
               );
+            } else if (event.type === "done") {
+              if (event.data_changed) notifyDataChanged();
             }
           } catch {
             // Skip unparseable lines
@@ -189,6 +391,8 @@ export default function ChatWidget({ apiUrl }: Props) {
                   : m,
               ),
             );
+          } else if (event.type === "done") {
+            if (event.data_changed) notifyDataChanged();
           }
         } catch {
           // skip
@@ -322,13 +526,26 @@ export default function ChatWidget({ apiUrl }: Props) {
     <div className="flex items-center justify-between p-3 bg-neutral text-neutral-content shrink-0">
       <span className="font-bold text-sm">🤖 Assistente</span>
       <div className="flex gap-1">
-        <button
-          onClick={() => setIsMinimized(!isMinimized)}
-          className="btn btn-ghost btn-xs text-neutral-content"
-          title={isMinimized ? "Expandir" : "Minimizar"}
-        >
-          {isMinimized ? "▲" : "▼"}
-        </button>
+        {isWide && (
+          <button
+            onClick={togglePin}
+            className="btn btn-ghost btn-xs text-neutral-content"
+            title={isPinned ? "Desafixar (flutuante)" : "Fixar à direita"}
+            aria-label={isPinned ? "Desafixar chat" : "Fixar chat à direita"}
+            aria-pressed={isPinned}
+          >
+            <DockIcon active={isPinned} />
+          </button>
+        )}
+        {!docked && (
+          <button
+            onClick={() => setIsMinimized(!isMinimized)}
+            className="btn btn-ghost btn-xs text-neutral-content"
+            title={isMinimized ? "Expandir" : "Minimizar"}
+          >
+            {isMinimized ? "▲" : "▼"}
+          </button>
+        )}
         <button
           onClick={handleClose}
           className="btn btn-ghost btn-xs text-neutral-content"
@@ -387,8 +604,17 @@ export default function ChatWidget({ apiUrl }: Props) {
 
   const chatInput = (
     <div className="p-3 border-t border-base-300 shrink-0">
+      {/* Galeria/arquivo: sem capture, deixa o usuário escolher um arquivo existente */}
       <input
         ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleImagePick}
+      />
+      {/* Câmera: capture força a câmera no mobile */}
+      <input
+        ref={cameraInputRef}
         type="file"
         accept="image/*"
         capture="environment"
@@ -418,22 +644,55 @@ export default function ChatWidget({ apiUrl }: Props) {
         </div>
       ) : (
         <div className="flex gap-1 items-center">
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="btn btn-sm btn-ghost btn-square"
-            disabled={isStreaming}
-            title="Enviar foto"
-          >
-            📷
-          </button>
+          {/* Clipe de papel: abre menu com "Arquivo" ou "Câmera" */}
+          <div className="relative" ref={attachMenuRef}>
+            <button
+              onClick={() => setAttachMenuOpen((v) => !v)}
+              className="btn btn-sm btn-ghost btn-square"
+              disabled={isStreaming}
+              title="Anexar"
+              aria-label="Anexar arquivo ou foto"
+              aria-haspopup="menu"
+              aria-expanded={attachMenuOpen}
+            >
+              <PaperclipIcon />
+            </button>
+            {attachMenuOpen && (
+              <ul className="menu menu-sm absolute bottom-full left-0 mb-1 z-10 w-40 rounded-box bg-base-100 border border-base-300 shadow-lg p-1">
+                <li>
+                  <button
+                    onClick={() => {
+                      setAttachMenuOpen(false);
+                      fileInputRef.current?.click();
+                    }}
+                  >
+                    <FileIcon />
+                    Arquivo
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => {
+                      setAttachMenuOpen(false);
+                      cameraInputRef.current?.click();
+                    }}
+                  >
+                    <CameraIcon />
+                    Câmera
+                  </button>
+                </li>
+              </ul>
+            )}
+          </div>
           {canRecord && (
             <button
               onClick={startRecording}
               className="btn btn-sm btn-ghost btn-square"
               disabled={isStreaming}
               title="Gravar áudio"
+              aria-label="Gravar áudio"
             >
-              🎤
+              <MicIcon />
             </button>
           )}
           <input
@@ -458,9 +717,31 @@ export default function ChatWidget({ apiUrl }: Props) {
   );
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 w-96 max-w-[calc(100vw-2rem)] h-[32rem] max-h-[calc(100vh-6rem)] flex flex-col bg-base-100 border border-base-300 rounded-lg shadow-xl">
+    <div
+      className={
+        docked
+          ? "fixed top-0 right-0 h-screen z-50 flex flex-col bg-base-100 border-l border-base-300 shadow-xl"
+          : `fixed bottom-6 right-6 z-50 max-w-[calc(100vw-2rem)] flex flex-col bg-base-100 border border-base-300 rounded-lg shadow-xl ${
+              isMinimized ? "w-64 h-auto" : "w-96 h-[32rem] max-h-[calc(100vh-6rem)]"
+            }`
+      }
+      style={docked ? { width: `${panelWidth}px` } : undefined}
+    >
+      {docked && (
+        <div
+          onMouseDown={(e) => {
+            e.preventDefault();
+            setIsResizing(true);
+          }}
+          className="absolute left-0 top-0 h-full w-1.5 -ml-0.5 cursor-col-resize hover:bg-accent/40 active:bg-accent/60 z-10"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Redimensionar painel do chat"
+          title="Arraste para redimensionar"
+        />
+      )}
       {chatHeader}
-      {!isMinimized && (
+      {(!isMinimized || docked) && (
         <>
           {chatMessages}
           {quickReplies}

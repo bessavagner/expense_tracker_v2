@@ -13,6 +13,34 @@ from assistant.services.transcription import transcribe_audio
 
 logger = logging.getLogger(__name__)
 
+# Ferramentas que ESCREVEM dados financeiros. Cobrem os dois caminhos: o
+# orquestrador delega escrita via ``delegate_registro``; o registrador (usado
+# direto no fluxo de imagem) chama as ferramentas concretas. Detectar qualquer
+# uma sinaliza ao front que a tela deve recarregar (item #5).
+MUTATING_TOOLS = frozenset(
+    {
+        "delegate_registro",
+        "register_entry",
+        "add_category",
+        "set_category_budget",
+        "add_payment_method",
+        "set_income",
+        "set_systemic_amount",
+    }
+)
+
+
+def _run_mutated_data(messages) -> bool:
+    """True se alguma ferramenta de escrita foi chamada nas mensagens do run."""
+    for msg in messages:
+        for part in getattr(msg, "parts", []):
+            if (
+                getattr(part, "part_kind", None) == "tool-call"
+                and getattr(part, "tool_name", None) in MUTATING_TOOLS
+            ):
+                return True
+    return False
+
 
 def _check_auth(request):
     """Return error response if not authenticated, None if OK."""
@@ -63,6 +91,7 @@ def _sse_response(user, agent, prompt, *, message_history, user_text=None):
             yield json.dumps({"type": "user_text", "content": user_text}, ensure_ascii=False) + "\n"
 
         full_response = ""
+        data_changed = False
         try:
             async with agent.run_stream(
                 prompt, deps=user, message_history=message_history
@@ -70,6 +99,10 @@ def _sse_response(user, agent, prompt, *, message_history, user_text=None):
                 async for text in stream.stream_text(delta=True):
                     full_response += text
                     yield json.dumps({"type": "token", "content": text}, ensure_ascii=False) + "\n"
+                try:
+                    data_changed = _run_mutated_data(stream.all_messages())
+                except Exception:
+                    data_changed = False
         except Exception:
             error_msg = "Erro ao processar mensagem. Tente novamente."
             yield json.dumps({"type": "error", "content": error_msg}, ensure_ascii=False) + "\n"
@@ -81,7 +114,14 @@ def _sse_response(user, agent, prompt, *, message_history, user_text=None):
             content=full_response,
         )
         yield (
-            json.dumps({"type": "done", "message_id": str(assistant_msg.id)}, ensure_ascii=False)
+            json.dumps(
+                {
+                    "type": "done",
+                    "message_id": str(assistant_msg.id),
+                    "data_changed": data_changed,
+                },
+                ensure_ascii=False,
+            )
             + "\n"
         )
 

@@ -1,0 +1,79 @@
+<h3 class="font-bold text-lg mb-1">Gerenciar parcelamento</h3>
+<p class="text-sm opacity-70 mb-3">{{ plan.description }} — {{ plan.num_installments }}x</p>
+
+<div x-data="{ tab: 'plano' }" class="space-y-4">
+    <!-- Tab toggle -->
+    <div class="tabs tabs-boxed">
+        <a class="tab" :class="tab === 'plano' && 'tab-active'" @click="tab = 'plano'">Plano inteiro</a>
+        <a class="tab" :class="tab === 'parcela' && 'tab-active'" @click="tab = 'parcela'">Esta parcela</a>
+    </div>
+
+    <!-- ============ Plano inteiro ============ -->
+    <div x-show="tab === 'plano'" class="space-y-4">
+        <!-- Editar campos do plano (regenera todas as parcelas) -->
+        <form hx-post="{{ manage_url }}"
+              hx-target="#cockpit-parcelamentos"
+              hx-swap="outerHTML"
+              class="space-y-3">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="edit_plan">
+            {% for field in plan_form %}
+            <div class="form-control">
+                <label class="label"><span class="label-text">{{ field.label }}</span></label>
+                {{ field }}
+                {% if field.errors %}<span class="text-error text-sm">{{ field.errors.0 }}</span>{% endif %}
+            </div>
+            {% endfor %}
+            <p class="text-xs opacity-60">Editar e salvar recria todas as parcelas com os novos valores.</p>
+            <button type="submit" class="btn btn-accent w-full">Salvar alterações</button>
+        </form>
+
+        <div class="divider my-1"></div>
+
+        <!-- Deslocar todas as parcelas em N meses -->
+        <form hx-post="{{ manage_url }}"
+              hx-target="#cockpit-parcelamentos"
+              hx-swap="outerHTML"
+              class="flex items-end gap-2">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="shift">
+            <div class="form-control">
+                <label class="label py-1"><span class="label-text">Deslocar meses</span></label>
+                <input type="number" name="months" value="1" step="1"
+                       class="input input-bordered input-sm w-24">
+            </div>
+            <button type="submit" class="btn btn-sm">Aplicar</button>
+            <span class="text-xs opacity-60 mb-2">use negativo para recuar</span>
+        </form>
+
+        <div class="divider my-1"></div>
+
+        <!-- Excluir o parcelamento inteiro -->
+        <form hx-post="{{ manage_url }}"
+              hx-target="#cockpit-parcelamentos"
+              hx-swap="outerHTML"
+              hx-confirm="Excluir TODO o parcelamento ({{ plan.num_installments }} parcelas)? Esta ação não pode ser desfeita.">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="delete">
+            <button type="submit" class="btn btn-error btn-outline w-full">Excluir parcelamento inteiro</button>
+        </form>
+    </div>
+
+    <!-- ============ Esta parcela ============ -->
+    <div x-show="tab === 'parcela'">
+        <form hx-post="{{ parcela_url }}"
+              hx-target="#cockpit-parcelamentos"
+              hx-swap="outerHTML"
+              class="space-y-3">
+            {% csrf_token %}
+            {% for field in entry_form %}
+            <div class="form-control">
+                <label class="label"><span class="label-text">{{ field.label }}</span></label>
+                {{ field }}
+                {% if field.errors %}<span class="text-error text-sm">{{ field.errors.0 }}</span>{% endif %}
+            </div>
+            {% endfor %}
+            <button type="submit" class="btn btn-accent w-full">Salvar esta parcela</button>
+        </form>
+    </div>
+</div>

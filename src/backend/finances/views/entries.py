@@ -2,7 +2,7 @@ import json
 from datetime import date
 from decimal import Decimal
 
-from django.http import Http404, HttpResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -10,8 +10,10 @@ from django.views import View
 from django.views.generic import ListView, UpdateView
 
 from finances.forms import EntryForm, InstallmentForm
-from finances.models import Entry
+from finances.models import Entry, PaymentMethod
 from finances.models.entry import EntryType
+from finances.models.payment_method import PaymentType
+from finances.services.billing import installment_billing_months
 from finances.views.mixins import HtmxLoginRequiredMixin
 
 
@@ -199,6 +201,41 @@ class EntryEditModalView(HtmxLoginRequiredMixin, View):
         return HttpResponse(html)
 
 
+class InstallmentPreviewView(HtmxLoginRequiredMixin, View):
+    """Return the billing month of each installment for live preview in the modal.
+
+    Lets the user see immediately in which invoice (fatura) each parcela will
+    land — making the effect of the card's closing day transparent. Uses the
+    same rule as ``InstallmentPlan.generate_entries``.
+    """
+
+    def get(self, request):
+        date_str = request.GET.get("date", "")
+        pm_id = request.GET.get("payment_method", "")
+        try:
+            num = int(request.GET.get("num_installments", "0"))
+        except (TypeError, ValueError):
+            num = 0
+        try:
+            start = date.fromisoformat(date_str)
+        except ValueError:
+            return JsonResponse({"months": [], "note": ""})
+
+        pm = PaymentMethod.objects.filter(user=request.user, pk=pm_id).first()
+        if pm is None or num < 1 or num > 60:
+            return JsonResponse({"months": [], "note": ""})
+
+        months = installment_billing_months(start, pm, num)
+        labels = [f"{m.month:02d}/{m.year}" for m in months]
+        note = ""
+        if pm.type != PaymentType.CREDIT_CARD or pm.closing_day is None:
+            note = (
+                "Esta forma de pagamento não usa fechamento de fatura; "
+                "a 1ª parcela cai no mês da compra."
+            )
+        return JsonResponse({"months": labels, "note": note})
+
+
 class EntryModalView(HtmxLoginRequiredMixin, View):
     """Serve modal form and handle both regular and installment creation."""
 
@@ -228,7 +265,8 @@ class EntryModalView(HtmxLoginRequiredMixin, View):
                                 f"Parcelamento criado com {plan.num_installments} parcelas!"
                             ),
                             "type": "success",
-                        }
+                        },
+                        "entry-saved": True,
                     }
                 )
                 response["HX-Trigger"] = trigger
@@ -241,7 +279,8 @@ class EntryModalView(HtmxLoginRequiredMixin, View):
                 entry.save()
                 response = HttpResponse("")
                 response["HX-Trigger"] = (
-                    '{"showToast": {"message": "Entrada criada!", "type": "success"}}'
+                    '{"showToast": {"message": "Entrada criada!", "type": "success"},'
+                    ' "entry-saved": true}'
                 )
                 return response
 

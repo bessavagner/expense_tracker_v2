@@ -1,18 +1,13 @@
-import { useEffect, useState } from "react";
-import { fetchApi } from "../api";
 import { formatBRL } from "../format";
 import type { SummaryData } from "../types";
+import { useApiData } from "../useApiData";
 
 interface Props {
   apiUrl: string;
 }
 
 export default function SummaryCard({ apiUrl }: Props) {
-  const [data, setData] = useState<SummaryData | null>(null);
-
-  useEffect(() => {
-    fetchApi<SummaryData>(apiUrl).then(setData);
-  }, [apiUrl]);
+  const data = useApiData<SummaryData>(apiUrl);
 
   if (!data)
     return (

@@ -36,3 +36,11 @@ if (document.readyState === "loading") {
 } else {
   mountAll();
 }
+
+// Reatividade após o assistente alterar dados (item #5): o dashboard tem cards
+// React que se reatualizam sozinhos (useApiData). Páginas sem cards (entradas,
+// consolidado, cockpit) recarregam para refletir a mudança imediatamente.
+window.addEventListener("data-changed", () => {
+  const hasCards = document.querySelector('[data-react-component$="Card"]');
+  if (!hasCards) window.location.reload();
+});
