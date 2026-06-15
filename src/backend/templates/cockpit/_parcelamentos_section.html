@@ -11,7 +11,7 @@
         <tr x-show="q === '' || $el.dataset.search.includes(q.toLowerCase())"
             data-search="{{ row.plan.description|lower }} {{ row.installment_amount }}"
             class="cursor-pointer hover:bg-base-200"
-            hx-get="{% url 'finances:cockpit_parcelamento_edit_modal' current_year current_month row.entry.id %}"
+            hx-get="{% url 'finances:cockpit_parcelamento_manage_modal' current_year current_month row.entry.id %}"
             hx-target="#entry-modal-content" hx-swap="innerHTML"
             onclick="document.getElementById('entry-modal').showModal()">
           <td>{{ row.plan.description }}</td>

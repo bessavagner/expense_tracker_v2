@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 from finances.models.payment_method import PaymentType
 
@@ -40,6 +40,20 @@ def _next_month(d: date) -> date:
     if d.month == 12:
         return date(d.year + 1, 1, 1)
     return date(d.year, d.month + 1, 1)
+
+
+def add_months(d: date, n: int) -> date:
+    """Return ``d`` shifted by ``n`` months, clamping the day to month length."""
+    total = (d.year * 12 + (d.month - 1)) + n
+    year, month = divmod(total, 12)
+    month += 1
+    # Clamp day to the last valid day of the target month.
+    if month == 12:
+        next_first = date(year + 1, 1, 1)
+    else:
+        next_first = date(year, month + 1, 1)
+    last_day = (next_first - timedelta(days=1)).day
+    return date(year, month, min(d.day, last_day))
 
 
 def installment_billing_months(

@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -10,6 +11,7 @@ from finances.forms import (
     CockpitIncomeForm,
     EntryForm,
     IncomeForm,
+    InstallmentForm,
     SystemicExpenseForm,
 )
 from finances.models import Category, Entry, Income, PaymentMethod, SystemicExpense
@@ -448,3 +450,101 @@ class CockpitParcelamentoEditModalView(HtmxLoginRequiredMixin, View):
             request=request,
         )
         return HttpResponse(html)
+
+
+class CockpitParcelamentoManageView(HtmxLoginRequiredMixin, View):
+    """Manage a whole installment plan from the cockpit row.
+
+    Provides, in one modal: edit the plan fields (regenerating all parcels),
+    shift every parcel by N months, delete the whole plan, and edit just this
+    month's parcela (delegated to the existing per-entry edit endpoint).
+    """
+
+    def _entry(self, request, entry_pk):
+        entry = (
+            Entry.objects.filter(
+                user=request.user, pk=entry_pk, entry_type=EntryType.INSTALLMENT
+            )
+            .select_related("installment_plan")
+            .first()
+        )
+        if not entry or entry.installment_plan is None:
+            raise Http404
+        return entry
+
+    def _patch_plan_querysets(self, form, plan):
+        form.fields["category"].queryset = form.fields[
+            "category"
+        ].queryset | Category.objects.filter(pk=plan.category_id)
+        form.fields["payment_method"].queryset = form.fields[
+            "payment_method"
+        ].queryset | PaymentMethod.objects.filter(pk=plan.payment_method_id)
+
+    def _modal(self, request, year, month, entry, plan_form=None, entry_form=None):
+        plan = entry.installment_plan
+        if plan_form is None:
+            plan_form = InstallmentForm(instance=plan, user=request.user)
+            self._patch_plan_querysets(plan_form, plan)
+        if entry_form is None:
+            entry_form = EntryForm(instance=entry, user=request.user)
+            _patch_entry_querysets(entry_form, entry)
+        ctx = {
+            "plan": plan,
+            "plan_form": plan_form,
+            "entry_form": entry_form,
+            "manage_url": reverse(
+                "finances:cockpit_parcelamento_manage_modal", args=[year, month, entry.id]
+            ),
+            "parcela_url": reverse(
+                "finances:cockpit_parcelamento_edit_modal", args=[year, month, entry.id]
+            ),
+        }
+        return render_to_string(
+            "cockpit/_modal_parcelamento_manage.html", ctx, request=request
+        )
+
+    def _section_response(self, request, year, month, message):
+        response = HttpResponse(
+            _render_parcelamentos_section(request, int(year), int(month))
+        )
+        response["HX-Trigger"] = json.dumps(
+            {"showToast": {"message": message, "type": "success"}, "entry-saved": True}
+        )
+        return response
+
+    def get(self, request, year, month, entry_pk):
+        entry = self._entry(request, entry_pk)
+        return HttpResponse(self._modal(request, year, month, entry))
+
+    def post(self, request, year, month, entry_pk):
+        entry = self._entry(request, entry_pk)
+        plan = entry.installment_plan
+        action = request.POST.get("action")
+
+        if action == "delete":
+            plan.delete()
+            return self._section_response(request, year, month, "Parcelamento excluído!")
+
+        if action == "shift":
+            try:
+                n = int(request.POST.get("months", "0"))
+            except (TypeError, ValueError):
+                n = 0
+            if n != 0:
+                plan.shift_months(n)
+            return self._section_response(request, year, month, "Parcelas deslocadas!")
+
+        if action == "edit_plan":
+            form = InstallmentForm(request.POST, instance=plan, user=request.user)
+            self._patch_plan_querysets(form, plan)
+            if form.is_valid():
+                form.save()
+                plan.regenerate_entries()
+                return self._section_response(
+                    request, year, month, "Parcelamento atualizado!"
+                )
+            return HttpResponse(
+                self._modal(request, year, month, entry, plan_form=form)
+            )
+
+        raise Http404

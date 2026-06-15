@@ -6,6 +6,7 @@ from finances.views.cockpit import (
     CockpitIncomeEditModalView,
     CockpitIncomeSectionView,
     CockpitParcelamentoEditModalView,
+    CockpitParcelamentoManageView,
     CockpitParcelamentosSectionView,
     CockpitSystemicCreateView,
     CockpitSystemicDeleteView,
@@ -207,6 +208,11 @@ urlpatterns = [
         "cockpit/<int:year>/<int:month>/parcelamento/<uuid:entry_pk>/edit-modal/",
         CockpitParcelamentoEditModalView.as_view(),
         name="cockpit_parcelamento_edit_modal",
+    ),
+    path(
+        "cockpit/<int:year>/<int:month>/parcelamento/<uuid:entry_pk>/manage/",
+        CockpitParcelamentoManageView.as_view(),
+        name="cockpit_parcelamento_manage_modal",
     ),
     # Cockpit — vencimentos
     path(

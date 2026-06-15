@@ -3,7 +3,7 @@ import uuid
 from django.conf import settings
 from django.db import models, transaction
 
-from finances.services.billing import installment_billing_months
+from finances.services.billing import add_months, installment_billing_months
 
 
 class InstallmentPlan(models.Model):
@@ -65,3 +65,33 @@ class InstallmentPlan(models.Model):
             )
         Entry.objects.bulk_create(entries)
         return list(Entry.objects.filter(installment_plan=self).order_by("billing_month"))
+
+    @transaction.atomic
+    def regenerate_entries(self) -> list:
+        """Delete this plan's entries and recreate them from the current fields.
+
+        Used when the user edits the whole plan (total / number of parcels /
+        category / etc.). Old generated entries are removed first so
+        ``generate_entries`` can run again.
+        """
+        self.entries.all().delete()
+        return self.generate_entries()
+
+    @transaction.atomic
+    def shift_months(self, n: int) -> None:
+        """Shift every installment (and the plan's date) by ``n`` months.
+
+        Use to correct a wrong purchase date — e.g. ``shift_months(1)`` moves
+        each parcela one invoice forward. ``billing_month`` is always the first
+        of the month; the plan date keeps its day (clamped to month length).
+        """
+        if n == 0:
+            return
+        from finances.models.entry import Entry
+
+        entries = list(self.entries.all())
+        for entry in entries:
+            entry.billing_month = add_months(entry.billing_month, n)
+        Entry.objects.bulk_update(entries, ["billing_month"])
+        self.date = add_months(self.date, n)
+        self.save(update_fields=["date", "updated_at"])
