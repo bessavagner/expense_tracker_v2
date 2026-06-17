@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Dispara ao trocar de branch (flag=1). Compara a ref anterior ($1) com a nova ($2).
+set -uo pipefail
+HOOK_DIR="$(dirname "$0")"
+prev="$1"; new="$2"; branch_flag="$3"
+[ "$branch_flag" = "1" ] || exit 0
+changed="$(git diff --name-only "$prev" "$new" 2>/dev/null || true)"
+exec "$HOOK_DIR/apply-changes.sh" "$changed"

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Dispara após `git pull` (fast-forward ou merge). Compara o HEAD anterior
+# (ORIG_HEAD) com o novo para descobrir o que mudou.
+set -uo pipefail
+HOOK_DIR="$(dirname "$0")"
+changed="$(git diff --name-only ORIG_HEAD HEAD 2>/dev/null || true)"
+exec "$HOOK_DIR/apply-changes.sh" "$changed"

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Dispara após `git pull --rebase`. O stdin traz pares "old new"; usamos o
+# primeiro old como base e comparamos com HEAD.
+set -uo pipefail
+HOOK_DIR="$(dirname "$0")"
+first_old="$(awk 'NR==1{print $1; exit}')"
+changed=""
+[ -n "${first_old:-}" ] && changed="$(git diff --name-only "$first_old" HEAD 2>/dev/null || true)"
+exec "$HOOK_DIR/apply-changes.sh" "$changed"
