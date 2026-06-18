@@ -52,10 +52,10 @@ def test_income_panel_shows_income_with_non_first_day(client, user):
     baker.make(
         "finances.Income",
         user=user,
-        name="Salário",
+        name="Vencimento Especial",  # name absent from any form placeholder
         amount=Decimal("8655.00"),
         month=date(2026, 6, 18),  # dia ≠ 1 (registro legado corrompido)
     )
     resp = client.get(reverse("finances:cockpit_income", args=[2026, 6]))
     body = resp.content.decode()
-    assert "Salário" in body
+    assert "Vencimento Especial" in body  # proves the row itself is rendered
