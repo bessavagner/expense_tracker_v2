@@ -1,0 +1,68 @@
+{% load finance_filters %}
+<div class="overflow-x-auto border border-base-200 rounded-lg">
+<table class="table table-sm table-pin-rows whitespace-nowrap">
+    <thead>
+        <tr>
+            <th class="sticky left-0 z-20 bg-base-200">Mês</th>
+            {% for r in rows %}
+            <th class="text-right {% if r.month > today_month %}opacity-60{% endif %}">
+                {{ r.month.month|month_abbr }}/{{ r.month.year }}
+            </th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td class="sticky left-0 z-10 bg-base-100 italic">Despesas sistêmicas</td>
+            {% for r in rows %}<td class="text-right">{{ r.systemic|money }}</td>{% endfor %}
+        </tr>
+        <tr>
+            <td class="sticky left-0 z-10 bg-base-100 italic">Parcelamentos</td>
+            {% for r in rows %}<td class="text-right">{{ r.installments|money }}</td>{% endfor %}
+        </tr>
+        <tr class="font-semibold bg-base-200/40">
+            <td class="sticky left-0 z-10 bg-base-200">Gastos programados</td>
+            {% for r in rows %}<td class="text-right">{{ r.programmed|money }}</td>{% endfor %}
+        </tr>
+        <tr>
+            <td class="sticky left-0 z-10 bg-base-100 italic">Despesas diversas</td>
+            {% for r in rows %}<td class="text-right">{{ r.diverse|money }}</td>{% endfor %}
+        </tr>
+        <tr class="font-semibold">
+            <td class="sticky left-0 z-10 bg-base-100">Gastos totais</td>
+            {% for r in rows %}<td class="text-right text-error">{{ r.total|money }}</td>{% endfor %}
+        </tr>
+        <tr>
+            <td class="sticky left-0 z-10 bg-base-100 italic">Renda</td>
+            {% for r in rows %}<td class="text-right">{{ r.income|money }}</td>{% endfor %}
+        </tr>
+        <tr>
+            <td class="sticky left-0 z-10 bg-base-100 italic">% da renda</td>
+            {% for r in rows %}
+            <td class="text-right {% if r.pct_income and r.pct_income >= 100 %}text-error font-semibold{% endif %}">
+                {% if r.pct_income is None %}—{% else %}{{ r.pct_income|floatformat:1 }}%{% endif %}
+            </td>
+            {% endfor %}
+        </tr>
+        <tr>
+            <td class="sticky left-0 z-10 bg-base-100">Saldo programado</td>
+            {% for r in rows %}<td class="text-right">{{ r.saldo_programado|money }}</td>{% endfor %}
+        </tr>
+        <tr class="font-bold border-t-2 border-base-300">
+            <td class="sticky left-0 z-10 bg-base-100">SALDO PROJETADO</td>
+            {% for r in rows %}
+            <td class="text-right {% if r.saldo_projetado < 0 %}text-error{% endif %}">{{ r.saldo_projetado|money }}</td>
+            {% endfor %}
+        </tr>
+        <tr class="font-bold">
+            <td class="sticky left-0 z-10 bg-base-100">Acumulado</td>
+            {% for r in rows %}
+            <td class="text-right {% if r.acumulado < 0 %}text-error{% endif %}">{{ r.acumulado|money }}</td>
+            {% endfor %}
+        </tr>
+    </tbody>
+</table>
+</div>
+{% if not rows %}
+<p class="text-center opacity-60 mt-4">Nenhum mês para projetar.</p>
+{% endif %}

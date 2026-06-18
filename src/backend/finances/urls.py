@@ -39,6 +39,7 @@ from finances.views.importer import (
     ImportPreviewView,
     ImportUploadView,
 )
+from finances.views.projection import ProjectionView
 from finances.views.settings import (
     CategoriesTabView,
     CategoryCreateView,
@@ -84,6 +85,8 @@ urlpatterns = [
         EntryEditModalView.as_view(),
         name="entry_edit_modal",
     ),
+    # Projection
+    path("projection/", ProjectionView.as_view(), name="projection"),
     # Consolidated
     path("consolidated/", ConsolidatedView.as_view(), name="consolidated"),
     path(
