@@ -230,8 +230,8 @@ def then_first_billing_month(ctx):
         .order_by("billing_month")
         .first()
     )
-    # March 15 with closing day 25 → March (15 <= 25)
-    assert first.billing_month == date(2026, 3, 1)
+    # March 15 with closing day 25 (15 <= 25) → invoice closes March, paid April.
+    assert first.billing_month == date(2026, 4, 1)
 
 
 @when(parsers.parse("I visit the consolidated page for {year:d}"))

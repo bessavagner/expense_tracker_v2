@@ -22,17 +22,26 @@ def compute_billing_month(
     payment_type: str,
     closing_day: int | None,
 ) -> date:
+    """Month an expense counts toward.
+
+    Cash/Pix (and credit cards without a configured closing day) count in the
+    purchase month. For credit cards the expense lands on an invoice that is
+    *paid* the month after it closes: a purchase on/before the closing day
+    counts in M+1; a purchase after the closing day rolls to the next invoice
+    and counts in M+2.
+    """
     first_of_month = entry_date.replace(day=1)
 
     if payment_type != PaymentType.CREDIT_CARD or closing_day is None:
         return first_of_month
 
     if entry_date.day > closing_day:
-        if entry_date.month == 12:
-            return date(entry_date.year + 1, 1, 1)
-        return date(entry_date.year, entry_date.month + 1, 1)
+        invoice_close_month = _next_month(first_of_month)
+    else:
+        invoice_close_month = first_of_month
 
-    return first_of_month
+    # Invoice is paid the month after it closes.
+    return _next_month(invoice_close_month)
 
 
 def _next_month(d: date) -> date:

@@ -2,6 +2,7 @@ import json
 from datetime import date
 from decimal import Decimal
 
+from django.db.models import Count, Q, Sum
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.template.loader import render_to_string
@@ -15,6 +16,33 @@ from finances.models.entry import EntryType
 from finances.models.payment_method import PaymentType
 from finances.services.billing import installment_billing_months
 from finances.views.mixins import HtmxLoginRequiredMixin
+
+# HX-Trigger fired after any entry mutation so the top totals refresh live.
+ENTRIES_CHANGED = '"entries-changed": true'
+
+
+def compute_entry_summary(user, year, month):
+    """Totals for the regular entries of a billing month.
+
+    Aggregated in the database so the result covers every entry in the month
+    (not just the current page) and is cheap to recompute on each mutation.
+    """
+    billing_month = date(year, month, 1)
+    agg = Entry.objects.filter(
+        user=user, billing_month=billing_month, entry_type=EntryType.REGULAR
+    ).aggregate(
+        expenses=Sum("amount", filter=Q(amount__gt=0)),
+        returns=Sum("amount", filter=Q(amount__lt=0)),
+        count=Count("id"),
+    )
+    expenses = agg["expenses"] or Decimal("0")
+    returns = agg["returns"] or Decimal("0")
+    return {
+        "total_expenses": expenses,
+        "total_returns": abs(returns),
+        "net": expenses + returns,
+        "entry_count": agg["count"],
+    }
 
 
 class EntryRedirectView(HtmxLoginRequiredMixin, View):
@@ -58,21 +86,31 @@ class EntryListView(HtmxLoginRequiredMixin, ListView):
         context["months"] = list(range(1, 13))
         context["year_range"] = range(2024, date.today().year + 2)
 
-        # Summary
-        entries = context["entries"]
-        expenses = sum(e.amount for e in entries if e.amount > 0) or Decimal("0")
-        returns = sum(e.amount for e in entries if e.amount < 0) or Decimal("0")
-        context["summary"] = {
-            "total_expenses": expenses,
-            "total_returns": abs(returns),
-            "net": expenses + returns,
-            "entry_count": len(entries),
-        }
+        # Summary (aggregated across the whole month, not just this page)
+        context["summary"] = compute_entry_summary(self.request.user, year, month)
 
         # Inline form
         context["form"] = EntryForm(user=self.request.user)
 
         return context
+
+
+class EntriesSummaryView(HtmxLoginRequiredMixin, View):
+    """Render just the top totals partial; refreshed live on `entries-changed`."""
+
+    def get(self, request, year, month):
+        year = int(year)
+        month = int(month)
+        html = render_to_string(
+            "entries/_entries_summary.html",
+            {
+                "summary": compute_entry_summary(request.user, year, month),
+                "current_year": year,
+                "current_month": month,
+            },
+            request=request,
+        )
+        return HttpResponse(html)
 
 
 class EntryCreateView(HtmxLoginRequiredMixin, View):
@@ -87,7 +125,8 @@ class EntryCreateView(HtmxLoginRequiredMixin, View):
             html = render_to_string("entries/_entry_row.html", {"entry": entry}, request=request)
             response = HttpResponse(html)
             response["HX-Trigger"] = (
-                '{"showToast": {"message": "Entrada criada!", "type": "success"}}'
+                '{"showToast": {"message": "Entrada criada!", "type": "success"},'
+                f" {ENTRIES_CHANGED}}}"
             )
             return response
         # Invalid form: return form with errors
@@ -116,7 +155,8 @@ class EntryUpdateView(HtmxLoginRequiredMixin, UpdateView):
         html = render_to_string("entries/_entry_row.html", {"entry": entry}, request=self.request)
         response = HttpResponse(html)
         response["HX-Trigger"] = (
-            '{"showToast": {"message": "Entrada atualizada!", "type": "success"}}'
+            '{"showToast": {"message": "Entrada atualizada!", "type": "success"},'
+            f" {ENTRIES_CHANGED}}}"
         )
         return response
 
@@ -131,7 +171,8 @@ class EntryDeleteView(HtmxLoginRequiredMixin, View):
         entry.delete()
         response = HttpResponse("")
         response["HX-Trigger"] = (
-            '{"showToast": {"message": "Entrada excluída!", "type": "success"}}'
+            '{"showToast": {"message": "Entrada excluída!", "type": "success"},'
+            f" {ENTRIES_CHANGED}}}"
         )
         return response
 
@@ -190,7 +231,7 @@ class EntryEditModalView(HtmxLoginRequiredMixin, View):
             response = HttpResponse(html)
             response["HX-Trigger"] = (
                 '{"showToast": {"message": "Entrada atualizada!", "type": "success"},'
-                ' "entry-saved": true}'
+                ' "entry-saved": true, "entries-changed": true}'
             )
             return response
         html = render_to_string(
@@ -267,6 +308,7 @@ class EntryModalView(HtmxLoginRequiredMixin, View):
                             "type": "success",
                         },
                         "entry-saved": True,
+                        "entries-changed": True,
                     }
                 )
                 response["HX-Trigger"] = trigger
@@ -280,7 +322,7 @@ class EntryModalView(HtmxLoginRequiredMixin, View):
                 response = HttpResponse("")
                 response["HX-Trigger"] = (
                     '{"showToast": {"message": "Entrada criada!", "type": "success"},'
-                    ' "entry-saved": true}'
+                    ' "entry-saved": true, "entries-changed": true}'
                 )
                 return response
 

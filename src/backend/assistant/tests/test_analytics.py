@@ -23,6 +23,9 @@ def _entry(user, cat, pm, amount, d=date(2026, 3, 5), bm=date(2026, 3, 1)):
         category=cat,
         payment_method=pm,
         billing_month=bm,
+        # Pin the billing month so the test controls placement regardless of the
+        # payment method's closing-day rule.
+        billing_month_override=True,
     )
 
 

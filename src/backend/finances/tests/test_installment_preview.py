@@ -19,7 +19,8 @@ class TestInstallmentPreview:
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["months"] == ["07/2026", "08/2026", "09/2026"]
+        # closing 5, purchase 12/jun (after) → next invoice (Jul), paid Aug.
+        assert data["months"] == ["08/2026", "09/2026", "10/2026"]
 
     def test_preview_pix_keeps_first_month_and_notes(self, logged_client, user):
         pm = baker.make("finances.PaymentMethod", user=user, type="pix")

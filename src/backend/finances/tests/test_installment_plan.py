@@ -108,7 +108,8 @@ class TestInstallmentPlan:
         )
         entries = plan.generate_entries()
         billing_months = [e.billing_month for e in entries]
-        assert billing_months == [date(2025, 12, 1), date(2026, 1, 1), date(2026, 2, 1)]
+        # closing 30, purchase 01/dez (before) → 1ª parcela paga em jan.
+        assert billing_months == [date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1)]
 
     def test_generated_entries_descriptions_numbered(self, user, category, credit_card):
         from finances.models import InstallmentPlan
@@ -162,8 +163,9 @@ class TestInstallmentPlan:
             installment_amount=Decimal("150.00"),
         )
         entries = plan.generate_entries()
-        assert entries[0].billing_month == date(2026, 4, 1)
-        assert entries[1].billing_month == date(2026, 5, 1)
+        # closing 25, purchase 26/mar (after) → next invoice (Apr), paid May.
+        assert entries[0].billing_month == date(2026, 5, 1)
+        assert entries[1].billing_month == date(2026, 6, 1)
 
     def test_entries_persisted_to_database(self, user, category, credit_card):
         from finances.models import InstallmentPlan
