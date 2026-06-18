@@ -122,16 +122,22 @@ class IncomeForm(forms.ModelForm):
                 attrs={"step": "0.01", "class": "input input-bordered input-sm w-full"}
             ),
             "month": forms.DateInput(
-                attrs={"type": "date", "class": "input input-bordered input-sm w-full"}
+                format="%Y-%m-%d",
+                attrs={"type": "date", "class": "input input-bordered input-sm w-full"},
             ),
             "is_recurring": forms.CheckboxInput(attrs={"class": "checkbox checkbox-sm"}),
             "recurrence_start": forms.DateInput(
-                attrs={"type": "date", "class": "input input-bordered input-sm w-full"}
+                format="%Y-%m-%d",
+                attrs={"type": "date", "class": "input input-bordered input-sm w-full"},
             ),
             "recurrence_end": forms.DateInput(
-                attrs={"type": "date", "class": "input input-bordered input-sm w-full"}
+                format="%Y-%m-%d",
+                attrs={"type": "date", "class": "input input-bordered input-sm w-full"},
             ),
         }
+
+    def clean_month(self):
+        return self.cleaned_data["month"].replace(day=1)
 
 
 class CockpitIncomeForm(forms.ModelForm):
@@ -155,7 +161,8 @@ class CockpitIncomeForm(forms.ModelForm):
                 }
             ),
             "month": forms.DateInput(
-                attrs={"type": "date", "class": "input input-bordered input-sm w-full"}
+                format="%Y-%m-%d",
+                attrs={"type": "date", "class": "input input-bordered input-sm w-full"},
             ),
         }
 
