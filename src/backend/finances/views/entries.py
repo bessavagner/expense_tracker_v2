@@ -65,11 +65,11 @@ class EntryListView(HtmxLoginRequiredMixin, ListView):
     def get_queryset(self):
         year = int(self.kwargs["year"])
         month = int(self.kwargs["month"])
-        billing_month = date(year, month, 1)
         return (
             Entry.objects.filter(
                 user=self.request.user,
-                billing_month=billing_month,
+                date__year=year,
+                date__month=month,
                 entry_type=EntryType.REGULAR,
             )
             .select_related("category", "payment_method")
