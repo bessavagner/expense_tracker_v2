@@ -103,7 +103,8 @@ class TestEntry:
             entry_type=EntryType.REGULAR,
         )
         entry.save()
-        assert entry.billing_month == date(2026, 3, 1)
+        # closing 25, purchase 20 (before) → invoice closes Mar, paid April.
+        assert entry.billing_month == date(2026, 4, 1)
 
     def test_billing_month_credit_card_after_closing(self, user, category, credit_card_c6):
         from finances.models import Entry
@@ -118,7 +119,8 @@ class TestEntry:
             entry_type=EntryType.REGULAR,
         )
         entry.save()
-        assert entry.billing_month == date(2026, 4, 1)
+        # closing 25, purchase 26 (after) → next invoice (Apr), paid May.
+        assert entry.billing_month == date(2026, 5, 1)
 
     def test_billing_month_override_preserved(self, user, category, credit_card_c6):
         from finances.models import Entry
@@ -177,11 +179,11 @@ class TestEntry:
             entry_type=EntryType.REGULAR,
         )
         entry.save()
-        assert entry.billing_month == date(2026, 3, 1)
-        # Update date to after closing day
+        assert entry.billing_month == date(2026, 4, 1)
+        # Update date to after closing day → next invoice, one month later.
         entry.date = date(2026, 3, 26)
         entry.save()
-        assert entry.billing_month == date(2026, 4, 1)
+        assert entry.billing_month == date(2026, 5, 1)
 
     def test_entry_type_choices(self):
         assert EntryType.REGULAR == "regular"

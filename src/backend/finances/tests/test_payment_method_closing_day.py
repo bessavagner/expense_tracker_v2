@@ -75,7 +75,8 @@ class TestEntryUsesPerMonthClosingDay:
             type="credit_card",
             closing_day=25,
         )
-        # January override: closing day 23 -> a Jan 24 purchase rolls to February
+        # January override: closing day 23 -> a Jan 24 purchase is after closing,
+        # so its invoice closes in February and is paid in March.
         PaymentMethodClosingDay.objects.create(
             payment_method=pm, month=date(2026, 1, 1), closing_day=23
         )
@@ -89,4 +90,4 @@ class TestEntryUsesPerMonthClosingDay:
             billing_month_override=False,
         )
         entry.refresh_from_db()
-        assert entry.billing_month == date(2026, 2, 1)
+        assert entry.billing_month == date(2026, 3, 1)
