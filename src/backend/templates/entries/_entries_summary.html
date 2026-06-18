@@ -1,0 +1,12 @@
+{% load finance_filters %}
+<!-- Summary (top, responsive) — refreshes live on `entries-changed` -->
+<div id="entries-summary"
+     hx-get="{% url 'finances:entries_summary' current_year current_month %}"
+     hx-trigger="entries-changed from:body"
+     hx-swap="outerHTML"
+     class="flex flex-wrap gap-x-6 gap-y-1 mb-3 text-sm opacity-70">
+    <span>Total gastos: <strong class="text-error whitespace-nowrap">{{ summary.total_expenses|money }}</strong></span>
+    <span>Total retornos: <strong class="text-success whitespace-nowrap">{{ summary.total_returns|money }}</strong></span>
+    <span>Líquido: <strong class="whitespace-nowrap">{{ summary.net|money }}</strong></span>
+    <span>Entradas: <strong>{{ summary.entry_count }}</strong></span>
+</div>

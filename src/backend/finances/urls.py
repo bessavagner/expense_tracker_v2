@@ -23,6 +23,7 @@ from finances.views.consolidated import (
 )
 from finances.views.dashboard import DashboardView
 from finances.views.entries import (
+    EntriesSummaryView,
     EntryCreateView,
     EntryDeleteView,
     EntryEditModalView,
@@ -64,6 +65,11 @@ urlpatterns = [
     # Entries
     path("entries/", EntryRedirectView.as_view(), name="entries"),
     path("entries/<int:year>/<int:month>/", EntryListView.as_view(), name="entries_month"),
+    path(
+        "entries/<int:year>/<int:month>/summary/",
+        EntriesSummaryView.as_view(),
+        name="entries_summary",
+    ),
     path("entries/create/", EntryCreateView.as_view(), name="entry_create"),
     path("entries/<uuid:pk>/edit/", EntryUpdateView.as_view(), name="entry_edit"),
     path("entries/<uuid:pk>/delete/", EntryDeleteView.as_view(), name="entry_delete"),
