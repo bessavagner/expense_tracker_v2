@@ -21,32 +21,39 @@ mês seguinte e as feitas **antes/no** fechamento no mês da compra.
 Exemplo do usuário: cartão fecha dia 25; compra em 26/jun (após fechamento) →
 conta em **agosto**. Compra em 10/jun (antes) → conta em **julho**.
 
-### Observação-chave
-A regra nova é exatamente **`billing_month` atual + 1 mês**, uniformemente para
-os dois ramos (≤fechamento e >fechamento). Isso torna a migração de dados
-trivial e segura.
+### Distinção essencial: data de lançamento × data de cobrança
+- **Data de lançamento (`Entry.date`):** quando a compra foi feita. **Nunca** muda.
+- **Mês de cobrança (`Entry.billing_month`):** em que mês o gasto é contabilizado.
+  Para cartão, depende da data da compra + dia de fechamento.
+
+A regra nova ("mês de cobrança = mês em que a fatura é paga") vale **apenas para
+entradas novas**. Os dados históricos já foram lançados com o mês de
+contabilização desejado — em especial as **parcelas**, digitadas com o mês de
+cobrança, não o da compra. Reescrever meses retroativamente quebraria isso.
 
 ### Mudanças
-1. **`services/billing.py::compute_billing_month`** — envolver o retorno do ramo
-   de cartão de crédito em `_next_month(...)`. Flui automaticamente para:
+1. **`services/billing.py::compute_billing_month`** — envolve o retorno do ramo de
+   cartão em `_next_month(...)`. Flui automaticamente para entradas **novas**:
    - novos lançamentos regulares (`Entry.save`);
    - novos parcelamentos (`installment_billing_months` usa `compute_billing_month`
-     na 1ª parcela e `_next_month` nas seguintes — todas deslocam +1);
+     na 1ª parcela e `_next_month` nas seguintes);
    - o preview do modal de parcelamento (`InstallmentPreviewView`).
-2. **Migração de dados** — para cada `Entry` com `payment_method.type ==
-   CREDIT_CARD` **e** `entry_type != SYSTEMIC`, deslocar `billing_month` um mês à
-   frente (`add_months(billing_month, 1)`). Atinge regulares e parcelas; preserva
-   ajustes manuais de parcela (todos andam +1 juntos). Dinheiro/Pix e sistemáticos
-   ficam intactos. Migração roda uma vez (não idempotente — ok para Django
-   migrations).
+   Daqui pra frente o usuário digita a **data da compra** (normal e parcelada) e o
+   sistema deriva o mês de cobrança.
+2. **Migração `0008_freeze_credit_card_billing_month`** — **não desloca nenhum
+   mês.** Apenas marca `billing_month_override=True` nas entradas de cartão
+   existentes (regulares e parcelas), congelando o `billing_month` atual para que
+   `Entry.save` não recompute pela regra nova num re-save futuro. Dinheiro/Pix
+   ficam intactos (mês de cobrança = mês da compra → recompor é no-op).
+   Irreversível por design (reverso é no-op; os dados não mudam).
 
 ### Testes (TDD primeiro)
 - `compute_billing_month`: dinheiro/pix → M; cartão ≤fechamento → M+1; cartão
   >fechamento → M+2; virada de ano (dez→jan, e nov→jan no caso M+2).
 - `installment_billing_months`: 1ª parcela já vem deslocada; sequência mantém +1
   por mês.
-- Migração: entrada de cartão regular desloca +1; entrada dinheiro não desloca;
-  entrada sistemática não desloca.
+- Migração: entrada de cartão é congelada (`override=True`) **sem** mudar o mês;
+  dinheiro não é congelado; entradas já congeladas ficam intactas.
 
 ## Item 2 — Totais ao vivo no topo da tela de entradas
 
