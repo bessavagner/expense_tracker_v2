@@ -1,0 +1,69 @@
+from datetime import date
+from decimal import Decimal
+
+import pytest
+from django.test import Client
+from model_bakery import baker
+
+
+@pytest.fixture
+def logged_client(user):
+    client = Client()
+    client.force_login(user)
+    return client
+
+
+@pytest.mark.django_db
+class TestProjectionView:
+    def test_requires_login(self):
+        response = Client().get("/projection/")
+        assert response.status_code in (302, 401, 403)
+
+    def test_renders_page(self, logged_client):
+        response = logged_client.get("/projection/")
+        assert response.status_code == 200
+        assert "projection/projection_page.html" in [t.name for t in response.templates]
+        assert "rows" in response.context
+
+    def test_htmx_returns_partial(self, logged_client):
+        response = logged_client.get("/projection/", HTTP_HX_REQUEST="true")
+        assert response.status_code == 200
+        assert "projection/_projection_table.html" in [t.name for t in response.templates]
+
+    def test_respects_start_and_months_params(self, logged_client):
+        response = logged_client.get("/projection/?start=2026-03&months=4")
+        rows = response.context["rows"]
+        assert len(rows) == 4
+        assert rows[0]["month"] == date(2026, 3, 1)
+        assert rows[-1]["month"] == date(2026, 6, 1)
+
+    def test_clamps_invalid_months(self, logged_client):
+        # Too-large / non-positive months are clamped to a sane range, never crash.
+        big = logged_client.get("/projection/?start=2026-01&months=999")
+        assert big.status_code == 200
+        assert 1 <= len(big.context["rows"]) <= 36
+
+        zero = logged_client.get("/projection/?start=2026-01&months=0")
+        assert zero.status_code == 200
+        assert len(zero.context["rows"]) >= 1
+
+    def test_bad_start_falls_back_to_default(self, logged_client):
+        response = logged_client.get("/projection/?start=garbage")
+        assert response.status_code == 200
+        assert len(response.context["rows"]) >= 1
+
+    def test_scoped_to_user(self, logged_client, other_user):
+        cat = baker.make("finances.Category", user=other_user)
+        pm = baker.make("finances.PaymentMethod", user=other_user, type="pix")
+        baker.make(
+            "finances.Entry",
+            user=other_user,
+            date=date(2026, 3, 5),
+            amount=Decimal("5000"),
+            category=cat,
+            payment_method=pm,
+            billing_month=date(2026, 3, 1),
+            billing_month_override=True,
+        )
+        response = logged_client.get("/projection/?start=2026-03&months=1")
+        assert response.context["rows"][0]["total"] == Decimal("0")
