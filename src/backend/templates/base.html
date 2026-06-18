@@ -33,6 +33,7 @@
     <script defer src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js"></script>
 </head>
 <body class="min-h-screen bg-base-200" x-data="{ showToast: false, toastMessage: '', toastType: 'success' }"
+      hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
       @show-toast.window="showToast = true; toastMessage = $event.detail.message; toastType = $event.detail.type || 'success'; setTimeout(() => showToast = false, 3000)">
 
     <!-- Side drawer (hamburger) wrapping the page -->

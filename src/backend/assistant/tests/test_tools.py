@@ -88,8 +88,9 @@ class TestCreateEntry:
         from finances.models import Entry
 
         entry = Entry.objects.get(user=seeded_user, description="Test CC")
-        # March 27 with C6 closing day 25 → April billing
-        assert entry.billing_month == date(2026, 4, 1)
+        # March 27 with C6 closing day 25 (after closing) → invoice closes April,
+        # paid May.
+        assert entry.billing_month == date(2026, 5, 1)
 
     def test_invalid_category_returns_error(self, seeded_user):
         result = create_entry(
