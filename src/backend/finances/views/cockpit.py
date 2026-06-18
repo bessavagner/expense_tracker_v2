@@ -26,7 +26,7 @@ from finances.views.mixins import HtmxLoginRequiredMixin
 def _income_context(request, year, month):
     incomes = list(
         Income.objects.filter(
-            user=request.user, month=date(year, month, 1)
+            user=request.user, month__year=year, month__month=month
         ).order_by("name")
     )
     income_month_total = sum((i.amount for i in incomes), Decimal("0"))
