@@ -116,6 +116,94 @@ class TestEntriesSummaryView:
         assert august["total_lancado"] == Decimal("0")
 
 
+    def test_summary_reconciles_with_projection_current_month(self, logged_client, user):
+        from django.db.models import Min
+
+        from finances.models import Entry, Income
+        from finances.services.projection import build_projection
+
+        cat = baker.make("finances.Category", user=user)
+        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+        baker.make(
+            "finances.Income",
+            user=user,
+            name="Salario",
+            amount=Decimal("5000.00"),
+            month=date(2026, 6, 1),
+        )
+        baker.make(
+            "finances.SystemicExpense",
+            user=user,
+            is_active=True,
+            default_amount=Decimal("300.00"),
+            category=cat,
+            payment_method=pm,
+        )
+        today = date.today()
+        fy, fm = today.year, today.month
+        summary = logged_client.get(
+            f"/entries/{fy}/{fm}/summary/", HTTP_HX_REQUEST="true"
+        ).context["summary"]
+        # replicate production anchor logic
+        inc_min = Income.objects.filter(user=user).aggregate(m=Min("month"))["m"]
+        ent_min = Entry.objects.filter(user=user).aggregate(m=Min("billing_month"))["m"]
+        cands = [d for d in (inc_min, ent_min) if d is not None]
+        target = date(fy, fm, 1)
+        anchor = min(cands).replace(day=1) if cands else target
+        if anchor > target:
+            anchor = target
+        n = (fy * 12 + fm) - (anchor.year * 12 + anchor.month) + 1
+        row = build_projection(user, anchor, n, today=today)[-1]
+        assert summary["total_gastos"] == row["total"]
+        assert summary["income"] == row["income"]
+        assert summary["saldo_projetado"] == row["saldo_projetado"]
+        assert summary["acumulado"] == row["acumulado"]
+
+    def test_summary_reconciles_with_projection_future_month(self, logged_client, user):
+        from django.db.models import Min
+
+        from finances.models import Entry, Income
+        from finances.services.projection import build_projection
+
+        cat = baker.make("finances.Category", user=user)
+        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+        baker.make(
+            "finances.Income",
+            user=user,
+            name="Salario",
+            amount=Decimal("5000.00"),
+            month=date(2026, 6, 1),
+        )
+        baker.make(
+            "finances.SystemicExpense",
+            user=user,
+            is_active=True,
+            default_amount=Decimal("300.00"),
+            category=cat,
+            payment_method=pm,
+        )
+        today = date.today()
+        # strictly-future month — exercises systemic-template projection branch
+        fy, fm = today.year + 1, today.month
+        summary = logged_client.get(
+            f"/entries/{fy}/{fm}/summary/", HTTP_HX_REQUEST="true"
+        ).context["summary"]
+        # replicate production anchor logic
+        inc_min = Income.objects.filter(user=user).aggregate(m=Min("month"))["m"]
+        ent_min = Entry.objects.filter(user=user).aggregate(m=Min("billing_month"))["m"]
+        cands = [d for d in (inc_min, ent_min) if d is not None]
+        target = date(fy, fm, 1)
+        anchor = min(cands).replace(day=1) if cands else target
+        if anchor > target:
+            anchor = target
+        n = (fy * 12 + fm) - (anchor.year * 12 + anchor.month) + 1
+        row = build_projection(user, anchor, n, today=today)[-1]
+        assert summary["total_gastos"] == row["total"]
+        assert summary["income"] == row["income"]
+        assert summary["saldo_projetado"] == row["saldo_projetado"]
+        assert summary["acumulado"] == row["acumulado"]
+
+
 @pytest.mark.django_db
 class TestMutationsTriggerSummaryRefresh:
     """Every entry mutation emits `entries-changed` so the top totals refresh."""

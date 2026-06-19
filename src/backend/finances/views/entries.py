@@ -69,7 +69,7 @@ class EntryRedirectView(HtmxLoginRequiredMixin, View):
 
 
 class EntryListView(HtmxLoginRequiredMixin, ListView):
-    """Display entries for a specific billing month."""
+    """Display entries launched (by date) in a specific month."""
 
     model = Entry
     template_name = "entries/entries_page.html"

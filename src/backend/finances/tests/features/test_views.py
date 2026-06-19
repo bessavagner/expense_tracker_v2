@@ -157,7 +157,7 @@ def when_visit_entries(ctx):
 def then_see_march_entries(ctx):
     entries = ctx["response"].context["entries"]
     assert len(entries) == 2
-    assert all(e.billing_month.month == 3 for e in entries)
+    assert all(e.date.month == 3 for e in entries)
 
 
 @then("I should see a summary with total expenses")
