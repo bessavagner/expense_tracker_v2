@@ -8,18 +8,39 @@ docs/superpowers/specs/2026-06-18-projection-screen-design.md.
 from datetime import date
 from decimal import Decimal
 
+from django.conf import settings
 from django.db.models import Min, Sum
 
 from finances.models import Entry, Income, SystemicExpense
 from finances.models.entry import EntryType
 
 ZERO = Decimal("0")
+DEFAULT_PROJECTION_ORIGIN = date(2025, 11, 1)
 
 
 def _add_months(d: date, n: int) -> date:
     total = d.year * 12 + (d.month - 1) + n
     year, month = divmod(total, 12)
     return date(year, month + 1, 1)
+
+
+def _projection_origin() -> date:
+    """First month that counts. Nothing earlier enters the projection at all.
+
+    Configurable via ``settings.PROJECTION_ORIGIN_MONTH`` (a ``date`` or
+    ``"YYYY-MM"`` string); defaults to Nov 2025. Pre-origin records are
+    migration/seed noise and must never affect the running ``acumulado``.
+    """
+    raw = getattr(settings, "PROJECTION_ORIGIN_MONTH", None)
+    if isinstance(raw, date):
+        return raw.replace(day=1)
+    if isinstance(raw, str) and raw.strip():
+        try:
+            year, month = (int(p) for p in raw.split("-")[:2])
+            return date(year, month, 1)
+        except (ValueError, TypeError):
+            pass
+    return DEFAULT_PROJECTION_ORIGIN
 
 
 def build_projection(user, start_month: date, num_months: int, today: date | None = None):
@@ -51,7 +72,10 @@ def build_projection(user, start_month: date, num_months: int, today: date | Non
     ent_min = Entry.objects.filter(user=user).aggregate(m=Min("billing_month"))["m"]
     data_candidates = [d for d in (inc_min, ent_min) if d is not None]
     data_anchor = min(data_candidates).replace(day=1) if data_candidates else start_month
-    agg_start = min(data_anchor, start_month)
+    # Floor at the projection origin: anything before it is excluded entirely, so
+    # pre-origin records never leak into the running acumulado.
+    origin = _projection_origin()
+    agg_start = max(min(data_anchor, start_month), origin)
 
     # Every month from the anchor through the window end (drives the running total).
     span = (months[-1].year * 12 + months[-1].month) - (agg_start.year * 12 + agg_start.month) + 1

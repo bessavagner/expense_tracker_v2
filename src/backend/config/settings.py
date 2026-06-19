@@ -196,6 +196,10 @@ ASSISTANT_RECEIPT_MIN_CONFIDENCE = float(
     os.environ.get("ASSISTANT_RECEIPT_MIN_CONFIDENCE", "0.6")
 )
 
+# Projeção: mês de origem (YYYY-MM). Nada antes disso entra no acumulado — dados
+# anteriores são migração/seed e não contam na conta. Default: nov/2025.
+PROJECTION_ORIGIN_MONTH = os.environ.get("PROJECTION_ORIGIN_MONTH", "2025-11")
+
 ASSISTANT_MAX_IMAGE_MB = int(os.environ.get("ASSISTANT_MAX_IMAGE_MB", "10"))
 ASSISTANT_MAX_AUDIO_MB = int(os.environ.get("ASSISTANT_MAX_AUDIO_MB", "25"))
 ASSISTANT_ALLOWED_IMAGE_TYPES = (

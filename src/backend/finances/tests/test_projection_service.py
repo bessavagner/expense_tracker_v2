@@ -139,6 +139,21 @@ class TestBuildProjection:
         assert rows[0]["saldo_projetado"] == Decimal("700")
         assert rows[0]["acumulado"] == Decimal("1500")  # 800 (Jan) + 700 (Feb)
 
+    def test_pre_origin_data_excluded_from_acumulado(self, user, cat, pix):
+        # Data before the projection origin (Nov 2025) is migration/seed noise and
+        # must NOT leak into the running total, even though acumulado is otherwise
+        # anchored at the earliest data.
+        baker.make("finances.Income", user=user, amount=Decimal("1000"), month=date(2025, 9, 1))
+        _entry(user, cat, pix, "200", date(2025, 9, 1), EntryType.REGULAR)  # pre-origin
+        baker.make("finances.Income", user=user, amount=Decimal("1000"), month=date(2025, 11, 1))
+        _entry(user, cat, pix, "300", date(2025, 11, 1), EntryType.REGULAR)  # origin month
+
+        rows = build_projection(user, date(2025, 11, 1), 1, today=date(2025, 12, 1))
+        assert rows[0]["month"] == date(2025, 11, 1)
+        assert rows[0]["saldo_projetado"] == Decimal("700")
+        # Only November's 700 — September's 800 must be excluded.
+        assert rows[0]["acumulado"] == Decimal("700")
+
     def test_zero_income_pct_is_none(self, user, cat, pix):
         _entry(user, cat, pix, "100", date(2026, 5, 1), EntryType.REGULAR)
         row = build_projection(user, date(2026, 5, 1), 1, today=date(2026, 6, 1))[0]
