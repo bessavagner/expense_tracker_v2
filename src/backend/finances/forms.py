@@ -26,7 +26,8 @@ class EntryForm(forms.ModelForm):
         }
         widgets = {
             "date": forms.DateInput(
-                attrs={"type": "date", "class": "input input-bordered input-sm w-full"}
+                format="%Y-%m-%d",
+                attrs={"type": "date", "class": "input input-bordered input-sm w-full"},
             ),
             "amount": forms.NumberInput(
                 attrs={
@@ -76,7 +77,8 @@ class InstallmentForm(forms.ModelForm):
         }
         widgets = {
             "date": forms.DateInput(
-                attrs={"type": "date", "class": "input input-bordered input-sm w-full"}
+                format="%Y-%m-%d",
+                attrs={"type": "date", "class": "input input-bordered input-sm w-full"},
             ),
             "description": forms.TextInput(attrs={"class": "input input-bordered input-sm w-full"}),
             "category": forms.Select(attrs={"class": "select select-bordered select-sm w-full"}),
