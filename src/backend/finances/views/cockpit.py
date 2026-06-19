@@ -141,7 +141,6 @@ def _systemic_context(request, year, month):
         "current_year": year,
         "current_month": month,
         "systemic_rows": systemic_rows_for_month(request.user, year, month),
-        "systemic_form": SystemicExpenseForm(user=request.user),
     }
 
 

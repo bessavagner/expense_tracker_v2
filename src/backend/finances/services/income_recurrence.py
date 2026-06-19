@@ -22,17 +22,24 @@ def apply_income_recurrence(income) -> int:
     touched = 0
     m = start
     while m <= end:
-        Income.objects.update_or_create(
-            user=income.user,
-            name=income.name,
-            month=m,
-            defaults={
-                "amount": income.amount,
-                "is_recurring": True,
-                "recurrence_start": start,
-                "recurrence_end": end,
-            },
-        )
+        qs = Income.objects.filter(user=income.user, name=income.name, month=m)
+        if qs.exists():
+            qs.update(
+                amount=income.amount,
+                is_recurring=True,
+                recurrence_start=start,
+                recurrence_end=end,
+            )
+        else:
+            Income.objects.create(
+                user=income.user,
+                name=income.name,
+                month=m,
+                amount=income.amount,
+                is_recurring=True,
+                recurrence_start=start,
+                recurrence_end=end,
+            )
         touched += 1
         m = add_months(m, 1)
     return touched

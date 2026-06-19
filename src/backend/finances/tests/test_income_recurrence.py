@@ -65,6 +65,20 @@ def test_defaults_to_year_end_when_blank(user):
 
 
 @pytest.mark.django_db
+def test_duplicate_same_name_month_does_not_raise(user):
+    baker.make(Income, user=user, name="Freelance", amount="100", month=date(2026, 6, 1))
+    inc = baker.make(
+        Income, user=user, name="Freelance", amount="500", month=date(2026, 6, 1),
+        is_recurring=True, recurrence_start=date(2026, 6, 1), recurrence_end=date(2026, 6, 1),
+    )
+    # Must not raise MultipleObjectsReturned
+    apply_income_recurrence(inc)
+    rows = Income.objects.filter(user=user, name="Freelance", month=date(2026, 6, 1))
+    assert rows.count() == 2
+    assert all(r.amount == Decimal("500") for r in rows)
+
+
+@pytest.mark.django_db
 def test_cockpit_edit_modal_materializes(user):
     inc = baker.make(Income, user=user, name="Salário", amount="5000", month=date(2026, 6, 1))
     c = Client()

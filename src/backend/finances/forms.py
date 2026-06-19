@@ -235,7 +235,6 @@ class SystemicEntryEditForm(forms.Form):
     )
     date = forms.DateField(
         label="Data",
-        input_formats=["%Y-%m-%d"],
         widget=forms.DateInput(
             format="%Y-%m-%d",
             attrs={"type": "date", "class": "input input-bordered input-sm w-full"},
@@ -282,6 +281,8 @@ class SystemicEntryEditForm(forms.Form):
         systemic = self.entry.systemic_expense
         systemic.name = cd["name"]
         systemic.save(update_fields=["name", "updated_at"])
+        from finances.models import Entry
+        Entry.objects.filter(systemic_expense=systemic).update(description=cd["name"])
         self.entry.date = cd["date"]
         self.entry.amount = cd["amount"]
         self.entry.category = cd["category"]

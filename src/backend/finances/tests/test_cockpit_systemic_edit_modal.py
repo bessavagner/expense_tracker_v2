@@ -74,3 +74,21 @@ class TestCockpitSystemicEditModal(TestCase):
         html = resp.content.decode()
         self.assertIn(self._url(), html)
         self.assertIn("event.stopPropagation()", html)
+
+    def test_name_change_syncs_all_months_descriptions(self):
+        """Renaming the systemic template must update description on ALL launched entries."""
+        second_entry = self.s.create_monthly_entry(date(2026, 11, 1))
+        self.client.post(
+            self._url(),
+            {
+                "name": "Aluguel Renomeado",
+                "date": "2026-10-01",
+                "amount": "1500.00",
+                "category": self.cat.id,
+                "payment_method": self.pm.id,
+            },
+        )
+        self.entry.refresh_from_db()
+        second_entry.refresh_from_db()
+        self.assertEqual(self.entry.description, "Aluguel Renomeado")
+        self.assertEqual(second_entry.description, "Aluguel Renomeado")
