@@ -10,6 +10,7 @@ from finances.forms import (
     SystemicExpenseForm,
 )
 from finances.models import Category, Income, PaymentMethod, SystemicExpense
+from finances.services.income_recurrence import apply_income_recurrence
 from finances.views.mixins import HtmxLoginRequiredMixin
 
 
@@ -83,6 +84,7 @@ class IncomeCreateView(HtmxLoginRequiredMixin, View):
             income = form.save(commit=False)
             income.user = request.user
             income.save()
+            apply_income_recurrence(income)
         return self._render_tab(request)
 
     def _render_tab(self, request):
@@ -125,6 +127,7 @@ class IncomeUpdateView(HtmxLoginRequiredMixin, View):
         form = IncomeForm(request.POST, instance=income)
         if form.is_valid():
             form.save()
+            apply_income_recurrence(form.instance)
         html = render_to_string(
             "settings/_income_tab.html", _income_tab_context(request.user), request=request
         )
