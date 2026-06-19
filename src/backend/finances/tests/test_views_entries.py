@@ -367,3 +367,50 @@ class TestModalEntryForm:
         assert Entry.objects.filter(user=user, description="Almoço").count() == 1
         # HX-Trigger must include entry-saved so base.html closes the modal.
         assert "entry-saved" in response.headers.get("HX-Trigger", "")
+
+    def test_modal_get_has_systemic_tab(self, logged_client):
+        response = logged_client.get("/entries/modal/?year=2026&month=6&mode=systemic")
+        html = response.content.decode()
+        assert "Sistemático" in html
+        assert 'value="2026-06-01"' in html  # seeded start month
+
+    def test_modal_post_systemic_creates_template(self, logged_client, user):
+        cat = baker.make("finances.Category", user=user)
+        pm = baker.make("finances.PaymentMethod", user=user, is_active=True)
+        response = logged_client.post(
+            "/entries/modal/",
+            {
+                "entry_mode": "systemic",
+                "name": "Spotify",
+                "category": cat.id,
+                "payment_method": pm.id,
+                "default_amount": "21.90",
+            },
+        )
+        assert response.status_code == 200
+        from finances.models import SystemicExpense
+
+        assert SystemicExpense.objects.filter(user=user, name="Spotify").exists()
+        assert "entry-saved" in response.headers.get("HX-Trigger", "")
+
+    def test_modal_post_systemic_recurring_launches(self, logged_client, user):
+        from finances.models import Entry, SystemicExpense
+
+        cat = baker.make("finances.Category", user=user)
+        pm = baker.make("finances.PaymentMethod", user=user, is_active=True)
+        response = logged_client.post(
+            "/entries/modal/",
+            {
+                "entry_mode": "systemic",
+                "name": "Academia",
+                "category": cat.id,
+                "payment_method": pm.id,
+                "default_amount": "120.00",
+                "is_recurring": "on",
+                "months": "2",
+                "start_month": "2026-06-01",
+            },
+        )
+        assert response.status_code == 200
+        s = SystemicExpense.objects.get(user=user, name="Academia")
+        assert Entry.objects.filter(systemic_expense=s).count() == 2
