@@ -33,23 +33,31 @@ class TestCockpitSystemicEditModal(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn("modal-edit-form", resp.content.decode())
 
-    def test_post_updates_entry_and_rerenders_section(self):
+    def test_post_updates_template_name_and_entry(self):
         resp = self.client.post(
             self._url(),
             {
+                "name": "Aluguel novo",
                 "date": "2026-10-01",
                 "amount": "1700.00",
-                "description": "Aluguel reajustado",
                 "category": self.cat.id,
                 "payment_method": self.pm.id,
             },
         )
         self.assertEqual(resp.status_code, 200)
+        self.s.refresh_from_db()
         self.entry.refresh_from_db()
+        self.assertEqual(self.s.name, "Aluguel novo")
         self.assertEqual(self.entry.amount, Decimal("1700.00"))
-        self.assertEqual(self.entry.description, "Aluguel reajustado")
-        self.assertIn("cockpit-systemic", resp.content.decode())
+        html = resp.content.decode()
+        self.assertIn("Aluguel novo", html)            # row reflects new name
+        self.assertIn("cockpit-systemic", html)
         self.assertIn("entry-saved", resp.headers.get("HX-Trigger", ""))
+
+    def test_get_prefills_name_and_date(self):
+        html = self.client.get(self._url()).content.decode()
+        self.assertIn('value="Aluguel"', html)
+        self.assertIn('value="2026-10-01"', html)
 
     def test_get_404_when_not_lancado(self):
         # A different month with no entry

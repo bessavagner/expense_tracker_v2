@@ -12,6 +12,7 @@ from finances.forms import (
     EntryForm,
     IncomeForm,
     InstallmentForm,
+    SystemicEntryEditForm,
     SystemicExpenseForm,
 )
 from finances.models import Category, Entry, Income, PaymentMethod, SystemicExpense
@@ -263,8 +264,7 @@ class CockpitSystemicEditModalView(HtmxLoginRequiredMixin, View):
 
     def get(self, request, year, month, pk):
         entry = self._entry(request, year, month, pk)
-        form = EntryForm(instance=entry, user=request.user)
-        _patch_entry_querysets(form, entry)
+        form = SystemicEntryEditForm(entry=entry, user=request.user)
         html = render_to_string(
             "partials/_modal_edit_form.html",
             self._modal_context(year, month, pk, form),
@@ -274,8 +274,7 @@ class CockpitSystemicEditModalView(HtmxLoginRequiredMixin, View):
 
     def post(self, request, year, month, pk):
         entry = self._entry(request, year, month, pk)
-        form = EntryForm(request.POST, instance=entry, user=request.user)
-        _patch_entry_querysets(form, entry)
+        form = SystemicEntryEditForm(request.POST, entry=entry, user=request.user)
         if form.is_valid():
             form.save()
             html = render_to_string(

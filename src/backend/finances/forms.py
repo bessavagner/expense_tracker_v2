@@ -218,6 +218,71 @@ class SystemicExpenseForm(forms.ModelForm):
             self.fields["payment_method"].required = False
 
 
+class SystemicEntryEditForm(forms.Form):
+    """Edit a launched systemic: the template name + this month's entry fields."""
+
+    name = forms.CharField(
+        max_length=100,
+        label="Nome",
+        widget=forms.TextInput(attrs={"class": "input input-bordered input-sm w-full"}),
+    )
+    date = forms.DateField(
+        label="Data",
+        widget=forms.DateInput(
+            format="%Y-%m-%d",
+            attrs={"type": "date", "class": "input input-bordered input-sm w-full"},
+        ),
+    )
+    amount = forms.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        label="Valor",
+        widget=forms.NumberInput(
+            attrs={"step": "0.01", "class": "input input-bordered input-sm w-full"}
+        ),
+    )
+    category = forms.ModelChoiceField(
+        queryset=Category.objects.none(),
+        label="Categoria",
+        widget=forms.Select(attrs={"class": "select select-bordered select-sm w-full"}),
+    )
+    payment_method = forms.ModelChoiceField(
+        queryset=PaymentMethod.objects.none(),
+        label="Forma de pagamento",
+        widget=forms.Select(attrs={"class": "select select-bordered select-sm w-full"}),
+    )
+
+    def __init__(self, *args, entry=None, user=None, **kwargs):
+        self.entry = entry
+        super().__init__(*args, **kwargs)
+        cats = Category.objects.filter(user=user)
+        pms = PaymentMethod.objects.filter(user=user, is_active=True)
+        if entry is not None:
+            cats = cats | Category.objects.filter(pk=entry.category_id)
+            pms = pms | PaymentMethod.objects.filter(pk=entry.payment_method_id)
+        self.fields["category"].queryset = cats
+        self.fields["payment_method"].queryset = pms
+        if not self.is_bound and entry is not None:
+            self.fields["name"].initial = entry.systemic_expense.name
+            self.fields["date"].initial = entry.date
+            self.fields["amount"].initial = entry.amount
+            self.fields["category"].initial = entry.category_id
+            self.fields["payment_method"].initial = entry.payment_method_id
+
+    def save(self):
+        cd = self.cleaned_data
+        systemic = self.entry.systemic_expense
+        systemic.name = cd["name"]
+        systemic.save(update_fields=["name", "updated_at"])
+        self.entry.date = cd["date"]
+        self.entry.amount = cd["amount"]
+        self.entry.category = cd["category"]
+        self.entry.payment_method = cd["payment_method"]
+        self.entry.description = cd["name"]
+        self.entry.save()
+        return self.entry
+
+
 class PaymentMethodForm(forms.ModelForm):
     class Meta:
         model = PaymentMethod
