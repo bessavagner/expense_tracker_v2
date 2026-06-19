@@ -112,7 +112,7 @@ class TestEntryListView:
         response = logged_client.get("/entries/2026/3/")
         assert "summary" in response.context
         summary = response.context["summary"]
-        assert summary["total_expenses"] == Decimal("150.00")
+        assert summary["total_lancado"] == Decimal("150.00")
         assert summary["entry_count"] == 3
 
     def test_context_has_month_tabs(self, logged_client, sample_entries):

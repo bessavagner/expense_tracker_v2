@@ -2,7 +2,7 @@ import json
 from datetime import date
 from decimal import Decimal
 
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Min, Sum
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.template.loader import render_to_string
@@ -11,10 +11,11 @@ from django.views import View
 from django.views.generic import ListView, UpdateView
 
 from finances.forms import EntryForm, InstallmentForm
-from finances.models import Entry, PaymentMethod
+from finances.models import Entry, Income, PaymentMethod
 from finances.models.entry import EntryType
 from finances.models.payment_method import PaymentType
 from finances.services.billing import installment_billing_months
+from finances.services.projection import build_projection
 from finances.views.mixins import HtmxLoginRequiredMixin
 
 # HX-Trigger fired after any entry mutation so the top totals refresh live.
@@ -22,26 +23,40 @@ ENTRIES_CHANGED = '"entries-changed": true'
 
 
 def compute_entry_summary(user, year, month):
-    """Totals for the regular entries of a billing month.
+    """Totais do mês para o painel de Entradas.
 
-    Aggregated in the database so the result covers every entry in the month
-    (not just the current page) and is cheap to recompute on each mutation.
+    ``total_lancado`` é a soma das entradas REGULARES *lançadas* no mês (por
+    ``date``) — as mesmas linhas que aparecem na tabela. ``total_gastos`` e os
+    saldos vêm de :func:`build_projection`, ancorada no mês mais antigo com
+    dado, para baterem 100% com a tela de Projeção (inclui sistemáticos e
+    parcelas, por ``billing_month``).
     """
-    billing_month = date(year, month, 1)
-    agg = Entry.objects.filter(
-        user=user, billing_month=billing_month, entry_type=EntryType.REGULAR
-    ).aggregate(
-        expenses=Sum("amount", filter=Q(amount__gt=0)),
-        returns=Sum("amount", filter=Q(amount__lt=0)),
-        count=Count("id"),
-    )
-    expenses = agg["expenses"] or Decimal("0")
-    returns = agg["returns"] or Decimal("0")
+    target = date(year, month, 1)
+
+    lanc = Entry.objects.filter(
+        user=user, entry_type=EntryType.REGULAR, date__year=year, date__month=month
+    ).aggregate(total=Sum("amount"), count=Count("id"))
+    total_lancado = lanc["total"] or Decimal("0")
+    entry_count = lanc["count"]
+
+    inc_min = Income.objects.filter(user=user).aggregate(m=Min("month"))["m"]
+    ent_min = Entry.objects.filter(user=user).aggregate(m=Min("billing_month"))["m"]
+    candidates = [d for d in (inc_min, ent_min) if d is not None]
+    anchor = min(candidates).replace(day=1) if candidates else target
+    if anchor > target:
+        anchor = target
+    num_months = (year * 12 + month) - (anchor.year * 12 + anchor.month) + 1
+
+    rows = build_projection(user, anchor, num_months, today=date.today())
+    row = rows[-1]
+
     return {
-        "total_expenses": expenses,
-        "total_returns": abs(returns),
-        "net": expenses + returns,
-        "entry_count": agg["count"],
+        "total_lancado": total_lancado,
+        "total_gastos": row["total"],
+        "income": row["income"],
+        "saldo_projetado": row["saldo_projetado"],
+        "acumulado": row["acumulado"],
+        "entry_count": entry_count,
     }
 
 

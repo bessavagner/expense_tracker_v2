@@ -49,14 +49,18 @@ class TestEntriesSummaryView:
         assert response.status_code in (302, 401, 403)
 
     def test_renders_summary_partial_with_totals(self, logged_client, march_setup):
+        # março: 3 pix de 50 (date em março, billing março) + estorno -20 (billing março)
         response = logged_client.get("/entries/2026/3/summary/", HTTP_HX_REQUEST="true")
         assert response.status_code == 200
         assert "entries/_entries_summary.html" in [t.name for t in response.templates]
         summary = response.context["summary"]
-        assert summary["total_expenses"] == Decimal("150.00")
-        assert summary["total_returns"] == Decimal("20.00")
-        assert summary["net"] == Decimal("130.00")
+        # Total lançado = soma das regulares com date em março = 150 - 20 = 130
+        assert summary["total_lancado"] == Decimal("130.00")
+        # Total gastos = total da Projeção de março (billing_month=março) = 130
+        assert summary["total_gastos"] == Decimal("130.00")
         assert summary["entry_count"] == 4
+        assert "total_returns" not in summary
+        assert "net" not in summary
 
     def test_scoped_to_user(self, logged_client, other_user):
         cat = baker.make("finances.Category", user=other_user)
@@ -71,7 +75,34 @@ class TestEntriesSummaryView:
             billing_month=date(2026, 3, 1),
         )
         response = logged_client.get("/entries/2026/3/summary/", HTTP_HX_REQUEST="true")
-        assert response.context["summary"]["total_expenses"] == Decimal("0")
+        assert response.context["summary"]["total_lancado"] == Decimal("0")
+
+    def test_credit_value_counts_in_billing_month_not_launch_month(self, logged_client, user):
+        cat = baker.make("finances.Category", user=user)
+        card = baker.make(
+            "finances.PaymentMethod", user=user, type="credit_card", closing_day=10
+        )
+        baker.make(
+            "finances.Entry",
+            user=user,
+            date=date(2026, 6, 20),
+            amount=Decimal("200.00"),
+            description="crédito",
+            category=cat,
+            payment_method=card,
+        )  # billing_month = 2026-08-01
+        june = logged_client.get(
+            "/entries/2026/6/summary/", HTTP_HX_REQUEST="true"
+        ).context["summary"]
+        august = logged_client.get(
+            "/entries/2026/8/summary/", HTTP_HX_REQUEST="true"
+        ).context["summary"]
+        # Linha lançada em junho → entra no Total lançado de junho
+        assert june["total_lancado"] == Decimal("200.00")
+        # Valor só sai em agosto → Total gastos de junho não inclui; agosto inclui
+        assert june["total_gastos"] == Decimal("0")
+        assert august["total_gastos"] == Decimal("200.00")
+        assert august["total_lancado"] == Decimal("0")
 
 
 @pytest.mark.django_db
