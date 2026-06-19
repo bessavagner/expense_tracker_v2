@@ -1,7 +1,10 @@
 # src/backend/finances/tests/test_cockpit_income.py
 from datetime import date
+from decimal import Decimal
 
+import pytest
 from django.test import TestCase
+from django.urls import reverse
 from model_bakery import baker
 
 from core.models import CustomUser
@@ -41,3 +44,18 @@ class TestCockpitIncomeForm(TestCase):
         self.assertEqual(len(created), 1)
         self.assertEqual(created[0].month, date(2026, 10, 1))
         self.assertEqual(Income.objects.filter(user=self.user).count(), 1)
+
+
+@pytest.mark.django_db
+def test_income_panel_shows_income_with_non_first_day(client, user):
+    client.force_login(user)
+    baker.make(
+        "finances.Income",
+        user=user,
+        name="Vencimento Especial",  # name absent from any form placeholder
+        amount=Decimal("8655.00"),
+        month=date(2026, 6, 18),  # dia ≠ 1 (registro legado corrompido)
+    )
+    resp = client.get(reverse("finances:cockpit_income", args=[2026, 6]))
+    body = resp.content.decode()
+    assert "Vencimento Especial" in body  # proves the row itself is rendered

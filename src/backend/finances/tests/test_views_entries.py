@@ -60,16 +60,38 @@ class TestEntryListView:
         assert response.status_code == 200
         assert "entries/_entries_table.html" in [t.name for t in response.templates]
 
-    def test_filters_by_billing_month(self, logged_client, sample_entries):
+    def test_filters_by_launch_month(self, logged_client, sample_entries):
         response = logged_client.get("/entries/2026/3/")
         entries = response.context["entries"]
         assert len(entries) == 3
-        assert all(e.billing_month == date(2026, 3, 1) for e in entries)
+        assert all(e.date.month == 3 for e in entries)
 
     def test_feb_entries_not_in_march(self, logged_client, sample_entries):
         response = logged_client.get("/entries/2026/3/")
         entries = response.context["entries"]
         assert not any(e.description == "Feb entry" for e in entries)
+
+    def test_credit_purchase_appears_in_launch_month_not_billing_month(
+        self, logged_client, user
+    ):
+        cat = baker.make("finances.Category", user=user, name="Cartão")
+        card = baker.make(
+            "finances.PaymentMethod", user=user, name="Visa", type="credit_card", closing_day=10
+        )
+        # Compra em 20/jun → fatura paga em agosto (billing_month=2026-08-01).
+        baker.make(
+            "finances.Entry",
+            user=user,
+            date=date(2026, 6, 20),
+            amount=Decimal("200.00"),
+            description="Compra crédito",
+            category=cat,
+            payment_method=card,
+        )
+        june = logged_client.get("/entries/2026/6/").context["entries"]
+        august = logged_client.get("/entries/2026/8/").context["entries"]
+        assert any(e.description == "Compra crédito" for e in june)
+        assert not any(e.description == "Compra crédito" for e in august)
 
     def test_other_user_entries_not_visible(self, logged_client, other_user, sample_entries):
         other_cat = baker.make("finances.Category", user=other_user)
@@ -90,7 +112,7 @@ class TestEntryListView:
         response = logged_client.get("/entries/2026/3/")
         assert "summary" in response.context
         summary = response.context["summary"]
-        assert summary["total_expenses"] == Decimal("150.00")
+        assert summary["total_lancado"] == Decimal("150.00")
         assert summary["entry_count"] == 3
 
     def test_context_has_month_tabs(self, logged_client, sample_entries):
@@ -104,6 +126,24 @@ class TestEntryListView:
         client = Client()
         response = client.get("/entries/2026/3/")
         assert response.status_code == 302
+
+    def test_credit_row_shows_future_invoice_badge(self, logged_client, user):
+        cat = baker.make("finances.Category", user=user)
+        card = baker.make(
+            "finances.PaymentMethod", user=user, type="credit_card", closing_day=10
+        )
+        baker.make(
+            "finances.Entry",
+            user=user,
+            date=date(2026, 6, 20),
+            amount=Decimal("200.00"),
+            description="crédito",
+            category=cat,
+            payment_method=card,
+        )  # billing_month = 2026-08-01
+        body = logged_client.get("/entries/2026/6/").content.decode()
+        assert "fatura" in body.lower()
+        assert "08/26" in body
 
     def test_context_has_entry_form(self, logged_client, sample_entries):
         response = logged_client.get("/entries/2026/3/")
