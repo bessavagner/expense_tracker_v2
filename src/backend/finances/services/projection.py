@@ -8,7 +8,7 @@ docs/superpowers/specs/2026-06-18-projection-screen-design.md.
 from datetime import date
 from decimal import Decimal
 
-from django.db.models import Sum
+from django.db.models import Min, Sum
 
 from finances.models import Entry, Income, SystemicExpense
 from finances.models.entry import EntryType
@@ -44,11 +44,24 @@ def build_projection(user, start_month: date, num_months: int, today: date | Non
         return []
     end_exclusive = _add_months(months[-1], 1)
 
-    # --- one aggregated pass per source over the whole window ---
+    # Earliest month with any data — acumulado is anchored here, not at the
+    # window start, so the accumulated balance for a month is fixed regardless
+    # of the projection window the user picks.
+    inc_min = Income.objects.filter(user=user).aggregate(m=Min("month"))["m"]
+    ent_min = Entry.objects.filter(user=user).aggregate(m=Min("billing_month"))["m"]
+    data_candidates = [d for d in (inc_min, ent_min) if d is not None]
+    data_anchor = min(data_candidates).replace(day=1) if data_candidates else start_month
+    agg_start = min(data_anchor, start_month)
+
+    # Every month from the anchor through the window end (drives the running total).
+    span = (months[-1].year * 12 + months[-1].month) - (agg_start.year * 12 + agg_start.month) + 1
+    all_months = [_add_months(agg_start, i) for i in range(span)]
+
+    # --- one aggregated pass per source over the whole span ---
     entry_totals: dict[tuple[date, str], Decimal] = {}
     for r in (
         Entry.objects.filter(
-            user=user, billing_month__gte=start_month, billing_month__lt=end_exclusive
+            user=user, billing_month__gte=agg_start, billing_month__lt=end_exclusive
         )
         .values("billing_month", "entry_type")
         .annotate(total=Sum("amount"))
@@ -58,7 +71,7 @@ def build_projection(user, start_month: date, num_months: int, today: date | Non
     income_totals: dict[date, Decimal] = {}
     for r in (
         Income.objects.filter(
-            user=user, month__gte=start_month, month__lt=end_exclusive
+            user=user, month__gte=agg_start, month__lt=end_exclusive
         )
         .values("month")
         .annotate(total=Sum("amount"))
@@ -74,7 +87,7 @@ def build_projection(user, start_month: date, num_months: int, today: date | Non
 
     rows = []
     acumulado = ZERO
-    for m in months:
+    for m in all_months:
         if m > current_month:
             systemic = active_systemic_total
         else:
@@ -89,6 +102,9 @@ def build_projection(user, start_month: date, num_months: int, today: date | Non
         saldo_programado = income - programmed
         saldo_projetado = income - total
         acumulado += saldo_projetado
+
+        if m < start_month:
+            continue  # pre-window month: counted into acumulado, not displayed
 
         rows.append(
             {

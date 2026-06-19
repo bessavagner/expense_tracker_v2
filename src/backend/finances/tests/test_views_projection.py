@@ -3,6 +3,7 @@ from decimal import Decimal
 
 import pytest
 from django.test import Client
+from django.urls import reverse
 from model_bakery import baker
 
 
@@ -67,3 +68,29 @@ class TestProjectionView:
         )
         response = logged_client.get("/projection/?start=2026-03&months=1")
         assert response.context["rows"][0]["total"] == Decimal("0")
+
+
+@pytest.mark.django_db
+def test_start_control_is_year_and_month_selects(logged_client):
+    html = logged_client.get(reverse("finances:projection")).content.decode()
+    assert 'name="start_year"' in html
+    assert 'name="start_month"' in html
+
+
+@pytest.mark.django_db
+def test_year_options_span_data_history(logged_client, user):
+    cat = baker.make("finances.Category", user=user)
+    pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+    baker.make("finances.Entry", user=user, category=cat, payment_method=pm,
+               amount=Decimal("10"), date=date(2024, 3, 1), billing_month=date(2024, 3, 1),
+               billing_month_override=True)
+    html = logged_client.get(reverse("finances:projection")).content.decode()
+    assert '<option value="2024"' in html
+
+
+@pytest.mark.django_db
+def test_start_year_month_params_drive_window(logged_client):
+    html = logged_client.get(
+        reverse("finances:projection"), {"start_year": "2026", "start_month": "3", "months": "2"}
+    ).content.decode()
+    assert "mar/2026" in html.lower() or "Mar/2026" in html
