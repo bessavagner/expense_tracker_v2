@@ -11,6 +11,7 @@ from finances.models import (
     PaymentMethod,
     SystemicExpense,
 )
+from finances.services.dates import add_months
 
 
 class EntryForm(forms.ModelForm):
@@ -197,6 +198,12 @@ class SystemicExpenseForm(forms.ModelForm):
     class Meta:
         model = SystemicExpense
         fields = ["name", "category", "payment_method", "default_amount"]
+        labels = {
+            "name": "Nome",
+            "category": "Categoria",
+            "payment_method": "Forma de pagamento",
+            "default_amount": "Valor padrão",
+        }
         widgets = {
             "name": forms.TextInput(attrs={"class": "input input-bordered input-sm w-full"}),
             "category": forms.Select(attrs={"class": "select select-bordered select-sm w-full"}),
@@ -228,6 +235,7 @@ class SystemicEntryEditForm(forms.Form):
     )
     date = forms.DateField(
         label="Data",
+        input_formats=["%Y-%m-%d"],
         widget=forms.DateInput(
             format="%Y-%m-%d",
             attrs={"type": "date", "class": "input input-bordered input-sm w-full"},
@@ -317,3 +325,55 @@ class CategoryCreateForm(forms.ModelForm):
                 attrs={"step": "0.01", "class": "input input-bordered input-sm w-full"}
             ),
         }
+
+
+class SystemicExpenseCreateForm(SystemicExpenseForm):
+    """Create a systemic template; optionally launch N months immediately."""
+
+    is_recurring = forms.BooleanField(
+        required=False,
+        label="Recorrente por N meses",
+        widget=forms.CheckboxInput(attrs={"class": "checkbox checkbox-sm", "x-model": "recurring"}),
+    )
+    months = forms.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=60,
+        label="Nº de meses",
+        widget=forms.NumberInput(
+            attrs={"min": "1", "class": "input input-bordered input-sm w-full"}
+        ),
+    )
+    start_month = forms.DateField(
+        required=False,
+        label="Mês inicial",
+        widget=forms.DateInput(
+            format="%Y-%m-%d",
+            attrs={"type": "date", "class": "input input-bordered input-sm w-full"},
+        ),
+    )
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("is_recurring"):
+            if not cleaned.get("months"):
+                self.add_error("months", "Informe o número de meses.")
+            if not cleaned.get("payment_method"):
+                self.add_error(
+                    "payment_method",
+                    "Forma de pagamento é obrigatória para recorrência.",
+                )
+        return cleaned
+
+    def save_for_user(self, user):
+        systemic = self.save(commit=False)
+        systemic.user = user
+        systemic.save()
+        launched = 0
+        if self.cleaned_data.get("is_recurring"):
+            n = self.cleaned_data.get("months") or 1
+            start = (self.cleaned_data.get("start_month") or _date.today()).replace(day=1)
+            for i in range(n):
+                systemic.create_monthly_entry(add_months(start, i))
+                launched += 1
+        return systemic, launched
