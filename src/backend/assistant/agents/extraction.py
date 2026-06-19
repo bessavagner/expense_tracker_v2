@@ -26,7 +26,11 @@ bater com o valor pago.
 EXTRACTION_INSTRUCTION = (
     "Extraia os dados deste recibo/cupom: loja, CNPJ, data, itens (descrição, "
     "quantidade, valor unitário e valor de linha), total, desconto, valor pago "
-    "e forma de pagamento. Avalie sua confiança de leitura (0 a 1)."
+    "e forma de pagamento. Para a forma de pagamento, capture exatamente como "
+    "aparece (ex.: 'VISA CRÉDITO', 'PIX', 'DINHEIRO') e, quando for cartão e "
+    "houver o número mascarado, extraia os ÚLTIMOS 4 dígitos (card_last4) e os "
+    "primeiros dígitos visíveis/BIN (card_first_digits). Avalie sua confiança "
+    "de leitura (0 a 1)."
 )
 
 
@@ -49,7 +53,9 @@ class ReceiptExtraction(BaseModel):
     total: Decimal = Decimal("0")
     discount: Decimal = Decimal("0")
     amount_paid: Decimal = Decimal("0")
-    payment_hint: str | None = None
+    payment_hint: str | None = None  # ex.: "VISA CRÉDITO", "PIX", "DINHEIRO"
+    card_last4: str | None = None  # últimos 4 dígitos do cartão, se legíveis
+    card_first_digits: str | None = None  # primeiros dígitos/BIN, se legíveis
     confidence: float = 0.0
 
 
@@ -90,6 +96,28 @@ async def extract_receipt(data: bytes, media_type: str) -> ReceiptExtraction:
     return result.output
 
 
+def _payment_guidance(ext: ReceiptExtraction) -> str:
+    """Bloco de instruções para resolver a forma de pagamento do recibo.
+
+    Bandeira de cartão (VISA/MASTER/ELO...) é GENÉRICA — não é o nome da forma
+    cadastrada. Usa os dígitos do cartão como chave de memória (final 4 / BIN)
+    e, sem regra, pergunta qual cartão; Pix/dinheiro resolvem direto pelo nome.
+    """
+    last4 = ext.card_last4 or "?"
+    return (
+        "Forma de pagamento — resolva ANTES de gravar:\n"
+        "- Se o cupom indicar Pix ou dinheiro, use essa forma pelo nome cadastrado "
+        "(get_payment_methods); havendo mais de um Pix, pergunte qual.\n"
+        "- Se indicar CARTÃO por BANDEIRA (VISA/MASTERCARD/ELO/HIPERCARD + crédito/"
+        "débito), isso é GENÉRICO e NÃO é o nome da forma cadastrada. Então:\n"
+        f'  1) check_memory pelos dígitos do cartão (ex.: "cartão final {last4}"); '
+        "se houver regra de payment_method, use-a sem perguntar.\n"
+        "  2) senão, get_payment_methods e PERGUNTE qual cartão é (cite o final "
+        f'{last4} para ajudar). Após a resposta, save_memory_rule(trigger="{last4}", '
+        'field="payment_method", value=<cartão>) e só então grave.'
+    )
+
+
 def extraction_to_prompt(
     ext: ReceiptExtraction, caption: str = "", needs_review: bool = False
 ) -> str:
@@ -97,39 +125,49 @@ def extraction_to_prompt(
 
     Entrega os itens já lidos como TEXTO, para o bookkeeping rodar no modelo
     leve (a visão já foi usada na fase 1). Instrui o uso de ``register_receipt``.
-    Quando ``needs_review`` é True (leitura incerta), pede confirmação campo a
-    campo ANTES de gravar.
+    Quando ``needs_review`` é True (leitura incerta), pede confirmação ANTES de
+    gravar. Os índices dos itens são argumento de ``register_receipt`` e NUNCA
+    devem ser exibidos ao usuário — a tabela mostrada é limpa (Categoria | Itens).
     """
     if needs_review:
         head = (
             "Recibo lido da foto, mas a LEITURA ESTÁ INCERTA (confiança baixa ou a "
-            "soma não fechou). Mostre a tabela item → categoria → valor, aponte o "
-            "que ficou duvidoso e PEÇA CONFIRMAÇÃO campo a campo. NÃO use "
-            "register_receipt nem grave nada até o usuário confirmar."
+            "soma não fechou). Mostre uma tabela LIMPA com colunas 'Categoria | "
+            "Itens' (resuma o conteúdo), aponte o que ficou duvidoso e PEÇA "
+            "CONFIRMAÇÃO. Os índices abaixo são internos: NUNCA os exiba ao "
+            "usuário. NÃO use register_receipt nem grave nada até o usuário "
+            "confirmar. Termine com UMA única pergunta."
         )
     else:
         head = (
-            "Recibo lido da foto (itens NUMERADOS abaixo). Atribua cada item à sua "
-            "categoria e grave com register_receipt passando items_by_category como "
-            "{categoria: [índices]} — cada índice em UMA só categoria — e summaries "
-            "{categoria: resumo curto do conteúdo}. NÃO redigite valores: a soma e o "
-            "rateio do desconto saem do recibo. Uma linha por categoria, descrição "
-            "'<loja> - <resumo>'. Mostre a tabela e confirme UMA vez."
+            "Recibo lido da foto. Os itens vêm NUMERADOS abaixo APENAS para você "
+            "chamar register_receipt (items_by_category={categoria: [índices]}, "
+            "cada índice em UMA só categoria; summaries={categoria: resumo curto}). "
+            "NUNCA exiba esses índices ao usuário. Para o usuário, mostre uma "
+            "tabela LIMPA com colunas 'Categoria | Itens' (resuma o conteúdo), mais "
+            "loja, data, forma de pagamento e valor pago. NÃO redigite valores: a "
+            "soma e o rateio do desconto saem do recibo. Termine com UMA única "
+            "pergunta 'Confirma?'."
         )
     item_lines = [
         f"[{idx}] {it.description} | R$ {it.line_total}"
         for idx, it in enumerate(ext.items)
     ]
+    card_info = ""
+    if ext.card_last4:
+        card_info = f" (cartão final {ext.card_last4}"
+        if ext.card_first_digits:
+            card_info += f", início {ext.card_first_digits}"
+        card_info += ")"
     parts = [
         head,
         f"Loja: {ext.store or '?'}",
         f"Data: {ext.date or '?'}",
-        f"Forma de pagamento (do cupom): {ext.payment_hint or '?'} — se for "
-        "genérico (ex.: 'Cartão Crédito') e houver vários cartões, PERGUNTE qual "
-        "antes de gravar; nunca assuma.",
+        f"Forma de pagamento no cupom: {ext.payment_hint or '?'}{card_info}",
+        _payment_guidance(ext),
         f"Desconto: {ext.discount}",
         f"Valor pago: {ext.amount_paid}",
-        "Itens (índice):",
+        "Itens (índice INTERNO → use só em register_receipt, não mostre ao usuário):",
         *item_lines,
     ]
     if caption:

@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface Message {
   id: string;
@@ -136,6 +138,37 @@ const FileIcon = () => (
     <path d="M14 2v6h6" />
   </svg>
 );
+
+// Overrides para o markdown do chat: tabelas/listas/links com classes daisyUI.
+// `node` é descartado para não vazar como atributo do DOM.
+const MD_COMPONENTS: Components = {
+  table: ({ node: _n, ...props }) => (
+    <div className="overflow-x-auto my-1">
+      <table className="table table-xs" {...props} />
+    </div>
+  ),
+  th: ({ node: _n, ...props }) => <th className="font-semibold" {...props} />,
+  a: ({ node: _n, ...props }) => (
+    <a className="link link-primary" target="_blank" rel="noreferrer" {...props} />
+  ),
+  ul: ({ node: _n, ...props }) => <ul className="list-disc ml-4 my-1" {...props} />,
+  ol: ({ node: _n, ...props }) => <ol className="list-decimal ml-4 my-1" {...props} />,
+  code: ({ node: _n, ...props }) => (
+    <code className="px-1 rounded bg-base-300/60" {...props} />
+  ),
+  p: ({ node: _n, ...props }) => <p className="my-1 first:mt-0 last:mb-0" {...props} />,
+};
+
+/** Renderiza markdown (tabelas GFM, negrito, listas) nas respostas do assistente. */
+function MarkdownMessage({ content }: { content: string }) {
+  return (
+    <div className="break-words [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
 
 export default function ChatWidget({ apiUrl }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -586,7 +619,13 @@ export default function ChatWidget({ apiUrl }: Props) {
                 : "chat-bubble-neutral"
             }`}
           >
-            {msg.content || (
+            {msg.content ? (
+              msg.role === "assistant" ? (
+                <MarkdownMessage content={msg.content} />
+              ) : (
+                <span className="whitespace-pre-wrap">{msg.content}</span>
+              )
+            ) : (
               <span className="loading loading-dots loading-sm" />
             )}
           </div>

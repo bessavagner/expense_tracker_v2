@@ -101,6 +101,37 @@ def test_extraction_to_prompt_lists_items_and_tool():
     assert "paguei no c6" in prompt
 
 
+def test_extraction_to_prompt_instructs_hiding_internal_indices():
+    """Os índices [0,1,...] são argumento de register_receipt, NÃO devem ser
+    exibidos ao usuário; o prompt precisa instruir isso explicitamente."""
+    ext = _extraction([("a", "10.00"), ("b", "5.00")], discount="0")
+    low = extraction_to_prompt(ext).lower()
+    assert "índice" in low
+    assert "nunca" in low  # "NUNCA exiba/mostre esses índices ao usuário"
+
+
+def test_extraction_to_prompt_asks_to_confirm_exactly_once():
+    """Evita o 'Confirma? Confirma?' — uma única pergunta de confirmação."""
+    ext = _extraction([("a", "10.00")], discount="0")
+    prompt = extraction_to_prompt(ext)
+    assert prompt.count("Confirma?") == 1
+    assert "uma única" in prompt.lower()
+
+
+def test_extraction_to_prompt_brand_payment_routes_through_card_and_memory():
+    """Bandeira (VISA/MASTER...) é genérica: usar dígitos do cartão + memória,
+    e perguntar qual cartão quando não houver regra."""
+    ext = _extraction([("a", "10.00")], discount="0")
+    ext.payment_hint = "VISA CRÉDITO"
+    ext.card_last4 = "4068"
+    prompt = extraction_to_prompt(ext)
+    low = prompt.lower()
+    assert "4068" in prompt  # o final do cartão chega ao agente
+    assert "check_memory" in low
+    assert "save_memory_rule" in low
+    assert "get_payment_methods" in low
+
+
 @pytest.mark.anyio
 async def test_extract_receipt_returns_extraction():
     png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16

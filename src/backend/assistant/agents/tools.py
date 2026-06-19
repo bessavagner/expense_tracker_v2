@@ -219,7 +219,10 @@ def register_receipt(
         if len(pm_matches) > 1:
             return f"Forma de pagamento '{pm_name}' é ambígua. Qual? {', '.join(pm_matches)}"
         hint = str(payload.get("payment_hint") or "").strip()
+        last4 = str(payload.get("card_last4") or "").strip()
         extra = f" O cupom indica '{hint}'." if hint else ""
+        if last4:
+            extra += f" Cartão final {last4}."
         return (
             f"Qual a forma de pagamento?{extra} Não consegui resolver "
             f"'{pm_name}'. Disponíveis: {available}"
@@ -311,15 +314,21 @@ def build_receipt_context(user) -> str:
         f"[{idx}] {i.get('description', '?')} R$ {i.get('line_total', '?')}"
         for idx, i in enumerate(items)
     )
+    card_last4 = payload.get("card_last4") or "?"
     return (
         "Contexto de recibo pendente (extraído de foto recente): "
         f"loja={payload.get('store', '?')}, data={payload.get('date', '?')}, "
         f"forma_pagamento={payload.get('payment_hint') or '?'}, "
+        f"cartao_final={card_last4}, cartao_inicio={payload.get('card_first_digits') or '?'}, "
         f"desconto={payload.get('discount', '0')}, "
         f"valor_pago={payload.get('amount_paid', '?')}, "
-        f"itens(índice)=[{item_lines}]. Use register_receipt passando "
-        "items_by_category como {categoria: [índices]} (cada índice em UMA só "
-        "categoria) e summaries {categoria: resumo do conteúdo}."
+        f"itens(índice INTERNO, NÃO mostrar ao usuário)=[{item_lines}]. Use "
+        "register_receipt passando items_by_category como {categoria: [índices]} "
+        "(cada índice em UMA só categoria) e summaries {categoria: resumo do "
+        "conteúdo}; mostre ao usuário só uma tabela limpa (Categoria | Itens). "
+        "Forma de pagamento: bandeira de cartão é genérica — resolva pelo final "
+        f'do cartão ({card_last4}) via check_memory; sem regra, pergunte qual '
+        "cartão e salve com save_memory_rule. Confirme UMA única vez."
     )
 
 
