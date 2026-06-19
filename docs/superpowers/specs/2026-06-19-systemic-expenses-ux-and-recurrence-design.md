@@ -71,8 +71,9 @@ ligados ao model: `is_recurring`, `months`, `start_month`) com `save_for_user(us
 
 1. sempre cria o `SystemicExpense` (template);
 2. se `is_recurring`: cria as `Entry` dos `months` meses a partir de `start_month`,
-   usando `create_monthly_entry`, **pulando** meses que já têm a `Entry` daquele
-   sistemático (idempotente);
+   usando `create_monthly_entry`. Como o template é recém-criado, não há entradas
+   prévias — cada mês é lançado uma vez (sem necessidade de guarda de duplicidade
+   neste fluxo de criação);
 3. retorna `(systemic, n_lancados)`.
 
 Não-recorrente mantém o comportamento atual (só cria o template).
