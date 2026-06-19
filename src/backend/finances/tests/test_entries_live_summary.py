@@ -62,6 +62,17 @@ class TestEntriesSummaryView:
         assert "total_returns" not in summary
         assert "net" not in summary
 
+    def test_summary_labels(self, logged_client, march_setup):
+        body = logged_client.get(
+            "/entries/2026/3/summary/", HTTP_HX_REQUEST="true"
+        ).content.decode()
+        assert "Total lançado" in body
+        assert "Total gastos" in body
+        assert "Saldo projetado" in body
+        assert "Saldo acumulado" in body
+        assert "Total retornos" not in body
+        assert "Líquido" not in body
+
     def test_scoped_to_user(self, logged_client, other_user):
         cat = baker.make("finances.Category", user=other_user)
         pm = baker.make("finances.PaymentMethod", user=other_user, type="pix")

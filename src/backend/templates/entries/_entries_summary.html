@@ -5,8 +5,10 @@
      hx-trigger="entries-changed from:body"
      hx-swap="outerHTML"
      class="flex flex-wrap gap-x-6 gap-y-1 mb-3 text-sm opacity-70">
-    <span>Total gastos: <strong class="text-error whitespace-nowrap">{{ summary.total_expenses|money }}</strong></span>
-    <span>Total retornos: <strong class="text-success whitespace-nowrap">{{ summary.total_returns|money }}</strong></span>
-    <span>Líquido: <strong class="whitespace-nowrap">{{ summary.net|money }}</strong></span>
+    <span>Total lançado: <strong class="whitespace-nowrap">{{ summary.total_lancado|money }}</strong></span>
+    <span>Total gastos: <strong class="text-error whitespace-nowrap">{{ summary.total_gastos|money }}</strong></span>
+    <span>Renda do mês: <strong class="whitespace-nowrap">{{ summary.income|money }}</strong></span>
+    <span>Saldo projetado: <strong class="whitespace-nowrap {% if summary.saldo_projetado < 0 %}text-error{% else %}text-success{% endif %}">{{ summary.saldo_projetado|money }}</strong></span>
+    <span>Saldo acumulado: <strong class="whitespace-nowrap {% if summary.acumulado < 0 %}text-error{% else %}text-success{% endif %}">{{ summary.acumulado|money }}</strong></span>
     <span>Entradas: <strong>{{ summary.entry_count }}</strong></span>
 </div>
