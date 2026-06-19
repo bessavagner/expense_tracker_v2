@@ -10,7 +10,7 @@ from django.urls import reverse
 from django.views import View
 from django.views.generic import ListView, UpdateView
 
-from finances.forms import EntryForm, InstallmentForm
+from finances.forms import EntryForm, InstallmentForm, SystemicExpenseCreateForm
 from finances.models import Entry, Income, PaymentMethod
 from finances.models.entry import EntryType
 from finances.models.payment_method import PaymentType
@@ -293,12 +293,25 @@ class InstallmentPreviewView(HtmxLoginRequiredMixin, View):
 
 
 class EntryModalView(HtmxLoginRequiredMixin, View):
-    """Serve modal form and handle both regular and installment creation."""
+    """Serve modal form and handle regular, installment, and systemic creation."""
+
+    def _start_month(self, request):
+        try:
+            y = int(request.GET.get("year"))
+            m = int(request.GET.get("month"))
+            return date(y, m, 1)
+        except (TypeError, ValueError):
+            return date.today().replace(day=1)
 
     def get(self, request):
+        start = self._start_month(request)
         context = {
             "entry_form": EntryForm(user=request.user),
             "installment_form": InstallmentForm(user=request.user),
+            "systemic_form": SystemicExpenseCreateForm(
+                user=request.user, initial={"start_month": start}
+            ),
+            "initial_mode": request.GET.get("mode", "regular"),
         }
         html = render_to_string("partials/_modal_entry_form.html", context, request=request)
         return HttpResponse(html)
@@ -314,19 +327,33 @@ class EntryModalView(HtmxLoginRequiredMixin, View):
                 plan.save()
                 plan.generate_entries()
                 response = HttpResponse("")
-                trigger = json.dumps(
+                response["HX-Trigger"] = json.dumps(
                     {
                         "showToast": {
-                            "message": (
-                                f"Parcelamento criado com {plan.num_installments} parcelas!"
-                            ),
+                            "message": f"Parcelamento criado com {plan.num_installments} parcelas!",
                             "type": "success",
                         },
                         "entry-saved": True,
                         "entries-changed": True,
                     }
                 )
-                response["HX-Trigger"] = trigger
+                return response
+        elif entry_mode == "systemic":
+            form = SystemicExpenseCreateForm(request.POST, user=request.user)
+            if form.is_valid():
+                systemic, launched = form.save_for_user(request.user)
+                msg = f"{systemic.name} adicionado!"
+                if launched:
+                    msg = f"{systemic.name}: {launched} mês(es) lançado(s)!"
+                response = HttpResponse("")
+                response["HX-Trigger"] = json.dumps(
+                    {
+                        "showToast": {"message": msg, "type": "success"},
+                        "entry-saved": True,
+                        "systemic-changed": True,
+                        "entries-changed": True,
+                    }
+                )
                 return response
         else:
             form = EntryForm(request.POST, user=request.user)
@@ -342,10 +369,16 @@ class EntryModalView(HtmxLoginRequiredMixin, View):
                 return response
 
         context = {
-            "entry_form": (EntryForm(user=request.user) if entry_mode == "installment" else form),
+            "entry_form": (
+                form if entry_mode == "regular" else EntryForm(user=request.user)
+            ),
             "installment_form": (
                 form if entry_mode == "installment" else InstallmentForm(user=request.user)
             ),
+            "systemic_form": (
+                form if entry_mode == "systemic" else SystemicExpenseCreateForm(user=request.user)
+            ),
+            "initial_mode": entry_mode,
             "errors": True,
         }
         html = render_to_string("partials/_modal_entry_form.html", context, request=request)

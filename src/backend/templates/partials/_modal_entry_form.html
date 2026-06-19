@@ -1,10 +1,11 @@
 <h3 class="font-bold text-lg mb-4">Nova Entrada</h3>
 
-<div x-data="{ mode: 'regular' }" class="space-y-4">
+<div x-data="{ mode: '{{ initial_mode|default:"regular" }}' }" class="space-y-4">
     <!-- Mode toggle -->
     <div class="tabs tabs-boxed">
         <a class="tab" :class="mode === 'regular' && 'tab-active'" @click="mode = 'regular'">Regular</a>
         <a class="tab" :class="mode === 'installment' && 'tab-active'" @click="mode = 'installment'">Parcelamento</a>
+        <a class="tab" :class="mode === 'systemic' && 'tab-active'" @click="mode = 'systemic'">Sistemático</a>
     </div>
 
     <!-- Regular entry form -->
@@ -95,5 +96,39 @@
             <p class="opacity-70 mt-1" x-show="previewNote" x-text="previewNote"></p>
         </div>
         <button type="submit" class="btn btn-accent w-full">Criar Parcelamento</button>
+    </form>
+
+    <!-- Systemic form -->
+    <form x-show="mode === 'systemic'"
+          x-data="{ recurring: false }"
+          hx-post="{% url 'finances:entry_modal' %}"
+          hx-target="#entry-modal-content"
+          hx-swap="innerHTML"
+          class="space-y-3">
+        {% csrf_token %}
+        <input type="hidden" name="entry_mode" value="systemic">
+        {% for field in systemic_form %}
+          {% if field.name == "is_recurring" %}
+            <div class="form-control">
+              <label class="label cursor-pointer justify-start gap-2">
+                {{ field }}<span class="label-text">{{ field.label }}</span>
+              </label>
+              {% if field.errors %}<span class="text-error text-sm">{{ field.errors.0 }}</span>{% endif %}
+            </div>
+          {% elif field.name == "months" or field.name == "start_month" %}
+            <div class="form-control" x-show="recurring">
+              <label class="label"><span class="label-text">{{ field.label }}</span></label>
+              {{ field }}
+              {% if field.errors %}<span class="text-error text-sm">{{ field.errors.0 }}</span>{% endif %}
+            </div>
+          {% else %}
+            <div class="form-control">
+              <label class="label"><span class="label-text">{{ field.label }}</span></label>
+              {{ field }}
+              {% if field.errors %}<span class="text-error text-sm">{{ field.errors.0 }}</span>{% endif %}
+            </div>
+          {% endif %}
+        {% endfor %}
+        <button type="submit" class="btn btn-accent w-full">Salvar sistemático</button>
     </form>
 </div>

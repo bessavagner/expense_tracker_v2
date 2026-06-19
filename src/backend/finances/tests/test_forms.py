@@ -1,7 +1,10 @@
+from datetime import date
+
 import pytest
 from model_bakery import baker
 
 from finances.forms import EntryForm, IncomeForm, InstallmentForm, SystemicExpenseForm
+from finances.models import Category, Entry, InstallmentPlan, PaymentMethod
 
 
 @pytest.mark.django_db
@@ -122,3 +125,25 @@ class TestSystemicExpenseForm:
             user=user,
         )
         assert form.is_valid(), form.errors
+
+
+@pytest.mark.django_db
+def test_entry_form_date_prefills_iso():
+    user = baker.make("core.CustomUser")
+    cat = baker.make(Category, user=user)
+    pm = baker.make(PaymentMethod, user=user, is_active=True)
+    entry = baker.make(Entry, user=user, category=cat, payment_method=pm, date=date(2026, 6, 19))
+    form = EntryForm(instance=entry, user=user)
+    assert 'value="2026-06-19"' in str(form["date"])
+
+
+@pytest.mark.django_db
+def test_installment_form_date_prefills_iso():
+    user = baker.make("core.CustomUser")
+    cat = baker.make(Category, user=user)
+    pm = baker.make(PaymentMethod, user=user, is_active=True)
+    plan = baker.make(
+        InstallmentPlan, user=user, category=cat, payment_method=pm, date=date(2026, 6, 19)
+    )
+    form = InstallmentForm(instance=plan, user=user)
+    assert 'value="2026-06-19"' in str(form["date"])

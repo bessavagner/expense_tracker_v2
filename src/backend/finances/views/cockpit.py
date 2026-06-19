@@ -12,12 +12,14 @@ from finances.forms import (
     EntryForm,
     IncomeForm,
     InstallmentForm,
+    SystemicEntryEditForm,
     SystemicExpenseForm,
 )
 from finances.models import Category, Entry, Income, PaymentMethod, SystemicExpense
 from finances.models.entry import EntryType
 from finances.models.payment_method import PaymentType
 from finances.models.payment_method_closing_day import PaymentMethodClosingDay
+from finances.services.income_recurrence import apply_income_recurrence
 from finances.services.installment_month import installment_rows_for_month
 from finances.services.systemic_month import systemic_rows_for_month
 from finances.views.mixins import HtmxLoginRequiredMixin
@@ -108,7 +110,8 @@ class CockpitIncomeEditModalView(HtmxLoginRequiredMixin, View):
         inc = self._income(request, pk)
         form = IncomeForm(request.POST, instance=inc)
         if form.is_valid():
-            form.save()
+            inc = form.save()
+            apply_income_recurrence(inc)
             html = render_to_string(
                 "cockpit/_income_section.html",
                 _income_context(request, int(year), int(month)),
@@ -138,7 +141,6 @@ def _systemic_context(request, year, month):
         "current_year": year,
         "current_month": month,
         "systemic_rows": systemic_rows_for_month(request.user, year, month),
-        "systemic_form": SystemicExpenseForm(user=request.user),
     }
 
 
@@ -263,8 +265,7 @@ class CockpitSystemicEditModalView(HtmxLoginRequiredMixin, View):
 
     def get(self, request, year, month, pk):
         entry = self._entry(request, year, month, pk)
-        form = EntryForm(instance=entry, user=request.user)
-        _patch_entry_querysets(form, entry)
+        form = SystemicEntryEditForm(entry=entry, user=request.user)
         html = render_to_string(
             "partials/_modal_edit_form.html",
             self._modal_context(year, month, pk, form),
@@ -274,8 +275,7 @@ class CockpitSystemicEditModalView(HtmxLoginRequiredMixin, View):
 
     def post(self, request, year, month, pk):
         entry = self._entry(request, year, month, pk)
-        form = EntryForm(request.POST, instance=entry, user=request.user)
-        _patch_entry_querysets(form, entry)
+        form = SystemicEntryEditForm(request.POST, entry=entry, user=request.user)
         if form.is_valid():
             form.save()
             html = render_to_string(

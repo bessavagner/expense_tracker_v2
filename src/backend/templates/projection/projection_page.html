@@ -15,8 +15,18 @@
       hx-trigger="change">
     <label class="form-control">
         <span class="label-text text-xs mb-1">Início</span>
-        <input type="month" name="start" value="{{ start_value }}"
-               class="input input-bordered input-sm">
+        <div class="flex gap-1">
+            <select name="start_month" class="select select-bordered select-sm">
+                {% for m in start_month_options %}
+                <option value="{{ m }}" {% if m == start_month %}selected{% endif %}>{{ m|month_abbr }}</option>
+                {% endfor %}
+            </select>
+            <select name="start_year" class="select select-bordered select-sm">
+                {% for y in year_options %}
+                <option value="{{ y }}" {% if y == start_year %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
+        </div>
     </label>
     <label class="form-control">
         <span class="label-text text-xs mb-1">Meses</span>
