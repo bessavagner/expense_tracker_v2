@@ -127,6 +127,24 @@ class TestEntryListView:
         response = client.get("/entries/2026/3/")
         assert response.status_code == 302
 
+    def test_credit_row_shows_future_invoice_badge(self, logged_client, user):
+        cat = baker.make("finances.Category", user=user)
+        card = baker.make(
+            "finances.PaymentMethod", user=user, type="credit_card", closing_day=10
+        )
+        baker.make(
+            "finances.Entry",
+            user=user,
+            date=date(2026, 6, 20),
+            amount=Decimal("200.00"),
+            description="crédito",
+            category=cat,
+            payment_method=card,
+        )  # billing_month = 2026-08-01
+        body = logged_client.get("/entries/2026/6/").content.decode()
+        assert "fatura" in body.lower()
+        assert "08/26" in body
+
     def test_context_has_entry_form(self, logged_client, sample_entries):
         response = logged_client.get("/entries/2026/3/")
         assert "form" in response.context
