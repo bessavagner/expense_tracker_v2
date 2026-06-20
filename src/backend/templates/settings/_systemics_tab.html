@@ -30,7 +30,12 @@
                        hx-target="#settings-content"
                        hx-swap="innerHTML">
             </td>
-            <td></td>
+            <td>
+                <button type="button" class="btn btn-xs btn-ghost"
+                        hx-get="{% url 'finances:settings_systemic_edit_modal' s.id %}"
+                        hx-target="#entry-modal-content" hx-swap="innerHTML"
+                        onclick="document.getElementById('entry-modal').showModal()">editar</button>
+            </td>
         </tr>
         {% empty %}
         <tr>

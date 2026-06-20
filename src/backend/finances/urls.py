@@ -55,6 +55,7 @@ from finances.views.settings import (
     PaymentMethodToggleView,
     SettingsView,
     SystemicCreateView,
+    SystemicEditModalView,
     SystemicEditView,
     SystemicsTabView,
     SystemicToggleView,
@@ -114,6 +115,11 @@ urlpatterns = [
     path("settings/systemics/", SystemicsTabView.as_view(), name="settings_systemics"),
     path(
         "settings/systemics/create/", SystemicCreateView.as_view(), name="settings_systemic_create"
+    ),
+    path(
+        "settings/systemics/<uuid:pk>/edit-modal/",
+        SystemicEditModalView.as_view(),
+        name="settings_systemic_edit_modal",
     ),
     path(
         "settings/systemics/<uuid:pk>/edit/",

@@ -410,3 +410,46 @@ class SystemicExpenseCreateForm(SystemicExpenseForm):
                 systemic.create_monthly_entry(add_months(start, i))
                 launched += 1
         return systemic, launched
+
+
+class SystemicTemplateEditForm(SystemicExpenseForm):
+    """Settings edit of a systemic template + an OPTIONAL value recurrence.
+
+    Saves the template fields (incl. ``default_amount``). When recurrence is
+    enabled, propagates ONLY the value (``default_amount``) across the chosen
+    ``[start, end]`` window to the monthly entries (updating launched months,
+    launching missing ones). The window may extend backwards.
+    """
+
+    is_recurring = forms.BooleanField(
+        required=False,
+        label="Aplicar valor em recorrência",
+        widget=forms.CheckboxInput(attrs={"class": "checkbox checkbox-sm"}),
+    )
+    recurrence_start = forms.DateField(
+        required=False,
+        label="Início da recorrência",
+        widget=forms.DateInput(
+            format="%Y-%m-%d",
+            attrs={"type": "date", "class": "input input-bordered input-sm w-full"},
+        ),
+    )
+    recurrence_end = forms.DateField(
+        required=False,
+        label="Fim da recorrência",
+        widget=forms.DateInput(
+            format="%Y-%m-%d",
+            attrs={"type": "date", "class": "input input-bordered input-sm w-full"},
+        ),
+    )
+
+    def save(self, commit=True):
+        systemic = super().save(commit=commit)
+        cd = self.cleaned_data
+        if commit and cd.get("is_recurring"):
+            from finances.services.systemic_recurrence import apply_systemic_recurrence
+
+            start = cd.get("recurrence_start") or _date.today().replace(day=1)
+            end = cd.get("recurrence_end") or _date(start.year, 12, 1)
+            apply_systemic_recurrence(systemic, cd["default_amount"], start, end)
+        return systemic

@@ -1,5 +1,9 @@
+import json
+from datetime import date
+
 from django.http import Http404, HttpResponse
 from django.template.loader import render_to_string
+from django.urls import reverse
 from django.views.generic import TemplateView, View
 
 from finances.forms import (
@@ -8,6 +12,7 @@ from finances.forms import (
     IncomeForm,
     PaymentMethodForm,
     SystemicExpenseForm,
+    SystemicTemplateEditForm,
 )
 from finances.models import Category, Income, PaymentMethod, SystemicExpense
 from finances.services.income_recurrence import apply_income_recurrence
@@ -178,15 +183,68 @@ class SystemicCreateView(HtmxLoginRequiredMixin, View):
         return response
 
 
+def _systemic_modal_context(pk, form):
+    return {
+        "form": form,
+        "title": "Editar Sistemático",
+        "post_url": reverse("finances:settings_systemic_edit", args=[pk]),
+        "swap_target": "#settings-content",
+        "swap_mode": "innerHTML",
+    }
+
+
+class SystemicEditModalView(HtmxLoginRequiredMixin, View):
+    """Serve the systemic template edit form (with optional recurrence) in the
+    shared #entry-modal."""
+
+    def get(self, request, pk):
+        systemic = SystemicExpense.objects.filter(user=request.user, pk=pk).first()
+        if not systemic:
+            raise Http404
+        form = SystemicTemplateEditForm(instance=systemic, user=request.user)
+        today = date.today().replace(day=1)
+        form.fields["recurrence_start"].initial = today
+        form.fields["recurrence_end"].initial = date(today.year, 12, 1)
+        html = render_to_string(
+            "partials/_modal_edit_form.html",
+            _systemic_modal_context(pk, form),
+            request=request,
+        )
+        return HttpResponse(html)
+
+
 class SystemicEditView(HtmxLoginRequiredMixin, View):
     def post(self, request, pk):
         systemic = SystemicExpense.objects.filter(user=request.user, pk=pk).first()
         if not systemic:
             raise Http404
-        form = SystemicExpenseForm(request.POST, instance=systemic, user=request.user)
-        if form.is_valid():
-            form.save()
-        return SystemicCreateView()._render_tab(request)
+        form = SystemicTemplateEditForm(request.POST, instance=systemic, user=request.user)
+        if not form.is_valid():
+            html = render_to_string(
+                "partials/_modal_edit_form.html",
+                _systemic_modal_context(pk, form),
+                request=request,
+            )
+            return HttpResponse(html)
+        systemic = form.save()
+        html = render_to_string(
+            "settings/_systemics_tab.html",
+            {
+                "systemics": SystemicExpense.objects.filter(user=request.user).select_related(
+                    "category", "payment_method"
+                ),
+                "form": SystemicExpenseForm(user=request.user),
+            },
+            request=request,
+        )
+        response = HttpResponse(html)
+        response["HX-Trigger"] = json.dumps(
+            {
+                "showToast": {"message": f"{systemic.name} atualizado!", "type": "success"},
+                "entry-saved": True,
+            }
+        )
+        return response
 
 
 class SystemicToggleView(HtmxLoginRequiredMixin, View):
