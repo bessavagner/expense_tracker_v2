@@ -60,6 +60,32 @@
             <td class="text-right {% if r.acumulado < 0 %}text-error{% endif %}">{{ r.acumulado|money }}</td>
             {% endfor %}
         </tr>
+        <tr class="text-info">
+            <td class="sticky left-0 z-10 bg-base-100 italic">Saldo projetado estimado</td>
+            {% for r in rows %}
+            <td class="text-right {% if r.saldo_projetado_estimado < 0 %}text-error{% endif %}">{{ r.saldo_projetado_estimado|money }}</td>
+            {% endfor %}
+        </tr>
+        <tr class="font-semibold text-info">
+            <td class="sticky left-0 z-10 bg-base-100">Acumulado estimado</td>
+            {% for r in rows %}
+            <td class="text-right {% if r.acumulado_estimado < 0 %}text-error{% endif %}">{{ r.acumulado_estimado|money }}</td>
+            {% endfor %}
+        </tr>
+        {% if has_whatif %}
+        <tr class="font-bold border-t-2 border-secondary text-secondary">
+            <td class="sticky left-0 z-10 bg-base-100">Saldo projetado (Simulado)</td>
+            {% for r in rows %}
+            <td class="text-right {% if r.saldo_projetado_sim < 0 %}text-error{% endif %}">{{ r.saldo_projetado_sim|money }}</td>
+            {% endfor %}
+        </tr>
+        <tr class="font-bold text-secondary">
+            <td class="sticky left-0 z-10 bg-base-100">Acumulado (Simulado)</td>
+            {% for r in rows %}
+            <td class="text-right {% if r.acumulado_sim < 0 %}text-error{% endif %}">{{ r.acumulado_sim|money }}</td>
+            {% endfor %}
+        </tr>
+        {% endif %}
     </tbody>
 </table>
 </div>

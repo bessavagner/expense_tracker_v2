@@ -39,7 +39,12 @@ from finances.views.importer import (
     ImportPreviewView,
     ImportUploadView,
 )
-from finances.views.projection import ProjectionView
+from finances.views.projection import (
+    ProjectionView,
+    ProjectionWhatifAddView,
+    ProjectionWhatifClearView,
+    ProjectionWhatifRemoveView,
+)
 from finances.views.settings import (
     CategoriesTabView,
     CategoryCreateView,
@@ -88,6 +93,21 @@ urlpatterns = [
     ),
     # Projection
     path("projection/", ProjectionView.as_view(), name="projection"),
+    path(
+        "projection/whatif/add/",
+        ProjectionWhatifAddView.as_view(),
+        name="projection_whatif_add",
+    ),
+    path(
+        "projection/whatif/clear/",
+        ProjectionWhatifClearView.as_view(),
+        name="projection_whatif_clear",
+    ),
+    path(
+        "projection/whatif/<str:item_id>/remove/",
+        ProjectionWhatifRemoveView.as_view(),
+        name="projection_whatif_remove",
+    ),
     # Consolidated
     path("consolidated/", ConsolidatedView.as_view(), name="consolidated"),
     path(

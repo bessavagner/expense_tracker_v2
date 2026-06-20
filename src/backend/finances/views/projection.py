@@ -1,11 +1,17 @@
+import uuid
 from datetime import date
 
 from django.db.models import Min
-from django.views.generic import TemplateView
+from django.http import HttpResponse
+from django.template.loader import render_to_string
+from django.views.generic import TemplateView, View
 
 from finances.models import Entry, Income
 from finances.services.projection import build_projection
+from finances.services.whatif import HypotheticalItem, HypoType, expand_hypotheticals
 from finances.views.mixins import HtmxLoginRequiredMixin
+
+SESSION_KEY = "projection_whatif"
 
 DEFAULT_MONTHS = 14
 MAX_MONTHS = 36
@@ -52,28 +58,102 @@ def _parse_months(raw: str | None) -> int:
     return max(MIN_MONTHS, min(n, MAX_MONTHS))
 
 
+def _parse_month_field(raw):  # "YYYY-MM" -> date(first)
+    y, m = (int(p) for p in raw.split("-")[:2])
+    return date(y, m, 1)
+
+
+def _session_items(request):
+    return [HypotheticalItem(**d) for d in request.session.get(SESSION_KEY, [])]
+
+
+def build_projection_context(request):
+    """Shared context for the projection screen and the what-if fragment renders.
+
+    Builds the baseline projection once; when the session holds hypotheticals it
+    also builds the simulated projection and zips ``*_sim`` figures onto each row.
+    """
+    today = date.today()
+    start = _parse_start(request, today)
+    months = _parse_months(request.GET.get("months"))
+
+    first_year = min(_data_anchor_year(request.user, today), start.year)
+    last_year = max(today.year, start.year)
+
+    items = _session_items(request)
+    rows = build_projection(request.user, start, months, today=today)
+    if items:
+        span = [r["month"] for r in rows]
+        overlay, _ = expand_hypotheticals(items, span)
+        sim = build_projection(request.user, start, months, today=today, overlay=overlay)
+        sim_by_month = {r["month"]: r for r in sim}
+        for r in rows:
+            s = sim_by_month[r["month"]]
+            r["acumulado_sim"] = s["acumulado"]
+            r["saldo_projetado_sim"] = s["saldo_projetado"]
+
+    return {
+        "rows": rows,
+        "today_month": today.replace(day=1),
+        "start_year": start.year,
+        "start_month": start.month,
+        "year_options": list(range(first_year, last_year + 1)),
+        "start_month_options": list(range(1, 13)),
+        "months_value": months,
+        "month_options": [6, 12, 14, 18, 24],
+        "whatif_items": items,
+        "has_whatif": bool(items),
+    }
+
+
+def _render_projection(request):
+    ctx = build_projection_context(request)
+    return HttpResponse(
+        render_to_string("projection/_projection_body.html", ctx, request=request)
+    )
+
+
 class ProjectionView(HtmxLoginRequiredMixin, TemplateView):
     """Read-only multi-month projection: months as columns, metrics as rows."""
 
     template_name = "projection/projection_page.html"
-    htmx_template_name = "projection/_projection_table.html"
+    htmx_template_name = "projection/_projection_body.html"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        today = date.today()
-
-        start = _parse_start(self.request, today)
-        months = _parse_months(self.request.GET.get("months"))
-
-        first_year = min(_data_anchor_year(self.request.user, today), start.year)
-        last_year = max(today.year, start.year)
-
-        context["rows"] = build_projection(self.request.user, start, months, today=today)
-        context["today_month"] = today.replace(day=1)
-        context["start_year"] = start.year
-        context["start_month"] = start.month
-        context["year_options"] = list(range(first_year, last_year + 1))
-        context["start_month_options"] = list(range(1, 13))
-        context["months_value"] = months
-        context["month_options"] = [6, 12, 14, 18, 24]
+        context.update(build_projection_context(self.request))
         return context
+
+
+class ProjectionWhatifAddView(HtmxLoginRequiredMixin, View):
+    def post(self, request):
+        items = request.session.get(SESSION_KEY, [])
+        item = HypotheticalItem(
+            id=uuid.uuid4().hex[:8],
+            type=HypoType(request.POST["type"]),
+            label=request.POST.get("label", ""),
+            amount=request.POST["amount"],
+            month=_parse_month_field(request.POST["month"]),
+            end_month=(_parse_month_field(request.POST["end_month"])
+                       if request.POST.get("end_month") else None),
+            n_installments=(int(request.POST["n_installments"])
+                            if request.POST.get("n_installments") else None),
+            installment_amount=(request.POST["installment_amount"]
+                                if request.POST.get("installment_amount") else None),
+        )
+        items.append(item.model_dump(mode="json"))
+        request.session[SESSION_KEY] = items
+        return _render_projection(request)
+
+
+class ProjectionWhatifRemoveView(HtmxLoginRequiredMixin, View):
+    def post(self, request, item_id):
+        items = [d for d in request.session.get(SESSION_KEY, []) if d["id"] != item_id]
+        request.session[SESSION_KEY] = items
+        return _render_projection(request)
+
+
+class ProjectionWhatifClearView(HtmxLoginRequiredMixin, View):
+    def post(self, request):
+        request.session[SESSION_KEY] = []
+        return _render_projection(request)

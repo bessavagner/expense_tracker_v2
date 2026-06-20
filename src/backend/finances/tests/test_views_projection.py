@@ -94,3 +94,21 @@ def test_start_year_month_params_drive_window(logged_client):
         reverse("finances:projection"), {"start_year": "2026", "start_month": "3", "months": "2"}
     ).content.decode()
     assert "mar/2026" in html.lower() or "Mar/2026" in html
+
+
+@pytest.mark.django_db
+def test_whatif_add_then_table_shows_simulado(logged_client):
+    r = logged_client.post("/projection/whatif/add/", {
+        "type": "income", "label": "bônus", "amount": "5000", "month": "2026-08",
+    })
+    assert r.status_code == 200
+    assert b"Simula" in r.content  # simulated row label rendered
+
+
+@pytest.mark.django_db
+def test_whatif_clear_empties_session(logged_client):
+    logged_client.post("/projection/whatif/add/", {
+        "type": "expense_oneoff", "label": "x", "amount": "100", "month": "2026-08"})
+    logged_client.post("/projection/whatif/clear/")
+    sess = logged_client.session
+    assert sess.get("projection_whatif", []) == []

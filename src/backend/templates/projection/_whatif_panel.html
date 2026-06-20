@@ -1,0 +1,81 @@
+{% load finance_filters %}
+<div class="card bg-base-100 border border-base-200 shadow-sm mb-4">
+  <div class="card-body p-4">
+    <h3 class="font-semibold text-sm mb-2">Simulador de cenários (what-if)</h3>
+
+    <form hx-post="{% url 'finances:projection_whatif_add' %}"
+          hx-target="#projection-container"
+          hx-swap="innerHTML"
+          x-data="{ t: 'expense_oneoff' }"
+          class="flex flex-wrap gap-2 items-end mb-3">
+      {% csrf_token %}
+
+      <label class="form-control">
+        <span class="label-text text-xs mb-1">Tipo</span>
+        <select name="type" x-model="t" class="select select-bordered select-sm w-44">
+          <option value="expense_oneoff">Despesa avulsa</option>
+          <option value="expense_recurring">Despesa recorrente</option>
+          <option value="income">Renda</option>
+          <option value="installment">Parcelamento</option>
+          <option value="loan">Empréstimo</option>
+        </select>
+      </label>
+
+      <label class="form-control">
+        <span class="label-text text-xs mb-1">Descrição</span>
+        <input type="text" name="label" class="input input-bordered input-sm w-36" placeholder="opcional">
+      </label>
+
+      <label class="form-control">
+        <span class="label-text text-xs mb-1" x-text="t === 'loan' ? 'Valor recebido' : (t === 'installment' ? 'Parcela' : 'Valor')"></span>
+        <input type="number" name="amount" step="0.01" class="input input-bordered input-sm w-28" required>
+      </label>
+
+      <label class="form-control">
+        <span class="label-text text-xs mb-1">Mês (início)</span>
+        <input type="month" name="month" class="input input-bordered input-sm w-36" required>
+      </label>
+
+      <label class="form-control" x-show="t === 'expense_recurring' || t === 'income'">
+        <span class="label-text text-xs mb-1">Mês final</span>
+        <input type="month" name="end_month" class="input input-bordered input-sm w-36">
+      </label>
+
+      <label class="form-control" x-show="t === 'installment' || t === 'loan'">
+        <span class="label-text text-xs mb-1">Nº parcelas</span>
+        <input type="number" name="n_installments" min="1" step="1" class="input input-bordered input-sm w-24">
+      </label>
+
+      <label class="form-control" x-show="t === 'loan'">
+        <span class="label-text text-xs mb-1">Valor da parcela</span>
+        <input type="number" name="installment_amount" step="0.01" class="input input-bordered input-sm w-28">
+      </label>
+
+      <button type="submit" class="btn btn-sm btn-secondary">Adicionar</button>
+    </form>
+
+    {% if whatif_items %}
+    <div class="flex flex-wrap items-center gap-2">
+      {% for item in whatif_items %}
+      <div class="badge badge-outline badge-lg gap-1 py-3">
+        <span class="text-xs">
+          {{ item.label|default:item.type }} — R$ {{ item.amount|floatformat:2 }}
+          ({{ item.month.month|month_abbr }}/{{ item.month.year }})
+        </span>
+        <button class="text-error"
+                hx-post="{% url 'finances:projection_whatif_remove' item.id %}"
+                hx-target="#projection-container"
+                hx-swap="innerHTML"
+                title="Remover">✕</button>
+      </div>
+      {% endfor %}
+      <button class="btn btn-xs btn-ghost"
+              hx-post="{% url 'finances:projection_whatif_clear' %}"
+              hx-target="#projection-container"
+              hx-swap="innerHTML">Limpar</button>
+    </div>
+    {% else %}
+    <p class="text-xs text-base-content/60">Nenhuma hipótese ativa. Adicione cenários acima para simular.</p>
+    {% endif %}
+  </div>
+</div>
