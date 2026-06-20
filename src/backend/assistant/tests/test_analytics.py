@@ -128,15 +128,17 @@ class TestProjectMonthEnd:
 @pytest.mark.django_db
 class TestDetectAnomalies:
     def test_flags_category_above_average(self, seeded_user, cats):
-        cats["ali"].quarterly_avg = Decimal("200")
-        cats["ali"].save()
+        # Live 3m average drives the threshold: seed dez/jan/fev each 200 -> avg 200.
+        for bm in (date(2025, 12, 1), date(2026, 1, 1), date(2026, 2, 1)):
+            _entry(seeded_user, cats["ali"], cats["pix"], "200", d=bm, bm=bm)
         _entry(seeded_user, cats["ali"], cats["pix"], "600")  # 3x the average
         result = analytics.detect_anomalies(seeded_user, 2026, 3)
         assert "Alimentação" in result
 
     def test_no_anomalies(self, seeded_user, cats):
-        cats["ali"].quarterly_avg = Decimal("500")
-        cats["ali"].save()
+        # Seed dez/jan/fev each 500 -> avg 500; March 450 stays under 1.5x.
+        for bm in (date(2025, 12, 1), date(2026, 1, 1), date(2026, 2, 1)):
+            _entry(seeded_user, cats["ali"], cats["pix"], "500", d=bm, bm=bm)
         _entry(seeded_user, cats["ali"], cats["pix"], "450")
         result = analytics.detect_anomalies(seeded_user, 2026, 3)
         assert "nenhuma" in result.lower()

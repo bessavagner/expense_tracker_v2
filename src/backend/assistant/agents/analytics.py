@@ -13,6 +13,7 @@ from decimal import Decimal
 from django.db.models import Sum
 
 from finances.models import Category, Entry, InstallmentPlan, SystemicExpense
+from finances.services.category_stats import category_moving_averages
 
 # Limiares de proatividade (ver contexts/08_proatividade_ux.md): aviso cedo,
 # urgente e estouro. Ajustáveis no futuro por categoria/usuário.
@@ -152,9 +153,10 @@ def detect_anomalies(user, year: int, month: int, factor: Decimal = ANOMALY_FACT
         r["category__id"]: r["total"]
         for r in _spend_qs(user, bm).values("category__id").annotate(total=Sum("amount"))
     }
+    averages = category_moving_averages(user, window=3, as_of=bm)
     flagged = []
     for cat in Category.objects.filter(user=user, id__in=totals.keys()):
-        avg = cat.quarterly_avg or cat.historical_avg
+        avg = averages.get(cat.id)
         if not avg or avg <= 0:
             continue
         total = totals[cat.id]
