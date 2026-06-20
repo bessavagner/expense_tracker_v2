@@ -2,7 +2,9 @@ import pytest
 
 
 @pytest.mark.django_db
-def test_dashboard_has_projection_card(logged_client):
+def test_dashboard_mounts_projection_island(logged_client):
     resp = logged_client.get("/")
     assert resp.status_code == 200
-    assert b'id="projection-card"' in resp.content  # server-rendered projection card
+    # Projection is now a React island fed by the projection API endpoint.
+    assert b'data-react-component="ProjectionCard"' in resp.content
+    assert b"/api/dashboard/projection/" in resp.content

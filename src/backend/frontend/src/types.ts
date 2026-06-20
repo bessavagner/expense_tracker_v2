@@ -10,6 +10,24 @@ export interface CategoryData {
   name: string;
   amount: string;
   pct: number;
+  avg_3m: string | null;
+}
+
+export interface ProjectionPoint {
+  month: string;
+  acumulado: string;
+  acumulado_estimado: string;
+}
+
+export interface ProjectionCardData {
+  month_label: string;
+  end_label: string;
+  saldo_mes: string;
+  acumulado: string;
+  acumulado_estimado: string;
+  end_acumulado_estimado: string;
+  delta: string;
+  series: ProjectionPoint[];
 }
 
 export interface EvolutionPoint {

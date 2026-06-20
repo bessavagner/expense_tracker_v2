@@ -30,41 +30,10 @@
     <div data-react-component="SummaryCard" data-api-url="/api/dashboard/summary/?{{ api_params }}"></div>
     <div data-react-component="TopCategoriesCard" data-api-url="/api/dashboard/top-categories/?{{ api_params }}"></div>
     <div data-react-component="EvolutionCard" data-api-url="/api/dashboard/evolution/?{{ api_params }}"></div>
+    <div data-react-component="ProjectionCard" data-api-url="/api/dashboard/projection/?{{ api_params }}"></div>
     <div data-react-component="AlertsCard" data-api-url="/api/dashboard/alerts/?{{ api_params }}"></div>
     <div data-react-component="RecentEntriesCard" data-api-url="/api/dashboard/recent-entries/?{{ api_params }}"></div>
     <div data-react-component="InstallmentsCard" data-api-url="/api/dashboard/installments/?{{ api_params }}"></div>
-
-    {% if projection_row %}
-    <div id="projection-card" class="card bg-base-100 shadow-sm">
-      <div class="card-body p-4">
-        <h3 class="font-semibold text-sm mb-2">Projeção do mês</h3>
-        <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-          <span>Total</span><span class="text-right">{{ projection_row.total|money }}</span>
-          <span>Renda</span><span class="text-right">{{ projection_row.income|money }}</span>
-          <span>Saldo projetado</span><span class="text-right">{{ projection_row.saldo_projetado|money }}</span>
-          <span>Saldo estimado</span><span class="text-right">{{ projection_row.saldo_projetado_estimado|money }}</span>
-          <span class="font-medium">Acumulado</span><span class="text-right font-medium">{{ projection_row.acumulado|money }}</span>
-          <span class="font-medium">Acumulado estimado</span><span class="text-right font-medium">{{ projection_row.acumulado_estimado|money }}</span>
-        </div>
-        <svg viewBox="0 0 120 28" class="w-full h-8 mt-2 text-primary">
-          <polyline fill="none" stroke="currentColor" stroke-width="1.5" points="{{ sparkline_points }}"/>
-        </svg>
-      </div>
-    </div>
-    {% endif %}
-
-    {% if category_averages_named %}
-    <div class="card bg-base-100 shadow-sm">
-      <div class="card-body p-4">
-        <h3 class="font-semibold text-sm mb-2">Médias por categoria (3m)</h3>
-        <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-          {% for c in category_averages_named %}
-          <span class="truncate">{{ c.name }}</span><span class="text-right">{{ c.avg|money }}</span>
-          {% endfor %}
-        </div>
-      </div>
-    </div>
-    {% endif %}
 </div>
 
 {% endblock %}
