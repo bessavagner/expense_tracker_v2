@@ -43,6 +43,13 @@ def _projection_origin() -> date:
     return DEFAULT_PROJECTION_ORIGIN
 
 
+def projection_origin() -> date:
+    """Public accessor for the first month the projection counts (see
+    :func:`_projection_origin`). Lets callers detect months preceding the
+    origin, where no projection rows exist."""
+    return _projection_origin()
+
+
 def build_projection(user, start_month: date, num_months: int, today: date | None = None):
     """Return a list of ``num_months`` dicts, one per month from ``start_month``.
 

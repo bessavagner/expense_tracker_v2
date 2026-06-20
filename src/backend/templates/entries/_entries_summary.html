@@ -3,12 +3,20 @@
 <div id="entries-summary"
      hx-get="{% url 'finances:entries_summary' current_year current_month %}"
      hx-trigger="entries-changed from:body"
-     hx-swap="outerHTML"
-     class="flex flex-wrap gap-x-6 gap-y-1 mb-3 text-sm opacity-70">
-    <span>Total lançado: <strong class="whitespace-nowrap">{{ summary.total_lancado|money }}</strong></span>
-    <span>Total gastos: <strong class="text-error whitespace-nowrap">{{ summary.total_gastos|money }}</strong></span>
-    <span>Renda do mês: <strong class="whitespace-nowrap">{{ summary.income|money }}</strong></span>
-    <span>Saldo projetado: <strong class="whitespace-nowrap {% if summary.saldo_projetado < 0 %}text-error{% else %}text-success{% endif %}">{{ summary.saldo_projetado|money }}</strong></span>
-    <span>Saldo acumulado: <strong class="whitespace-nowrap {% if summary.acumulado < 0 %}text-error{% else %}text-success{% endif %}">{{ summary.acumulado|money }}</strong></span>
-    <span>Entradas: <strong>{{ summary.entry_count }}</strong></span>
+     hx-swap="outerHTML">
+    {% if summary.before_origin %}
+    <div role="alert" class="alert alert-warning mb-3 text-sm">
+        <span>⚠️ Mês anterior à <strong>origem da projeção</strong> ({{ summary.origin_month|date:"m/Y" }}). Totais de gastos, saldo e acumulado não se aplicam aqui — apenas os lançamentos por data são exibidos.</span>
+    </div>
+    {% endif %}
+    <div class="flex flex-wrap gap-x-6 gap-y-1 mb-3 text-sm opacity-70">
+        <span>Total lançado: <strong class="whitespace-nowrap">{{ summary.total_lancado|money }}</strong></span>
+        {% if not summary.before_origin %}
+        <span>Total gastos: <strong class="text-error whitespace-nowrap">{{ summary.total_gastos|money }}</strong></span>
+        <span>Renda do mês: <strong class="whitespace-nowrap">{{ summary.income|money }}</strong></span>
+        <span>Saldo projetado: <strong class="whitespace-nowrap {% if summary.saldo_projetado < 0 %}text-error{% else %}text-success{% endif %}">{{ summary.saldo_projetado|money }}</strong></span>
+        <span>Saldo acumulado: <strong class="whitespace-nowrap {% if summary.acumulado < 0 %}text-error{% else %}text-success{% endif %}">{{ summary.acumulado|money }}</strong></span>
+        {% endif %}
+        <span>Entradas: <strong>{{ summary.entry_count }}</strong></span>
+    </div>
 </div>

@@ -15,7 +15,7 @@ from finances.models import Entry, Income, PaymentMethod
 from finances.models.entry import EntryType
 from finances.models.payment_method import PaymentType
 from finances.services.billing import installment_billing_months
-from finances.services.projection import build_projection
+from finances.services.projection import build_projection, projection_origin
 from finances.views.mixins import HtmxLoginRequiredMixin
 
 # HX-Trigger fired after any entry mutation so the top totals refresh live.
@@ -48,6 +48,20 @@ def compute_entry_summary(user, year, month):
     num_months = (year * 12 + month) - (anchor.year * 12 + anchor.month) + 1
 
     rows = build_projection(user, anchor, num_months, today=date.today())
+    if not rows:
+        # Month precedes the projection origin (e.g. nov/2025): build_projection
+        # floors everything at the origin and returns no rows. Projection-derived
+        # figures don't apply — show what's launched by date and flag the month.
+        return {
+            "total_lancado": total_lancado,
+            "total_gastos": Decimal("0"),
+            "income": Decimal("0"),
+            "saldo_projetado": Decimal("0"),
+            "acumulado": Decimal("0"),
+            "entry_count": entry_count,
+            "before_origin": True,
+            "origin_month": projection_origin(),
+        }
     row = rows[-1]
 
     return {
@@ -57,6 +71,8 @@ def compute_entry_summary(user, year, month):
         "saldo_projetado": row["saldo_projetado"],
         "acumulado": row["acumulado"],
         "entry_count": entry_count,
+        "before_origin": False,
+        "origin_month": projection_origin(),
     }
 
 
@@ -75,7 +91,9 @@ class EntryListView(HtmxLoginRequiredMixin, ListView):
     template_name = "entries/entries_page.html"
     htmx_template_name = "entries/_entries_table.html"
     context_object_name = "entries"
-    paginate_by = 100
+    # No pagination: a month's ledger is bounded (~hundreds), the summary
+    # aggregates the whole month, and the search box filters client-side over
+    # rendered rows — paginating would hide older entries and break search.
 
     def get_queryset(self):
         year = int(self.kwargs["year"])
