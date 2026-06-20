@@ -101,3 +101,10 @@ async def export_monthly_report(ctx: RunContext[User], year: int, month: int) ->
 async def find_anomalies(ctx: RunContext[User], year: int, month: int) -> str:
     """Sinaliza categorias cujo gasto excede muito a média histórica/trimestral."""
     return await sync_to_async(analytics.detect_anomalies)(ctx.deps, year, month)
+
+
+@analyst_agent.tool
+async def get_category_averages(ctx: RunContext[User], year: int | None = None,
+                                month: int | None = None) -> str:
+    """Média móvel (3 meses) de gasto por categoria."""
+    return await sync_to_async(analytics.category_averages)(ctx.deps, year, month)

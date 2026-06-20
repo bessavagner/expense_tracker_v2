@@ -15,8 +15,17 @@ from finances.forms import (
     SystemicTemplateEditForm,
 )
 from finances.models import Category, Income, PaymentMethod, SystemicExpense
+from finances.services.category_stats import category_moving_averages
 from finances.services.income_recurrence import apply_income_recurrence
 from finances.views.mixins import HtmxLoginRequiredMixin
+
+
+def categories_tab_context(user):
+    return {
+        "categories": Category.objects.filter(user=user),
+        "form": CategoryCreateForm(),
+        "category_averages": category_moving_averages(user, window=3),
+    }
 
 
 class SettingsView(HtmxLoginRequiredMixin, TemplateView):
@@ -350,8 +359,7 @@ class CategoriesTabView(HtmxLoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["categories"] = Category.objects.filter(user=self.request.user)
-        context["form"] = CategoryCreateForm()
+        context.update(categories_tab_context(self.request.user))
         return context
 
 
@@ -362,10 +370,7 @@ class CategoryCreateView(HtmxLoginRequiredMixin, View):
             cat = form.save(commit=False)
             cat.user = request.user
             cat.save()
-        context = {
-            "categories": Category.objects.filter(user=request.user),
-            "form": CategoryCreateForm(),
-        }
+        context = categories_tab_context(request.user)
         html = render_to_string("settings/_categories_tab.html", context, request=request)
         response = HttpResponse(html)
         response["HX-Trigger"] = (
@@ -382,10 +387,7 @@ class CategoryEditView(HtmxLoginRequiredMixin, View):
         form = CategoryBudgetForm(request.POST, instance=cat)
         if form.is_valid():
             form.save()
-        context = {
-            "categories": Category.objects.filter(user=request.user),
-            "form": CategoryCreateForm(),
-        }
+        context = categories_tab_context(request.user)
         html = render_to_string("settings/_categories_tab.html", context, request=request)
         response = HttpResponse(html)
         response["HX-Trigger"] = '{"showToast": {"message": "Teto atualizado!", "type": "success"}}'
@@ -411,9 +413,6 @@ class CategoryDeleteView(HtmxLoginRequiredMixin, View):
                 status=400,
                 content_type="application/json",
             )
-        context = {
-            "categories": Category.objects.filter(user=request.user),
-            "form": CategoryCreateForm(),
-        }
+        context = categories_tab_context(request.user)
         html = render_to_string("settings/_categories_tab.html", context, request=request)
         return HttpResponse(html)

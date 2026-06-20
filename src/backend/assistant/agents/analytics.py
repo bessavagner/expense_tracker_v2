@@ -13,7 +13,10 @@ from decimal import Decimal
 from django.db.models import Sum
 
 from finances.models import Category, Entry, InstallmentPlan, SystemicExpense
-from finances.services.category_stats import category_moving_averages
+from finances.services.category_stats import (
+    category_moving_averages,
+    category_moving_averages_named,
+)
 
 # Limiares de proatividade (ver contexts/08_proatividade_ux.md): aviso cedo,
 # urgente e estouro. Ajustáveis no futuro por categoria/usuário.
@@ -169,6 +172,17 @@ def detect_anomalies(user, year: int, month: int, factor: Decimal = ANOMALY_FACT
     if not flagged:
         return f"Nenhuma anomalia de gasto detectada em {month:02d}/{year}."
     return f"Anomalias de gasto em {month:02d}/{year}:\n" + "\n".join(flagged)
+
+
+def category_averages(user, year: int | None = None, month: int | None = None) -> str:
+    """Média móvel (3m) de gasto por categoria."""
+    as_of = _billing_month(year, month) if (year and month) else None
+    rows = category_moving_averages_named(user, window=3, as_of=as_of)
+    if not rows:
+        return "Sem histórico suficiente para médias por categoria."
+    lines = ["Média de gasto por categoria (3 meses):"]
+    lines += [f"- {r['name']}: R$ {r['avg']:.2f} ({r['months_used']}m)" for r in rows]
+    return "\n".join(lines)
 
 
 def build_proactive_alerts(user, year: int, month: int) -> list[dict]:
