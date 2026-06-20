@@ -112,3 +112,13 @@ def test_whatif_clear_empties_session(logged_client):
     logged_client.post("/projection/whatif/clear/")
     sess = logged_client.session
     assert sess.get("projection_whatif", []) == []
+
+
+@pytest.mark.django_db
+def test_projection_shows_estimated_total_row_above_estimated_balance(logged_client):
+    resp = logged_client.get("/projection/")
+    assert resp.status_code == 200
+    body = resp.content.decode()
+    assert "Gastos totais estimados" in body
+    # must sit immediately above the estimated saldo row
+    assert body.index("Gastos totais estimados") < body.index("Saldo projetado estimado")

@@ -61,6 +61,12 @@
             {% endfor %}
         </tr>
         <tr class="text-info">
+            <td class="sticky left-0 z-10 bg-base-100 italic">Gastos totais estimados</td>
+            {% for r in rows %}
+            <td class="text-right">{{ r.total_estimated|money }}</td>
+            {% endfor %}
+        </tr>
+        <tr class="text-info">
             <td class="sticky left-0 z-10 bg-base-100 italic">Saldo projetado estimado</td>
             {% for r in rows %}
             <td class="text-right {% if r.saldo_projetado_estimado < 0 %}text-error{% endif %}">{{ r.saldo_projetado_estimado|money }}</td>
