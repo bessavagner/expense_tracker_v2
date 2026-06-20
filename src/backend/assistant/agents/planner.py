@@ -5,6 +5,8 @@ Roda num modelo mais capaz (LLM_WORKER_MODEL). A decisão de alertar é
 determinística (analytics.build_proactive_alerts); o LLM apenas formula a mensagem.
 """
 
+from datetime import date
+
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -13,6 +15,7 @@ from pydantic_ai import Agent, RunContext
 from assistant.agents import analytics
 from assistant.agents.prompts import PLANNER_PROMPT, build_date_instructions
 from assistant.agents.tools import query_balance, query_budget_status, query_installments
+from finances.services.whatif import HypotheticalItem, simulate_projection_summary
 
 User = get_user_model()
 
@@ -60,3 +63,15 @@ async def get_proactive_alerts(ctx: RunContext[User], year: int, month: int) -> 
 async def get_upcoming_obligations(ctx: RunContext[User], year: int, month: int) -> str:
     """Lista obrigações conhecidas do mês: parcelas e gastos sistemáticos."""
     return await sync_to_async(analytics.upcoming_obligations)(ctx.deps, year, month)
+
+
+@planner_agent.tool
+async def simulate_projection(ctx: RunContext[User], items: list[HypotheticalItem],
+                              start_year: int, start_month: int, months: int = 12) -> str:
+    """Simula o efeito de lançamentos hipotéticos na projeção (what-if).
+
+    items: lista de hipóteses (despesa avulsa/recorrente, renda, parcelamento,
+    empréstimo). start_year/start_month: início do horizonte; months: nº de meses.
+    """
+    start = date(start_year, start_month, 1)
+    return await sync_to_async(simulate_projection_summary)(ctx.deps, items, start, months)

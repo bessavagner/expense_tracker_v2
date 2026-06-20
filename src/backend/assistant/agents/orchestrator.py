@@ -73,7 +73,8 @@ async def delegate_analise(ctx: RunContext[User], request: str) -> str:
 @orchestrator_agent.tool
 async def delegate_planejamento(ctx: RunContext[User], request: str) -> str:
     """Delega PLANEJAMENTO ao Planejador: projeção de fim de mês, status de teto,
-    alertas proativos, obrigações futuras, recomendações.
+    alertas proativos, obrigações futuras, recomendações, simulação de cenários /
+    what-if (empréstimo, nova renda, gasto recorrente).
 
     Args:
         request: A mensagem/pergunta do usuário, repassada ao Planejador.

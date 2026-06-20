@@ -87,3 +87,28 @@ def expand_hypotheticals(
             else:
                 ignored += 1
     return {k: _q(v) for k, v in deltas.items()}, ignored
+
+
+def simulate_projection_summary(user, items, start, months, today=None):
+    from finances.services.projection import build_projection  # avoid import cycle
+
+    base = build_projection(user, start, months, today=today)
+    span = [r["month"] for r in base]
+    overlay, ignored = expand_hypotheticals(items, span)
+    sim = build_projection(user, start, months, today=today, overlay=overlay)
+
+    lines = ["Simulação de cenário (acumulado base → simulado):"]
+    worst = None
+    for b, s in zip(base, sim, strict=True):
+        delta = s["acumulado"] - b["acumulado"]
+        ym = b["month"].strftime("%Y-%m")
+        lines.append(
+            f"- {ym}: R$ {b['acumulado']:.2f} → R$ {s['acumulado']:.2f} (Δ {delta:+.2f})"
+        )
+        if worst is None or s["acumulado"] < worst[1]:
+            worst = (ym, s["acumulado"])
+    if worst:
+        lines.append(f"Menor acumulado simulado: R$ {worst[1]:.2f} em {worst[0]}.")
+    if ignored:
+        lines.append(f"({ignored} lançamento(s) fora do horizonte foram ignorados.)")
+    return "\n".join(lines)
