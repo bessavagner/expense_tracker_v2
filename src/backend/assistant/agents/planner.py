@@ -73,5 +73,8 @@ async def simulate_projection(ctx: RunContext[User], items: list[HypotheticalIte
     items: lista de hipóteses (despesa avulsa/recorrente, renda, parcelamento,
     empréstimo). start_year/start_month: início do horizonte; months: nº de meses.
     """
-    start = date(start_year, start_month, 1)
+    try:
+        start = date(start_year, start_month, 1)
+    except ValueError:
+        return f"Erro: ano/mês inválido ({start_year}/{start_month})."
     return await sync_to_async(simulate_projection_summary)(ctx.deps, items, start, months)
