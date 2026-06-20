@@ -16,12 +16,12 @@
     <label class="form-control">
         <span class="label-text text-xs mb-1">Início</span>
         <div class="flex gap-1">
-            <select name="start_month" class="select select-bordered select-sm">
+            <select name="start_month" class="select select-bordered select-sm w-24">
                 {% for m in start_month_options %}
                 <option value="{{ m }}" {% if m == start_month %}selected{% endif %}>{{ m|month_abbr }}</option>
                 {% endfor %}
             </select>
-            <select name="start_year" class="select select-bordered select-sm">
+            <select name="start_year" class="select select-bordered select-sm w-24">
                 {% for y in year_options %}
                 <option value="{{ y }}" {% if y == start_year %}selected{% endif %}>{{ y }}</option>
                 {% endfor %}
@@ -30,7 +30,7 @@
     </label>
     <label class="form-control">
         <span class="label-text text-xs mb-1">Meses</span>
-        <select name="months" class="select select-bordered select-sm">
+        <select name="months" class="select select-bordered select-sm w-24">
             {% for opt in month_options %}
             <option value="{{ opt }}" {% if opt == months_value %}selected{% endif %}>{{ opt }}</option>
             {% endfor %}
