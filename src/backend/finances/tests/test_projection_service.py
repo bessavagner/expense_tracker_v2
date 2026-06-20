@@ -180,3 +180,30 @@ class TestBuildProjection:
         assert row["saldo_projetado"] == Decimal("0")
         assert row["acumulado"] == Decimal("0")
         assert row["pct_income"] is None
+
+
+@pytest.mark.django_db
+class TestProjectionOverlay:
+    def test_overlay_none_matches_baseline(self, user, cat, pix):
+        m = date(2026, 5, 1)
+        _entry(user, cat, pix, "150", m, EntryType.REGULAR)
+        baker.make("finances.Income", user=user, amount=Decimal("2000"), month=m)
+        base = build_projection(user, m, 2, today=date(2026, 6, 15))
+        same = build_projection(user, m, 2, today=date(2026, 6, 15), overlay=None)
+        assert [r["acumulado"] for r in base] == [r["acumulado"] for r in same]
+
+    def test_overlay_expense_lowers_saldo_and_acumulado(self, user):
+        m = date(2026, 6, 1)
+        baker.make("finances.Income", user=user, amount=Decimal("2000"), month=m)
+        overlay = {(m, "regular"): Decimal("500")}
+        row = build_projection(user, m, 1, today=date(2026, 6, 15), overlay=overlay)[0]
+        assert row["diverse"] == Decimal("500")
+        assert row["saldo_projetado"] == Decimal("1500")  # 2000 - 500
+        assert row["acumulado"] == Decimal("1500")
+
+    def test_overlay_income_raises_saldo(self, user):
+        m = date(2026, 6, 1)
+        overlay = {(m, "income"): Decimal("1000")}
+        row = build_projection(user, m, 1, today=date(2026, 6, 15), overlay=overlay)[0]
+        assert row["income"] == Decimal("1000")
+        assert row["saldo_projetado"] == Decimal("1000")

@@ -50,7 +50,8 @@ def projection_origin() -> date:
     return _projection_origin()
 
 
-def build_projection(user, start_month: date, num_months: int, today: date | None = None):
+def build_projection(user, start_month: date, num_months: int, today: date | None = None,
+                     overlay: dict | None = None):
     """Return a list of ``num_months`` dicts, one per month from ``start_month``.
 
     Each dict holds: ``month``, ``systemic``, ``installments``, ``programmed``,
@@ -108,6 +109,15 @@ def build_projection(user, start_month: date, num_months: int, today: date | Non
         .annotate(total=Sum("amount"))
     ):
         income_totals[r["month"]] = r["total"] or ZERO
+
+    # --- what-if overlay: hypothetical per-month deltas (Decimal) ---
+    if overlay:
+        for (m, kind), amount in overlay.items():
+            if kind == "income":
+                income_totals[m] = income_totals.get(m, ZERO) + amount
+            else:
+                key = (m, kind)
+                entry_totals[key] = entry_totals.get(key, ZERO) + amount
 
     active_systemic_total = (
         SystemicExpense.objects.filter(user=user, is_active=True).aggregate(
