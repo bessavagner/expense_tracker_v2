@@ -13,6 +13,7 @@ from django.db.models import Min, Sum
 
 from finances.models import Entry, Income, SystemicExpense
 from finances.models.entry import EntryType
+from finances.services.category_stats import category_moving_averages
 
 ZERO = Decimal("0")
 DEFAULT_PROJECTION_ORIGIN = date(2025, 11, 1)
@@ -126,8 +127,26 @@ def build_projection(user, start_month: date, num_months: int, today: date | Non
         or ZERO
     )
 
+    # --- estimated diversas (per-category regular moving average) ---
+    reg_avg = category_moving_averages(user, window=3, as_of=today, entry_type="regular")
+    est_future_diverse = sum(reg_avg.values(), ZERO)
+    # current-month actual regular per category (for max(actual, avg))
+    cur_actual = {
+        r["category_id"]: (r["total"] or ZERO)
+        for r in Entry.objects.filter(
+            user=user, billing_month=current_month,
+            entry_type=EntryType.REGULAR, amount__gt=0,
+        ).values("category_id").annotate(total=Sum("amount"))
+    }
+    est_current_diverse = sum(
+        (max(cur_actual.get(cid, ZERO), reg_avg.get(cid, ZERO))
+         for cid in set(cur_actual) | set(reg_avg)),
+        ZERO,
+    )
+
     rows = []
     acumulado = ZERO
+    acumulado_estimado = ZERO
     for m in all_months:
         if m > current_month:
             systemic = active_systemic_total
@@ -143,6 +162,16 @@ def build_projection(user, start_month: date, num_months: int, today: date | Non
         saldo_programado = income - programmed
         saldo_projetado = income - total
         acumulado += saldo_projetado
+
+        if m < current_month:
+            diverse_estimated = diverse
+        elif m == current_month:
+            diverse_estimated = est_current_diverse
+        else:
+            diverse_estimated = est_future_diverse
+        total_estimated = programmed + diverse_estimated
+        saldo_projetado_estimado = income - total_estimated
+        acumulado_estimado += saldo_projetado_estimado
 
         if m < start_month:
             continue  # pre-window month: counted into acumulado, not displayed
@@ -160,6 +189,10 @@ def build_projection(user, start_month: date, num_months: int, today: date | Non
                 "saldo_programado": saldo_programado,
                 "saldo_projetado": saldo_projetado,
                 "acumulado": acumulado,
+                "diverse_estimated": diverse_estimated,
+                "total_estimated": total_estimated,
+                "saldo_projetado_estimado": saldo_projetado_estimado,
+                "acumulado_estimado": acumulado_estimado,
             }
         )
     return rows
