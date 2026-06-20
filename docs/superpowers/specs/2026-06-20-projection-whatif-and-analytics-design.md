@@ -142,10 +142,15 @@ Por mês, `build_projection` calcula `diverse_estimated`:
 
 - **Meses passados** (billing_month < mês corrente): `diverse_estimated =
   diverse` real (o mês já fechou; usa o lançado).
-- **Mês corrente e futuros** (>= mês corrente): `diverse_estimated =` soma das
-  médias móveis por categoria **apenas de lançamentos `regular`** (não de
+- **Meses futuros** (billing_month > mês corrente): `diverse_estimated =` soma
+  das médias móveis por categoria **apenas de lançamentos `regular`** (não de
   sistemático/parcela, que já são projetados à parte — evita dupla contagem).
-  Usa uma variante `category_moving_averages(..., entry_type="regular")`.
+  Usa `category_moving_averages(..., entry_type="regular")`.
+- **Mês corrente** (= mês corrente, incompleto): por categoria,
+  `máx(realizado_regular_no_mês_até_hoje, média_regular_da_categoria)`; depois
+  soma entre categorias. Nunca fica abaixo do que já foi gasto no mês (Opção B
+  decidida na revisão). Categorias sem média mas com gasto no mês contam o
+  realizado; categorias com média e sem gasto contam a média.
 
 Daí:
 - `total_estimated = systemic + installments + diverse_estimated`
@@ -240,8 +245,10 @@ Exposição:
 - `build_projection`: `overlay=None` == baseline (regressão); overlay desloca
   `acumulado` corretamente; renda vs despesa entram no bucket certo.
 - **track estimado**: mês passado usa `diverse` real; mês futuro usa soma das
-  médias regular-only; `acumulado_estimado` acumula desde a origem; sem dupla
-  contagem de sistemático/parcela; sem histórico ⇒ estimado degrada para o real.
+  médias regular-only; **mês corrente** usa `máx(realizado, média)` por categoria
+  (testar os dois lados: realizado < média ⇒ média; realizado > média ⇒
+  realizado); `acumulado_estimado` acumula desde a origem; sem dupla contagem de
+  sistemático/parcela; sem histórico ⇒ estimado degrada para o real.
 - `category_moving_averages`: janela 3, exclui reembolso, exclui mês incompleto,
   histórico curto, categoria sem gasto, filtro `entry_type` (regular-only vs todos).
 - `recompute_category_averages`: dry-run vs apply, idempotência.
