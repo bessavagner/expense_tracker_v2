@@ -13,7 +13,7 @@ from django.db.models import Min, Sum
 
 from finances.models import Entry, Income, SystemicExpense
 from finances.models.entry import EntryType
-from finances.services.category_stats import category_moving_averages
+from finances.services.category_stats import monthly_diverse_total_median
 
 ZERO = Decimal("0")
 DEFAULT_PROJECTION_ORIGIN = date(2025, 11, 1)
@@ -127,22 +127,10 @@ def build_projection(user, start_month: date, num_months: int, today: date | Non
         or ZERO
     )
 
-    # --- estimated diversas (per-category regular moving average) ---
-    reg_avg = category_moving_averages(user, window=3, as_of=today, entry_type="regular")
-    est_future_diverse = sum(reg_avg.values(), ZERO)
-    # current-month actual regular per category (for max(actual, avg))
-    cur_actual = {
-        r["category_id"]: (r["total"] or ZERO)
-        for r in Entry.objects.filter(
-            user=user, billing_month=current_month,
-            entry_type=EntryType.REGULAR, amount__gt=0,
-        ).values("category_id").annotate(total=Sum("amount"))
-    }
-    est_current_diverse = sum(
-        (max(cur_actual.get(cid, ZERO), reg_avg.get(cid, ZERO))
-         for cid in set(cur_actual) | set(reg_avg)),
-        ZERO,
-    )
+    # --- estimated diversas: a robust "typical month" (median of recent monthly
+    # totals, excluding reconciliation entries). The median makes a one-off
+    # reform / big purchase unable to poison the forward projection. ---
+    est_typical_diverse = monthly_diverse_total_median(user, window=6, as_of=today)
 
     rows = []
     acumulado = ZERO
@@ -166,9 +154,10 @@ def build_projection(user, start_month: date, num_months: int, today: date | Non
         if m < current_month:
             diverse_estimated = diverse
         elif m == current_month:
-            diverse_estimated = est_current_diverse
+            # don't project below what's already posted this month
+            diverse_estimated = max(diverse, est_typical_diverse)
         else:
-            diverse_estimated = est_future_diverse
+            diverse_estimated = est_typical_diverse
         total_estimated = programmed + diverse_estimated
         saldo_projetado_estimado = income - total_estimated
         acumulado_estimado += saldo_projetado_estimado

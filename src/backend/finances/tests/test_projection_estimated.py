@@ -64,3 +64,26 @@ class TestEstimatedTrack:
         rows = build_projection(user, date(2026, 7, 1), 1, today=self.TODAY)
         r = rows[0]
         assert r["saldo_projetado_estimado"] == r["income"] - r["total_estimated"]
+
+
+@pytest.mark.django_db
+class TestEstimatedTrackRobust:
+    TODAY = date(2026, 6, 20)
+
+    def test_future_uses_median_not_mean(self, user, cat, pix):
+        for bm, amt in [
+            (date(2025, 12, 1), "500"), (date(2026, 1, 1), "500"),
+            (date(2026, 2, 1), "500"), (date(2026, 3, 1), "500"),
+            (date(2026, 4, 1), "500"), (date(2026, 5, 1), "4000"),
+        ]:
+            _e(user, cat, pix, amt, bm)
+        rows = build_projection(user, date(2026, 7, 1), 1, today=self.TODAY)
+        assert rows[0]["diverse_estimated"] == Decimal("500.00")
+
+    def test_future_excludes_adjustment(self, user, cat, pix):
+        ajuste = baker.make("finances.Category", user=user, name="Ajuste (temporario)")
+        for bm in (date(2026, 3, 1), date(2026, 4, 1), date(2026, 5, 1)):
+            _e(user, cat, pix, "800", bm)
+            _e(user, ajuste, pix, "5000", bm)
+        rows = build_projection(user, date(2026, 7, 1), 1, today=self.TODAY)
+        assert rows[0]["diverse_estimated"] == Decimal("800.00")
