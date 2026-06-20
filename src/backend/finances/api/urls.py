@@ -4,6 +4,7 @@ from finances.api.views import (
     AlertsView,
     EvolutionView,
     InstallmentsView,
+    ProjectionCardView,
     RecentEntriesView,
     SummaryView,
     TopCategoriesView,
@@ -16,4 +17,5 @@ urlpatterns = [
     path("alerts/", AlertsView.as_view(), name="api_alerts"),
     path("recent-entries/", RecentEntriesView.as_view(), name="api_recent_entries"),
     path("installments/", InstallmentsView.as_view(), name="api_installments"),
+    path("projection/", ProjectionCardView.as_view(), name="api_projection"),
 ]

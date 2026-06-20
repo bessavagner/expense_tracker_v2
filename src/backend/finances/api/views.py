@@ -7,6 +7,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from finances.models import Category, Entry, Income
+from finances.services.category_stats import category_moving_averages
+from finances.services.projection import build_projection
 
 
 def _get_month_params(request):
@@ -68,10 +70,14 @@ class TopCategoriesView(APIView):
 
         category_totals = (
             Entry.objects.filter(user=user, billing_month=billing_month, amount__gt=0)
-            .values("category__name")
+            .values("category__id", "category__name")
             .annotate(total=Sum("amount"))
             .order_by("-total")[:5]
         )
+
+        # 3-month moving average per category (window before this month) so the
+        # card can show whether the user is spending above/below their usual.
+        averages = category_moving_averages(user, window=3, as_of=billing_month)
 
         total = sum(ct["total"] for ct in category_totals) or Decimal("1")
         result = [
@@ -79,6 +85,11 @@ class TopCategoriesView(APIView):
                 "name": ct["category__name"],
                 "amount": f"{ct['total']:.2f}",
                 "pct": round(float(ct["total"]) / float(total) * 100, 1),
+                "avg_3m": (
+                    f"{averages[ct['category__id']]:.2f}"
+                    if ct["category__id"] in averages
+                    else None
+                ),
             }
             for ct in category_totals
         ]
@@ -277,5 +288,47 @@ class InstallmentsView(APIView):
             {
                 "plans": plans,
                 "monthly_total": f"{monthly_total:.2f}",
+            }
+        )
+
+
+class ProjectionCardView(APIView):
+    """Forward-looking projection for the dashboard card: the running balance
+    (acumulado) trajectory over a 6-month horizon, real vs estimated.
+
+    ``acumulado`` follows posted entries; ``acumulado_estimado`` substitutes the
+    per-category 3-month average for the diversas not yet spent — so the user sees
+    where they're heading on their typical spending, not just what's posted.
+    """
+
+    permission_classes = [IsAuthenticated]
+    HORIZON = 6
+
+    def get(self, request):
+        year, month, billing_month = _get_month_params(request)
+        rows = build_projection(request.user, billing_month, self.HORIZON)
+        if not rows:
+            return Response({"series": []})
+
+        series = [
+            {
+                "month": f"{r['month']:%Y-%m}",
+                "acumulado": f"{r['acumulado']:.2f}",
+                "acumulado_estimado": f"{r['acumulado_estimado']:.2f}",
+            }
+            for r in rows
+        ]
+        first, last = rows[0], rows[-1]
+        delta = last["acumulado_estimado"] - first["acumulado_estimado"]
+        return Response(
+            {
+                "month_label": f"{first['month']:%m/%Y}",
+                "end_label": f"{last['month']:%m/%Y}",
+                "saldo_mes": f"{first['saldo_projetado']:.2f}",
+                "acumulado": f"{first['acumulado']:.2f}",
+                "acumulado_estimado": f"{first['acumulado_estimado']:.2f}",
+                "end_acumulado_estimado": f"{last['acumulado_estimado']:.2f}",
+                "delta": f"{delta:.2f}",
+                "series": series,
             }
         )

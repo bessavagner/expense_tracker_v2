@@ -297,3 +297,45 @@ class TestDashboardView:
         client = Client()
         response = client.get("/")
         assert response.status_code == 302
+
+
+def _e(user, cat, pm, amount, bm):
+    return baker.make("finances.Entry", user=user, date=bm, amount=Decimal(amount),
+                      category=cat, payment_method=pm, entry_type="regular",
+                      billing_month=bm, billing_month_override=True)
+
+
+@pytest.mark.django_db
+class TestProjectionEndpoint:
+    def test_returns_series_and_headline(self, logged_client, user):
+        cat = baker.make("finances.Category", user=user)
+        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+        baker.make("finances.Income", user=user, month=date(2026, 6, 1), amount=Decimal("8000"))
+        _e(user, cat, pm, "2000", date(2026, 6, 1))
+        r = logged_client.get("/api/dashboard/projection/?year=2026&month=6")
+        assert r.status_code == 200
+        d = r.json()
+        assert len(d["series"]) == 6
+        assert d["series"][0]["month"] == "2026-06"
+        for k in ("saldo_mes", "acumulado", "acumulado_estimado",
+                  "end_acumulado_estimado", "delta", "end_label", "month_label"):
+            assert k in d
+        # saldo do mês = renda 8000 - total 2000 (sem sistêmicos/parcelas)
+        assert d["saldo_mes"] == "6000.00"
+
+    def test_unauthenticated(self):
+        assert Client().get("/api/dashboard/projection/").status_code in (302, 401, 403)
+
+
+@pytest.mark.django_db
+class TestTopCategoriesAverage:
+    def test_includes_3m_average(self, logged_client, user):
+        cat = baker.make("finances.Category", user=user, name="Alimentação")
+        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+        _e(user, cat, pm, "500", date(2026, 6, 1))  # current month spend
+        for bm in (date(2026, 3, 1), date(2026, 4, 1), date(2026, 5, 1)):
+            _e(user, cat, pm, "1000", bm)  # 3m window -> avg 1000
+        r = logged_client.get("/api/dashboard/top-categories/?year=2026&month=6")
+        d = r.json()
+        assert d[0]["name"] == "Alimentação"
+        assert d[0]["avg_3m"] == "1000.00"
