@@ -258,6 +258,27 @@ class SystemicEntryEditForm(forms.Form):
         label="Forma de pagamento",
         widget=forms.Select(attrs={"class": "select select-bordered select-sm w-full"}),
     )
+    is_recurring = forms.BooleanField(
+        required=False,
+        label="Aplicar valor em recorrência",
+        widget=forms.CheckboxInput(attrs={"class": "checkbox checkbox-sm"}),
+    )
+    recurrence_start = forms.DateField(
+        required=False,
+        label="Início da recorrência",
+        widget=forms.DateInput(
+            format="%Y-%m-%d",
+            attrs={"type": "date", "class": "input input-bordered input-sm w-full"},
+        ),
+    )
+    recurrence_end = forms.DateField(
+        required=False,
+        label="Fim da recorrência",
+        widget=forms.DateInput(
+            format="%Y-%m-%d",
+            attrs={"type": "date", "class": "input input-bordered input-sm w-full"},
+        ),
+    )
 
     def __init__(self, *args, entry=None, user=None, **kwargs):
         self.entry = entry
@@ -275,6 +296,9 @@ class SystemicEntryEditForm(forms.Form):
             self.fields["amount"].initial = entry.amount
             self.fields["category"].initial = entry.category_id
             self.fields["payment_method"].initial = entry.payment_method_id
+            # Default recurrence window: this month → December of its year.
+            self.fields["recurrence_start"].initial = entry.billing_month
+            self.fields["recurrence_end"].initial = _date(entry.billing_month.year, 12, 1)
 
     def save(self):
         cd = self.cleaned_data
@@ -289,6 +313,14 @@ class SystemicEntryEditForm(forms.Form):
         self.entry.payment_method = cd["payment_method"]
         self.entry.description = cd["name"]
         self.entry.save()
+        # Optional recurrence: propagate only the value across the chosen window
+        # (defaults to this month → December of its year). May extend backwards.
+        if cd.get("is_recurring"):
+            from finances.services.systemic_recurrence import apply_systemic_recurrence
+
+            start = cd.get("recurrence_start") or self.entry.billing_month
+            end = cd.get("recurrence_end") or _date(self.entry.billing_month.year, 12, 1)
+            apply_systemic_recurrence(systemic, cd["amount"], start, end)
         return self.entry
 
 
