@@ -133,6 +133,7 @@ def build_projection_context(request):
         "start_month_options": list(range(1, 13)),
         "months_value": months,
         "month_options": [6, 12, 14, 18, 24],
+        "whatif_year_options": sorted({r["month"].year for r in rows}),
         "whatif_items": items,
         "has_whatif": bool(items),
         "estimate": estimate,

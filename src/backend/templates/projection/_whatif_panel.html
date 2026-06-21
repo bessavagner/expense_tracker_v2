@@ -6,7 +6,7 @@
     <form hx-post="{% url 'finances:projection_whatif_add' %}"
           hx-target="#projection-container"
           hx-swap="innerHTML"
-          x-data="{ t: 'expense_oneoff' }"
+          x-data="{ t: 'expense_oneoff', m: '', y: '', em: '', ey: '' }"
           class="flex flex-wrap gap-2 items-end mb-3">
       {% csrf_token %}
 
@@ -33,12 +33,42 @@
 
       <label class="form-control">
         <span class="label-text text-xs mb-1">Mês (início)</span>
-        <input type="month" name="month" class="input input-bordered input-sm w-36" required>
+        <div class="flex gap-1">
+          <select x-model="m" class="select select-bordered select-sm w-24" required>
+            <option value="" disabled>Mês</option>
+            {% for mo in start_month_options %}
+            <option value="{{ mo }}">{{ mo|month_abbr }}</option>
+            {% endfor %}
+          </select>
+          <select x-model="y" class="select select-bordered select-sm w-24" required>
+            <option value="" disabled>Ano</option>
+            {% for yr in whatif_year_options %}
+            <option value="{{ yr }}">{{ yr }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <input type="hidden" name="month"
+               :value="m && y ? y + '-' + String(m).padStart(2, '0') : ''">
       </label>
 
       <label class="form-control" x-show="t === 'expense_recurring' || t === 'income'">
         <span class="label-text text-xs mb-1">Mês final</span>
-        <input type="month" name="end_month" class="input input-bordered input-sm w-36">
+        <div class="flex gap-1">
+          <select x-model="em" class="select select-bordered select-sm w-24">
+            <option value="">Mês</option>
+            {% for mo in start_month_options %}
+            <option value="{{ mo }}">{{ mo|month_abbr }}</option>
+            {% endfor %}
+          </select>
+          <select x-model="ey" class="select select-bordered select-sm w-24">
+            <option value="">Ano</option>
+            {% for yr in whatif_year_options %}
+            <option value="{{ yr }}">{{ yr }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <input type="hidden" name="end_month"
+               :value="em && ey ? ey + '-' + String(em).padStart(2, '0') : ''">
       </label>
 
       <label class="form-control" x-show="t === 'installment' || t === 'loan'">
