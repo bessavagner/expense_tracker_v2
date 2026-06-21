@@ -197,7 +197,6 @@ class TestBudgetSettings:
         url = reverse("finances:settings_budget_create")
         resp = logged_client.post(url, {"name": "Casa", "amount": "1000"})
         assert resp.status_code == 200
-        from finances.models import Budget
         assert user.budgets.filter(name="Casa", amount=Decimal("1000")).exists()
 
     def test_recalc_sets_amount_to_ceiling_sum(self, logged_client, user):
@@ -217,7 +216,6 @@ class TestBudgetSettings:
         url = reverse("finances:settings_budget_delete", args=[b.id])
         resp = logged_client.delete(url)
         assert resp.status_code == 200
-        from finances.models import Budget
         assert not user.budgets.filter(id=b.id).exists()
 
     def test_duplicate_name_does_not_500(self, logged_client, user):
@@ -260,3 +258,59 @@ class TestBudgetSettings:
         assert resp.status_code == 200
         cat.refresh_from_db()
         assert cat.budget_id is None  # foreign budget silently ignored
+
+    def test_edit_modal_renders_form_and_category_checkboxes(self, logged_client, user):
+        from django.urls import reverse
+        b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("1000"))
+        inside = baker.make("finances.Category", user=user, name="Luz", budget=b)
+        outside = baker.make("finances.Category", user=user, name="Lazer", budget=None)
+        url = reverse("finances:settings_budget_edit_modal", args=[b.id])
+        resp = logged_client.get(url)
+        assert resp.status_code == 200
+        body = resp.content.decode()
+        # labelled fields + a checkbox per category
+        assert "Nome do orçamento" in body
+        assert 'name="categories"' in body
+        assert str(inside.id) in body and str(outside.id) in body
+        # the assigned category must be pre-checked
+        import re
+        m = re.search(rf'value="{re.escape(str(inside.id))}"[^>]*', body)
+        assert m and "checked" in m.group(0)
+
+    def test_modal_save_updates_name_amount_and_assigns_categories(self, logged_client, user):
+        from django.urls import reverse
+        b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("1000"))
+        c1 = baker.make("finances.Category", user=user, name="Luz", budget=None)
+        c2 = baker.make("finances.Category", user=user, name="Água", budget=None)
+        url = reverse("finances:settings_budget_edit", args=[b.id])
+        resp = logged_client.post(url, {"name": "Moradia", "amount": "1500",
+                                        "categories": [str(c1.id), str(c2.id)]})
+        assert resp.status_code == 200
+        assert "entry-saved" in resp.headers.get("HX-Trigger", "")  # closes the modal
+        b.refresh_from_db()
+        c1.refresh_from_db()
+        c2.refresh_from_db()
+        assert b.name == "Moradia" and b.amount == Decimal("1500")
+        assert c1.budget_id == b.id and c2.budget_id == b.id
+
+    def test_modal_save_unassigns_unchecked_category(self, logged_client, user):
+        from django.urls import reverse
+        b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("1000"))
+        c1 = baker.make("finances.Category", user=user, name="Luz", budget=b)
+        url = reverse("finances:settings_budget_edit", args=[b.id])
+        # POST with no "categories" -> c1 (currently in b) gets unassigned
+        resp = logged_client.post(url, {"name": "Casa", "amount": "1000"})
+        assert resp.status_code == 200
+        c1.refresh_from_db()
+        assert c1.budget_id is None
+
+    def test_modal_save_does_not_touch_other_budgets(self, logged_client, user):
+        from django.urls import reverse
+        b1 = baker.make("finances.Budget", user=user, name="Casa")
+        b2 = baker.make("finances.Budget", user=user, name="Lazer")
+        c2 = baker.make("finances.Category", user=user, name="Cinema", budget=b2)
+        url = reverse("finances:settings_budget_edit", args=[b1.id])
+        resp = logged_client.post(url, {"name": "Casa", "amount": "0"})  # c2 not selected
+        assert resp.status_code == 200
+        c2.refresh_from_db()
+        assert c2.budget_id == b2.id  # untouched (belongs to a different budget)

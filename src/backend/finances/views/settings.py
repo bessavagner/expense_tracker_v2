@@ -441,7 +441,9 @@ class CategoryAssignBudgetView(HtmxLoginRequiredMixin, View):
         context = categories_tab_context(request.user)
         html = render_to_string("settings/_categories_tab.html", context, request=request)
         response = HttpResponse(html)
-        response["HX-Trigger"] = '{"showToast": {"message": "Orçamento da categoria atualizado!", "type": "success"}}'
+        response["HX-Trigger"] = json.dumps(
+            {"showToast": {"message": "Orçamento da categoria atualizado!", "type": "success"}}
+        )
         return response
 
 
@@ -495,6 +497,44 @@ class BudgetCreateView(HtmxLoginRequiredMixin, View):
         return _render_budgets_tab(request, "Orçamento criado!")
 
 
+def _budget_modal_context(user, budget, form=None):
+    return {
+        "budget": budget,
+        "form": form or BudgetForm(instance=budget),
+        "categories": Category.objects.filter(user=user).select_related("budget"),
+    }
+
+
+def _render_budget_modal(request, budget, form=None, error=None):
+    """Render the edit modal back into the dialog. HX-Retarget points the swap at
+    the modal body so a validation error re-shows the modal instead of replacing
+    the settings tab."""
+    ctx = _budget_modal_context(request.user, budget, form=form)
+    if error:
+        ctx["error"] = error
+    html = render_to_string("settings/_budget_edit_modal.html", ctx, request=request)
+    response = HttpResponse(html)
+    response["HX-Retarget"] = "#entry-modal-content"
+    response["HX-Reswap"] = "innerHTML"
+    return response
+
+
+class BudgetEditModalView(HtmxLoginRequiredMixin, View):
+    """Serve the budget edit form (name, teto, category checklist) into the shared
+    #entry-modal — opened by clicking a budget row."""
+
+    def get(self, request, pk):
+        b = Budget.objects.filter(user=request.user, pk=pk).first()
+        if not b:
+            raise Http404
+        html = render_to_string(
+            "settings/_budget_edit_modal.html",
+            _budget_modal_context(request.user, b),
+            request=request,
+        )
+        return HttpResponse(html)
+
+
 class BudgetEditView(HtmxLoginRequiredMixin, View):
     def post(self, request, pk):
         b = Budget.objects.filter(user=request.user, pk=pk).first()
@@ -502,17 +542,40 @@ class BudgetEditView(HtmxLoginRequiredMixin, View):
             raise Http404
         form = BudgetForm(request.POST, instance=b)
         if not form.is_valid():
-            return _render_budgets_tab(request)
+            return _render_budget_modal(request, b, form=form, error="Dados inválidos.")
         updated = form.save(commit=False)
         updated.user = request.user
         try:
             updated.validate_unique()
         except ValidationError:
-            return _render_budgets_tab(
-                request, "Já existe um orçamento com esse nome.", toast_type="error"
+            return _render_budget_modal(
+                request, b, form=form, error="Já existe um orçamento com esse nome."
             )
         updated.save()
-        return _render_budgets_tab(request, "Orçamento atualizado!")
+        self._reconcile_categories(request, b)
+        html = render_to_string(
+            "settings/_budgets_tab.html", _budgets_tab_context(request.user), request=request
+        )
+        response = HttpResponse(html)
+        response["HX-Trigger"] = json.dumps(
+            {"showToast": {"message": "Orçamento atualizado!", "type": "success"},
+             "entry-saved": True}
+        )
+        return response
+
+    def _reconcile_categories(self, request, budget):
+        """Assign checked categories to this budget and release unchecked ones that
+        previously belonged to it. Categories in OTHER budgets that were not checked
+        are left untouched (one category belongs to one budget)."""
+        selected = set(request.POST.getlist("categories"))
+        for cat in Category.objects.filter(user=request.user):
+            cid = str(cat.id)
+            if cid in selected and cat.budget_id != budget.id:
+                cat.budget = budget
+                cat.save(update_fields=["budget", "updated_at"])
+            elif cid not in selected and cat.budget_id == budget.id:
+                cat.budget = None
+                cat.save(update_fields=["budget", "updated_at"])
 
 
 class BudgetRecalcView(HtmxLoginRequiredMixin, View):

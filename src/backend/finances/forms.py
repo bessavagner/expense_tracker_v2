@@ -365,6 +365,10 @@ class BudgetForm(forms.ModelForm):
     class Meta:
         model = Budget
         fields = ["name", "amount"]
+        labels = {
+            "name": "Nome do orçamento",
+            "amount": "Teto mensal (R$)",
+        }
         widgets = {
             "name": forms.TextInput(attrs={"class": "input input-bordered input-sm w-full"}),
             "amount": forms.NumberInput(
