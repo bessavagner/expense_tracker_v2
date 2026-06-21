@@ -177,3 +177,14 @@ def test_categories_tab_shows_moving_average(logged_client, user):
     assert resp.status_code == 200
     # "Média (3m)" header is date-robust to assert (averages depend on today()).
     assert b"3m" in resp.content
+
+
+@pytest.mark.django_db
+def test_categories_tab_shows_total_row(logged_client, user):
+    baker.make("finances.Category", user=user, name="A", budget_ceiling=Decimal("1000"))
+    baker.make("finances.Category", user=user, name="B", budget_ceiling=Decimal("2000"))
+    resp = logged_client.get("/settings/categories/")
+    assert resp.status_code == 200
+    body = resp.content.decode()
+    assert "Total" in body
+    assert "3000,00" in body  # sum of ceilings 1000 + 2000 (pt-BR floatformat)

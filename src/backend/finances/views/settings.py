@@ -1,6 +1,8 @@
 import json
 from datetime import date
+from decimal import Decimal
 
+from django.db.models import Sum
 from django.http import Http404, HttpResponse
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -21,10 +23,15 @@ from finances.views.mixins import HtmxLoginRequiredMixin
 
 
 def categories_tab_context(user):
+    averages = category_moving_averages(user, window=3)
+    total_ceiling = Category.objects.filter(user=user).aggregate(t=Sum("budget_ceiling"))["t"]
+    total_avg = sum(averages.values(), Decimal("0"))
     return {
         "categories": Category.objects.filter(user=user),
         "form": CategoryCreateForm(),
-        "category_averages": category_moving_averages(user, window=3),
+        "category_averages": averages,
+        "total_ceiling": total_ceiling,
+        "total_avg_3m": total_avg or None,
     }
 
 

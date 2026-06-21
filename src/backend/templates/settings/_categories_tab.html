@@ -58,5 +58,16 @@
         </tr>
         {% endfor %}
     </tbody>
+    {% if categories %}
+    <tfoot>
+        <tr class="font-semibold border-t-2 border-base-300">
+            <td>Total</td>
+            <td>{% if total_ceiling %}R$ {{ total_ceiling|floatformat:2 }}{% else %}—{% endif %}</td>
+            <td class="text-xs">{% if total_avg_3m %}R$ {{ total_avg_3m|floatformat:2 }}{% else %}—{% endif %}</td>
+            <td></td>
+            <td></td>
+        </tr>
+    </tfoot>
+    {% endif %}
 </table>
 </div>
