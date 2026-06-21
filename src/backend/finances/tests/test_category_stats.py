@@ -105,3 +105,27 @@ class TestMonthlyDiverseTotalMedian:
     def test_empty_returns_zero(self, user):
         from finances.services.category_stats import monthly_diverse_total_median
         assert monthly_diverse_total_median(user, window=6, as_of=self.AS_OF) == Decimal("0")
+
+
+@pytest.mark.django_db
+class TestCategoryAveragesExcludesAdjustment:
+    AS_OF = date(2026, 6, 20)
+
+    def test_adjustment_category_absent_from_averages(self, user, pix):
+        cat = baker.make("finances.Category", user=user, name="Alimentação")
+        ajuste = baker.make("finances.Category", user=user, name="Ajuste (temporario)")
+        for bm in (date(2026, 3, 1), date(2026, 4, 1), date(2026, 5, 1)):
+            _e(user, cat, pix, "800", bm)
+            _e(user, ajuste, pix, "5000", bm)
+        avg = category_moving_averages(user, as_of=self.AS_OF)
+        assert avg[cat.id] == Decimal("800.00")
+        assert ajuste.id not in avg  # reconciliation excluded
+
+    def test_named_excludes_adjustment(self, user, pix):
+        cat = baker.make("finances.Category", user=user, name="Alimentação")
+        ajuste = baker.make("finances.Category", user=user, name="Ajuste (temporario)")
+        for bm in (date(2026, 3, 1), date(2026, 4, 1), date(2026, 5, 1)):
+            _e(user, cat, pix, "800", bm)
+            _e(user, ajuste, pix, "5000", bm)
+        named = category_moving_averages_named(user, as_of=self.AS_OF)
+        assert [n["name"] for n in named] == ["Alimentação"]

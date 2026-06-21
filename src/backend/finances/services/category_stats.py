@@ -61,7 +61,7 @@ def category_moving_averages(user, window=3, as_of=None, entry_type=None) -> dic
     months = _window_months(as_of, window)
     qs = Entry.objects.filter(
         user=user, amount__gt=0, billing_month__in=months
-    )
+    ).exclude(category__name__icontains=ADJUSTMENT_CATEGORY_PATTERN)
     if entry_type is not None:
         qs = qs.filter(entry_type=entry_type)
     rows = qs.values("category_id", "billing_month").annotate(total=Sum("amount"))
