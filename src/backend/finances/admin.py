@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from finances.models import (
+    Budget,
     Category,
     Entry,
     Income,
@@ -8,6 +9,14 @@ from finances.models import (
     PaymentMethod,
     SystemicExpense,
 )
+
+
+@admin.register(Budget)
+class BudgetAdmin(admin.ModelAdmin):
+    list_display = ("name", "amount", "user")
+    list_filter = ("user",)
+    search_fields = ("name",)
+    ordering = ("name",)
 
 
 @admin.register(Category)
