@@ -2,7 +2,7 @@
 """Deterministic per-budget spend + planned-ceiling math."""
 
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 
 from django.db.models import Sum
 
@@ -15,7 +15,7 @@ ZERO = Decimal("0")
 def _status(spent: Decimal, cap: Decimal) -> tuple[int, str]:
     if cap <= 0:
         return 0, "success"
-    pct = int((spent / cap * 100).to_integral_value())
+    pct = int((spent / cap * 100).to_integral_value(rounding=ROUND_DOWN))
     if pct >= 100:
         return pct, "error"
     if pct >= 90:

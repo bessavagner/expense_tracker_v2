@@ -37,6 +37,15 @@ class TestBudgetStats:
         [row] = budget_stats.budget_spend_for_month(user, date(2026, 6, 1))
         assert row["status"] == "warning"
 
+    def test_pct_truncates_below_warning_threshold(self, user):
+        # 899.50 / 1000 = 89.95% must truncate to 89 (success), not round to 90 (warning).
+        b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("1000"))
+        luz = baker.make("finances.Category", user=user, name="Luz", budget=b)
+        _entry(user, luz, "899.50", date(2026, 6, 1))
+        [row] = budget_stats.budget_spend_for_month(user, date(2026, 6, 1))
+        assert row["pct"] == 89
+        assert row["status"] == "success"
+
     def test_excludes_adjustment_entries(self, user):
         b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("1000"))
         ajuste = baker.make("finances.Category", user=user, name="Ajuste de saldo", budget=b)
