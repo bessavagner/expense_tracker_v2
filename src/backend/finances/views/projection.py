@@ -13,6 +13,7 @@ from finances.services.whatif import HypotheticalItem, HypoType, expand_hypothet
 from finances.views.mixins import HtmxLoginRequiredMixin
 
 SESSION_KEY = "projection_whatif"
+ESTIMATE_SESSION_KEY = "projection_estimate"
 
 DEFAULT_MONTHS = 14
 MAX_MONTHS = 36
@@ -68,6 +69,15 @@ def _session_items(request):
     return [HypotheticalItem(**d) for d in request.session.get(SESSION_KEY, [])]
 
 
+def _parse_estimate(request) -> str:
+    """'teto' or 'median'. GET wins; otherwise last session choice; default median."""
+    raw = request.GET.get("estimate")
+    if raw in ("teto", "median"):
+        request.session[ESTIMATE_SESSION_KEY] = raw
+        return raw
+    return request.session.get(ESTIMATE_SESSION_KEY, "median")
+
+
 def _overlay_simulation(rows, overlay):
     """Project the what-if ``overlay`` on top of the ESTIMATED track.
 
@@ -104,8 +114,11 @@ def build_projection_context(request):
     first_year = min(_data_anchor_year(request.user, today), start.year)
     last_year = max(today.year, start.year)
 
+    estimate = _parse_estimate(request)
+    estimator = "ceiling" if estimate == "teto" else "median"
+
     items = _session_items(request)
-    rows = build_projection(request.user, start, months, today=today)
+    rows = build_projection(request.user, start, months, today=today, diverse_estimator=estimator)
     if items:
         span = [r["month"] for r in rows]
         overlay, _ = expand_hypotheticals(items, span)
@@ -122,6 +135,7 @@ def build_projection_context(request):
         "month_options": [6, 12, 14, 18, 24],
         "whatif_items": items,
         "has_whatif": bool(items),
+        "estimate": estimate,
     }
 
 

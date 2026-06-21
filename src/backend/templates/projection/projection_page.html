@@ -36,6 +36,13 @@
             {% endfor %}
         </select>
     </label>
+    <label class="form-control">
+        <span class="label-text text-xs mb-1">Diversas (futuro)</span>
+        <select name="estimate" class="select select-bordered select-sm w-32">
+            <option value="median" {% if estimate == "median" %}selected{% endif %}>Mediana</option>
+            <option value="teto" {% if estimate == "teto" %}selected{% endif %}>Teto</option>
+        </select>
+    </label>
 </form>
 
 <div id="projection-container">
