@@ -13,7 +13,10 @@ from django.db.models import Min, Sum
 
 from finances.models import Entry, Income, SystemicExpense
 from finances.models.entry import EntryType
-from finances.services.category_stats import monthly_diverse_total_median
+from finances.services.category_stats import (
+    monthly_diverse_total_ceiling,
+    monthly_diverse_total_median,
+)
 
 ZERO = Decimal("0")
 DEFAULT_PROJECTION_ORIGIN = date(2025, 11, 1)
@@ -52,7 +55,7 @@ def projection_origin() -> date:
 
 
 def build_projection(user, start_month: date, num_months: int, today: date | None = None,
-                     overlay: dict | None = None):
+                     overlay: dict | None = None, diverse_estimator: str = "median"):
     """Return a list of ``num_months`` dicts, one per month from ``start_month``.
 
     Each dict holds: ``month``, ``systemic``, ``installments``, ``programmed``,
@@ -130,7 +133,10 @@ def build_projection(user, start_month: date, num_months: int, today: date | Non
     # --- estimated diversas: a robust "typical month" (median of recent monthly
     # totals, excluding reconciliation entries). The median makes a one-off
     # reform / big purchase unable to poison the forward projection. ---
-    est_typical_diverse = monthly_diverse_total_median(user, window=6, as_of=today)
+    if diverse_estimator == "ceiling":
+        est_typical_diverse = monthly_diverse_total_ceiling(user)
+    else:
+        est_typical_diverse = monthly_diverse_total_median(user, window=6, as_of=today)
 
     rows = []
     acumulado = ZERO

@@ -207,3 +207,25 @@ class TestProjectionOverlay:
         row = build_projection(user, m, 1, today=date(2026, 6, 15), overlay=overlay)[0]
         assert row["income"] == Decimal("1000")
         assert row["saldo_projetado"] == Decimal("1000")
+
+
+@pytest.mark.django_db
+class TestDiverseEstimator:
+    def test_ceiling_estimator_uses_total_ceiling(self, user, cat, pix):
+        from decimal import Decimal
+        from model_bakery import baker
+        b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("3000"))
+        baker.make("finances.Category", user=user, name="Lazer", budget=None,
+                   budget_ceiling=Decimal("500"))
+        # future month, no posted diversas -> estimate drives diverse_estimated
+        rows = build_projection(
+            user, date(2026, 7, 1), 1, today=date(2026, 6, 15),
+            diverse_estimator="ceiling",
+        )
+        assert rows[0]["diverse_estimated"] == Decimal("3500")
+
+    def test_median_is_default(self, user, cat, pix):
+        rows_default = build_projection(user, date(2026, 7, 1), 1, today=date(2026, 6, 15))
+        rows_median = build_projection(user, date(2026, 7, 1), 1, today=date(2026, 6, 15),
+                                       diverse_estimator="median")
+        assert rows_default[0]["diverse_estimated"] == rows_median[0]["diverse_estimated"]
