@@ -455,7 +455,13 @@ def _budgets_tab_context(user):
     for b in Budget.objects.filter(user=user).prefetch_related("categories"):
         budgets.append({"obj": b, "ceiling_sum": seed_amount_from_ceilings(b),
                         "n_categories": b.categories.count()})
-    return {"budgets": budgets, "form": BudgetForm()}
+    return {
+        "budgets": budgets,
+        "form": BudgetForm(),
+        "total_amount": sum((b["obj"].amount for b in budgets), Decimal("0")),
+        "total_ceiling": sum((b["ceiling_sum"] for b in budgets), Decimal("0")),
+        "total_categories": sum(b["n_categories"] for b in budgets),
+    }
 
 
 def _render_budgets_tab(request, message=None, toast_type="success"):

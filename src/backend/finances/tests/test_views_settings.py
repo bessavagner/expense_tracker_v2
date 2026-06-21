@@ -314,3 +314,12 @@ class TestBudgetSettings:
         assert resp.status_code == 200
         c2.refresh_from_db()
         assert c2.budget_id == b2.id  # untouched (belongs to a different budget)
+
+    def test_budgets_tab_shows_total_row(self, logged_client, user):
+        baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("1000"))
+        baker.make("finances.Budget", user=user, name="Lazer", amount=Decimal("2000"))
+        resp = logged_client.get("/settings/budgets/")
+        assert resp.status_code == 200
+        body = resp.content.decode()
+        assert "Total" in body
+        assert "3000,00" in body  # sum of budget tetos 1000 + 2000 (pt-BR floatformat)

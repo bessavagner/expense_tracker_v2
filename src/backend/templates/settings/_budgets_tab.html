@@ -49,5 +49,16 @@
         </td></tr>
         {% endfor %}
     </tbody>
+    {% if budgets %}
+    <tfoot>
+        <tr class="font-semibold border-t-2 border-base-300">
+            <td>Total</td>
+            <td>R$ {{ total_amount|floatformat:2 }}</td>
+            <td class="text-xs">R$ {{ total_ceiling|floatformat:2 }}</td>
+            <td class="text-xs">{{ total_categories }}</td>
+            <td></td>
+        </tr>
+    </tfoot>
+    {% endif %}
 </table>
 </div>
