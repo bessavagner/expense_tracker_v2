@@ -328,6 +328,33 @@ class TestProjectionEndpoint:
 
 
 @pytest.mark.django_db
+class TestAlertsByBudget:
+    def _entry(self, user, cat, amount, bm):
+        from finances.models.entry import EntryType
+        return baker.make(
+            "finances.Entry", user=user, date=bm, amount=Decimal(amount),
+            category=cat, entry_type=EntryType.REGULAR, billing_month=bm,
+            billing_month_override=True,
+        )
+
+    def test_budget_overflow_alert(self, logged_client, user):
+        b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("1000"))
+        luz = baker.make("finances.Category", user=user, name="Luz", budget=b)
+        self._entry(user, luz, "1200", date(2026, 6, 1))
+        resp = logged_client.get("/api/dashboard/alerts/?year=2026&month=6")
+        msgs = [a["message"] for a in resp.json()]
+        assert any("Casa ultrapassou teto" in m for m in msgs)
+
+    def test_orphan_category_still_alerts(self, logged_client, user):
+        orphan = baker.make("finances.Category", user=user, name="Lazer",
+                            budget=None, budget_ceiling=Decimal("100"))
+        self._entry(user, orphan, "150", date(2026, 6, 1))
+        resp = logged_client.get("/api/dashboard/alerts/?year=2026&month=6")
+        msgs = [a["message"] for a in resp.json()]
+        assert any("Lazer ultrapassou teto" in m for m in msgs)
+
+
+@pytest.mark.django_db
 class TestTopCategoriesAverage:
     def test_includes_3m_average(self, logged_client, user):
         cat = baker.make("finances.Category", user=user, name="Alimentação")
