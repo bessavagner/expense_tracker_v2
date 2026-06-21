@@ -219,3 +219,12 @@ class TestBudgetSettings:
         assert resp.status_code == 200
         from finances.models import Budget
         assert not user.budgets.filter(id=b.id).exists()
+
+    def test_duplicate_name_does_not_500(self, logged_client, user):
+        from django.urls import reverse
+        url = reverse("finances:settings_budget_create")
+        first = logged_client.post(url, {"name": "Casa", "amount": "1000"})
+        assert first.status_code == 200
+        second = logged_client.post(url, {"name": "Casa", "amount": "2000"})
+        assert second.status_code == 200  # graceful, not IntegrityError 500
+        assert user.budgets.filter(name="Casa").count() == 1

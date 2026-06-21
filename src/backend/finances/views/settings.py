@@ -2,6 +2,7 @@ import json
 from datetime import date
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.db.models import Sum
 from django.http import Http404, HttpResponse
 from django.template.loader import render_to_string
@@ -437,14 +438,14 @@ def _budgets_tab_context(user):
     return {"budgets": budgets, "form": BudgetForm()}
 
 
-def _render_budgets_tab(request, message=None):
+def _render_budgets_tab(request, message=None, toast_type="success"):
     html = render_to_string(
         "settings/_budgets_tab.html", _budgets_tab_context(request.user), request=request
     )
     response = HttpResponse(html)
     if message:
-        response["HX-Trigger"] = (
-            '{"showToast": {"message": "%s", "type": "success"}}' % message
+        response["HX-Trigger"] = json.dumps(
+            {"showToast": {"message": message, "type": toast_type}}
         )
     return response
 
@@ -462,10 +463,17 @@ class BudgetsTabView(HtmxLoginRequiredMixin, TemplateView):
 class BudgetCreateView(HtmxLoginRequiredMixin, View):
     def post(self, request):
         form = BudgetForm(request.POST)
-        if form.is_valid():
-            b = form.save(commit=False)
-            b.user = request.user
-            b.save()
+        if not form.is_valid():
+            return _render_budgets_tab(request)
+        b = form.save(commit=False)
+        b.user = request.user
+        try:
+            b.validate_unique()
+        except ValidationError:
+            return _render_budgets_tab(
+                request, "Já existe um orçamento com esse nome.", toast_type="error"
+            )
+        b.save()
         return _render_budgets_tab(request, "Orçamento criado!")
 
 
@@ -475,8 +483,17 @@ class BudgetEditView(HtmxLoginRequiredMixin, View):
         if not b:
             raise Http404
         form = BudgetForm(request.POST, instance=b)
-        if form.is_valid():
-            form.save()
+        if not form.is_valid():
+            return _render_budgets_tab(request)
+        updated = form.save(commit=False)
+        updated.user = request.user
+        try:
+            updated.validate_unique()
+        except ValidationError:
+            return _render_budgets_tab(
+                request, "Já existe um orçamento com esse nome.", toast_type="error"
+            )
+        updated.save()
         return _render_budgets_tab(request, "Orçamento atualizado!")
 
 
