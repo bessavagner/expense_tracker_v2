@@ -1,0 +1,48 @@
+<form hx-post="{% url 'finances:settings_budget_create' %}"
+      hx-target="#settings-content" hx-swap="innerHTML"
+      class="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4 items-end">
+    {% csrf_token %}
+    {{ form.name }}
+    {{ form.amount }}
+    <button type="submit" class="btn btn-sm btn-accent col-span-2 md:col-span-1">Adicionar</button>
+</form>
+
+<div class="overflow-x-auto min-w-0">
+<table class="table table-sm">
+    <thead>
+        <tr><th>Orçamento</th><th>Teto</th><th>Σ tetos categorias</th><th>Categorias</th><th></th></tr>
+    </thead>
+    <tbody>
+        {% for b in budgets %}
+        <tr>
+            <td>{{ b.obj.name }}</td>
+            <td>
+                <input type="number" name="amount" value="{{ b.obj.amount }}" step="0.01"
+                       class="input input-bordered input-xs w-24"
+                       hx-post="{% url 'finances:settings_budget_edit' b.obj.id %}"
+                       hx-trigger="change" hx-include="this"
+                       hx-vals='{"name": "{{ b.obj.name|escapejs }}"}'
+                       hx-target="#settings-content" hx-swap="innerHTML">
+            </td>
+            <td class="text-xs text-base-content/70">R$ {{ b.ceiling_sum|floatformat:2 }}</td>
+            <td class="text-xs">{{ b.n_categories }}</td>
+            <td class="flex gap-1">
+                <button class="btn btn-ghost btn-xs"
+                        hx-post="{% url 'finances:settings_budget_recalc' b.obj.id %}"
+                        hx-target="#settings-content" hx-swap="innerHTML"
+                        title="Recalcular pela soma dos tetos">🔄</button>
+                <button class="btn btn-ghost btn-xs text-error"
+                        hx-delete="{% url 'finances:settings_budget_delete' b.obj.id %}"
+                        hx-target="#settings-content" hx-swap="innerHTML"
+                        hx-confirm="Excluir orçamento {{ b.obj.name }}? As categorias ficam sem orçamento.">🗑️</button>
+            </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="text-center py-6">
+            <span class="text-2xl">📊</span>
+            <p class="text-xs text-base-content/60 mt-1">Nenhum orçamento. Crie um e agrupe categorias na aba Categorias.</p>
+        </td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>

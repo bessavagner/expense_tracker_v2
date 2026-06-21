@@ -4,6 +4,7 @@ from django import forms
 from django.core.validators import MinValueValidator
 
 from finances.models import (
+    Budget,
     Category,
     Entry,
     Income,
@@ -355,6 +356,18 @@ class CategoryCreateForm(forms.ModelForm):
         widgets = {
             "name": forms.TextInput(attrs={"class": "input input-bordered input-sm w-full"}),
             "budget_ceiling": forms.NumberInput(
+                attrs={"step": "0.01", "class": "input input-bordered input-sm w-full"}
+            ),
+        }
+
+
+class BudgetForm(forms.ModelForm):
+    class Meta:
+        model = Budget
+        fields = ["name", "amount"]
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "input input-bordered input-sm w-full"}),
+            "amount": forms.NumberInput(
                 attrs={"step": "0.01", "class": "input input-bordered input-sm w-full"}
             ),
         }
