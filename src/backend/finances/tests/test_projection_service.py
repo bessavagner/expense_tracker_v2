@@ -212,9 +212,7 @@ class TestProjectionOverlay:
 @pytest.mark.django_db
 class TestDiverseEstimator:
     def test_ceiling_estimator_uses_total_ceiling(self, user, cat, pix):
-        from decimal import Decimal
-        from model_bakery import baker
-        b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("3000"))
+        baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("3000"))
         baker.make("finances.Category", user=user, name="Lazer", budget=None,
                    budget_ceiling=Decimal("500"))
         # future month, no posted diversas -> estimate drives diverse_estimated
