@@ -29,11 +29,12 @@ def categories_tab_context(user):
     total_ceiling = Category.objects.filter(user=user).aggregate(t=Sum("budget_ceiling"))["t"]
     total_avg = sum(averages.values(), Decimal("0"))
     return {
-        "categories": Category.objects.filter(user=user),
+        "categories": Category.objects.filter(user=user).select_related("budget"),
         "form": CategoryCreateForm(),
         "category_averages": averages,
         "total_ceiling": total_ceiling,
         "total_avg_3m": total_avg or None,
+        "budgets": Budget.objects.filter(user=user),
     }
 
 
@@ -425,6 +426,23 @@ class CategoryDeleteView(HtmxLoginRequiredMixin, View):
         context = categories_tab_context(request.user)
         html = render_to_string("settings/_categories_tab.html", context, request=request)
         return HttpResponse(html)
+
+
+class CategoryAssignBudgetView(HtmxLoginRequiredMixin, View):
+    def post(self, request, pk):
+        cat = Category.objects.filter(user=request.user, pk=pk).first()
+        if not cat:
+            raise Http404
+        raw = request.POST.get("budget") or None
+        cat.budget = (
+            Budget.objects.filter(user=request.user, pk=raw).first() if raw else None
+        )
+        cat.save(update_fields=["budget", "updated_at"])
+        context = categories_tab_context(request.user)
+        html = render_to_string("settings/_categories_tab.html", context, request=request)
+        response = HttpResponse(html)
+        response["HX-Trigger"] = '{"showToast": {"message": "Orçamento da categoria atualizado!", "type": "success"}}'
+        return response
 
 
 # --- Budgets ---

@@ -228,3 +228,23 @@ class TestBudgetSettings:
         second = logged_client.post(url, {"name": "Casa", "amount": "2000"})
         assert second.status_code == 200  # graceful, not IntegrityError 500
         assert user.budgets.filter(name="Casa").count() == 1
+
+    def test_assign_category_to_budget(self, logged_client, user):
+        from django.urls import reverse
+        b = baker.make("finances.Budget", user=user, name="Casa")
+        cat = baker.make("finances.Category", user=user, name="Luz", budget=None)
+        url = reverse("finances:settings_cat_assign", args=[cat.id])
+        resp = logged_client.post(url, {"budget": str(b.id)})
+        assert resp.status_code == 200
+        cat.refresh_from_db()
+        assert cat.budget_id == b.id
+
+    def test_unassign_category(self, logged_client, user):
+        from django.urls import reverse
+        b = baker.make("finances.Budget", user=user, name="Casa")
+        cat = baker.make("finances.Category", user=user, name="Luz", budget=b)
+        url = reverse("finances:settings_cat_assign", args=[cat.id])
+        resp = logged_client.post(url, {"budget": ""})
+        assert resp.status_code == 200
+        cat.refresh_from_db()
+        assert cat.budget_id is None

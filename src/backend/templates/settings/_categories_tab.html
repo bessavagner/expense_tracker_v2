@@ -12,7 +12,7 @@
 <div class="overflow-x-auto min-w-0">
 <table class="table table-sm">
     <thead>
-        <tr><th>Nome</th><th>Teto</th><th>Média (3m)</th><th>Sistema</th><th></th></tr>
+        <tr><th>Nome</th><th>Teto</th><th>Média (3m)</th><th>Orçamento</th><th>Sistema</th><th></th></tr>
     </thead>
     <tbody>
         {% for cat in categories %}
@@ -38,6 +38,17 @@
                     {% if avg %}R$ {{ avg|floatformat:2 }}{% else %}—{% endif %}
                 {% endwith %}
             </td>
+            <td>
+                <select name="budget" class="select select-bordered select-xs w-32"
+                        hx-post="{% url 'finances:settings_cat_assign' cat.id %}"
+                        hx-trigger="change" hx-include="this"
+                        hx-target="#settings-content" hx-swap="innerHTML">
+                    <option value="">— sem orçamento —</option>
+                    {% for b in budgets %}
+                    <option value="{{ b.id }}" {% if cat.budget_id == b.id %}selected{% endif %}>{{ b.name }}</option>
+                    {% endfor %}
+                </select>
+            </td>
             <td>{% if cat.is_system %}<span class="badge badge-sm">🔒</span>{% endif %}</td>
             <td>
                 {% if not cat.is_system %}
@@ -51,7 +62,7 @@
         </tr>
         {% empty %}
         <tr>
-            <td colspan="5" class="text-center py-6">
+            <td colspan="6" class="text-center py-6">
                 <span class="text-2xl">🏷️</span>
                 <p class="text-xs text-base-content/60 mt-1">Nenhuma categoria cadastrada. Use o formulário acima para adicionar.</p>
             </td>
@@ -64,6 +75,7 @@
             <td>Total</td>
             <td>{% if total_ceiling %}R$ {{ total_ceiling|floatformat:2 }}{% else %}—{% endif %}</td>
             <td class="text-xs">{% if total_avg_3m %}R$ {{ total_avg_3m|floatformat:2 }}{% else %}—{% endif %}</td>
+            <td></td>
             <td></td>
             <td></td>
         </tr>
