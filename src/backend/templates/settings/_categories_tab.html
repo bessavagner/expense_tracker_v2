@@ -39,7 +39,7 @@
                 {% endwith %}
             </td>
             <td>
-                <select name="budget" class="select select-bordered select-xs w-32"
+                <select name="budget" class="select select-bordered select-sm w-32"
                         hx-post="{% url 'finances:settings_cat_assign' cat.id %}"
                         hx-trigger="change" hx-include="this"
                         hx-target="#settings-content" hx-swap="innerHTML">
