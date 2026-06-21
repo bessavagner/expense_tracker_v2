@@ -12,6 +12,11 @@
         </tr>
     </thead>
     <tbody>
+        <!-- ===== Seção 1: realizado e projetado ===== -->
+        <tr>
+            <td class="sticky left-0 z-10 bg-base-200 text-[11px] font-bold uppercase tracking-wide text-base-content/70 py-1.5">Realizado e projetado</td>
+            {% for r in rows %}<td class="bg-base-200"></td>{% endfor %}
+        </tr>
         <tr>
             <td class="sticky left-0 z-10 bg-base-100 italic">Despesas sistêmicas</td>
             {% for r in rows %}<td class="text-right">{{ r.systemic|money }}</td>{% endfor %}
@@ -60,6 +65,11 @@
             <td class="text-right {% if r.acumulado < 0 %}text-error{% endif %}">{{ r.acumulado|money }}</td>
             {% endfor %}
         </tr>
+        <!-- ===== Seção 2: estimativas ===== -->
+        <tr class="border-t-4 border-info/40">
+            <td class="sticky left-0 z-10 bg-info/10 text-[11px] font-bold uppercase tracking-wide text-info py-1.5">Estimativas</td>
+            {% for r in rows %}<td class="bg-info/10"></td>{% endfor %}
+        </tr>
         <tr class="text-info">
             <td class="sticky left-0 z-10 bg-base-100 italic">Gastos totais estimados</td>
             {% for r in rows %}
@@ -79,14 +89,19 @@
             {% endfor %}
         </tr>
         {% if has_whatif %}
-        <tr class="font-bold border-t-2 border-secondary text-secondary">
-            <td class="sticky left-0 z-10 bg-base-100">Saldo projetado (Simulado)</td>
+        <!-- ===== Seção 3: simulação (sobre o estimado) ===== -->
+        <tr class="border-t-4 border-secondary/40">
+            <td class="sticky left-0 z-10 bg-secondary/10 text-[11px] font-bold uppercase tracking-wide text-secondary py-1.5">Simulação de cenário</td>
+            {% for r in rows %}<td class="bg-secondary/10"></td>{% endfor %}
+        </tr>
+        <tr class="text-secondary">
+            <td class="sticky left-0 z-10 bg-base-100">Saldo estimado (Simulado)</td>
             {% for r in rows %}
             <td class="text-right {% if r.saldo_projetado_sim < 0 %}text-error{% endif %}">{{ r.saldo_projetado_sim|money }}</td>
             {% endfor %}
         </tr>
         <tr class="font-bold text-secondary">
-            <td class="sticky left-0 z-10 bg-base-100">Acumulado (Simulado)</td>
+            <td class="sticky left-0 z-10 bg-base-100">Acumulado estimado (Simulado)</td>
             {% for r in rows %}
             <td class="text-right {% if r.acumulado_sim < 0 %}text-error{% endif %}">{{ r.acumulado_sim|money }}</td>
             {% endfor %}

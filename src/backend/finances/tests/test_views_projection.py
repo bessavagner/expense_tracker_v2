@@ -122,3 +122,28 @@ def test_projection_shows_estimated_total_row_above_estimated_balance(logged_cli
     assert "Gastos totais estimados" in body
     # must sit immediately above the estimated saldo row
     assert body.index("Gastos totais estimados") < body.index("Saldo projetado estimado")
+
+
+def test_overlay_simulation_builds_on_estimated():
+    from datetime import date as _d
+    from decimal import Decimal
+
+    from finances.views.projection import _overlay_simulation
+
+    rows = [
+        {"month": _d(2026, 7, 1), "saldo_projetado_estimado": Decimal("100"),
+         "acumulado_estimado": Decimal("1000")},
+        {"month": _d(2026, 8, 1), "saldo_projetado_estimado": Decimal("100"),
+         "acumulado_estimado": Decimal("1100")},
+    ]
+    overlay = {
+        (_d(2026, 7, 1), "income"): Decimal("500"),
+        (_d(2026, 8, 1), "regular"): Decimal("200"),
+    }
+    _overlay_simulation(rows, overlay)
+    # July: +500 income -> saldo 600, acumulado 1500
+    assert rows[0]["saldo_projetado_sim"] == Decimal("600")
+    assert rows[0]["acumulado_sim"] == Decimal("1500")
+    # Aug: -200 expense -> saldo -100; cumulative net 300 -> acumulado 1100+300=1400
+    assert rows[1]["saldo_projetado_sim"] == Decimal("-100")
+    assert rows[1]["acumulado_sim"] == Decimal("1400")

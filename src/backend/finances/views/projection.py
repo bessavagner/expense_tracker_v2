@@ -1,5 +1,6 @@
 import uuid
 from datetime import date
+from decimal import Decimal
 
 from django.db.models import Min
 from django.http import HttpResponse
@@ -67,6 +68,29 @@ def _session_items(request):
     return [HypotheticalItem(**d) for d in request.session.get(SESSION_KEY, [])]
 
 
+def _overlay_simulation(rows, overlay):
+    """Project the what-if ``overlay`` on top of the ESTIMATED track.
+
+    The simulated line branches from the estimated trajectory (the realistic
+    forward curve), not the posted one: for each month the hypothetical net
+    (income − expenses) is added to ``saldo_projetado_estimado`` and accumulated
+    onto ``acumulado_estimado``. Mutates each row, adding ``saldo_projetado_sim``
+    and ``acumulado_sim``.
+    """
+    cum = Decimal("0")
+    for r in rows:
+        m = r["month"]
+        net = (
+            overlay.get((m, "income"), Decimal("0"))
+            - overlay.get((m, "regular"), Decimal("0"))
+            - overlay.get((m, "installment"), Decimal("0"))
+            - overlay.get((m, "systemic"), Decimal("0"))
+        )
+        cum += net
+        r["saldo_projetado_sim"] = r["saldo_projetado_estimado"] + net
+        r["acumulado_sim"] = r["acumulado_estimado"] + cum
+
+
 def build_projection_context(request):
     """Shared context for the projection screen and the what-if fragment renders.
 
@@ -85,12 +109,7 @@ def build_projection_context(request):
     if items:
         span = [r["month"] for r in rows]
         overlay, _ = expand_hypotheticals(items, span)
-        sim = build_projection(request.user, start, months, today=today, overlay=overlay)
-        sim_by_month = {r["month"]: r for r in sim}
-        for r in rows:
-            s = sim_by_month[r["month"]]
-            r["acumulado_sim"] = s["acumulado"]
-            r["saldo_projetado_sim"] = s["saldo_projetado"]
+        _overlay_simulation(rows, overlay)
 
     return {
         "rows": rows,
