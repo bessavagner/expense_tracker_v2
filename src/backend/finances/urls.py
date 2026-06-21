@@ -46,7 +46,13 @@ from finances.views.projection import (
     ProjectionWhatifRemoveView,
 )
 from finances.views.settings import (
+    BudgetCreateView,
+    BudgetDeleteView,
+    BudgetEditView,
+    BudgetRecalcView,
+    BudgetsTabView,
     CategoriesTabView,
+    CategoryAssignBudgetView,
     CategoryCreateView,
     CategoryDeleteView,
     CategoryEditView,
@@ -180,6 +186,28 @@ urlpatterns = [
         "settings/categories/<uuid:pk>/delete/",
         CategoryDeleteView.as_view(),
         name="settings_cat_delete",
+    ),
+    path(
+        "settings/categories/<uuid:pk>/assign/",
+        CategoryAssignBudgetView.as_view(),
+        name="settings_cat_assign",
+    ),
+    path("settings/budgets/", BudgetsTabView.as_view(), name="settings_budgets"),
+    path("settings/budgets/create/", BudgetCreateView.as_view(), name="settings_budget_create"),
+    path(
+        "settings/budgets/<uuid:pk>/edit/",
+        BudgetEditView.as_view(),
+        name="settings_budget_edit",
+    ),
+    path(
+        "settings/budgets/<uuid:pk>/recalc/",
+        BudgetRecalcView.as_view(),
+        name="settings_budget_recalc",
+    ),
+    path(
+        "settings/budgets/<uuid:pk>/delete/",
+        BudgetDeleteView.as_view(),
+        name="settings_budget_delete",
     ),
     # Import
     path("import/", ImportUploadView.as_view(), name="import_upload"),

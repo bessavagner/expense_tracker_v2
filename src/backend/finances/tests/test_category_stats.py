@@ -8,6 +8,7 @@ from finances.models.entry import EntryType
 from finances.services.category_stats import (
     category_moving_averages,
     category_moving_averages_named,
+    monthly_diverse_total_ceiling,
 )
 
 
@@ -129,3 +130,13 @@ class TestCategoryAveragesExcludesAdjustment:
             _e(user, ajuste, pix, "5000", bm)
         named = category_moving_averages_named(user, as_of=self.AS_OF)
         assert [n["name"] for n in named] == ["Alimentação"]
+
+
+@pytest.mark.django_db
+def test_monthly_diverse_total_ceiling(user):
+    b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("1000"))
+    baker.make("finances.Category", user=user, name="Luz", budget=b,
+               budget_ceiling=Decimal("400"))
+    baker.make("finances.Category", user=user, name="Lazer", budget=None,
+               budget_ceiling=Decimal("250"))
+    assert monthly_diverse_total_ceiling(user) == Decimal("1250")

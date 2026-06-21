@@ -147,40 +147,34 @@ class AlertsView(APIView):
 
         alerts = []
 
-        # Budget alerts
-        category_totals = (
-            Entry.objects.filter(user=user, billing_month=billing_month, amount__gt=0)
-            .values("category__name", "category__budget_ceiling")
-            .annotate(total=Sum("amount"))
+        # Budget alerts (per-budget, plus individual alerts for orphan categories)
+        from finances.services.budget_stats import (
+            budget_spend_for_month,
+            orphan_category_spend_for_month,
         )
 
         ok_count = 0
-        for ct in category_totals:
-            ceiling = ct["category__budget_ceiling"]
-            if not ceiling or ceiling <= 0:
-                ok_count += 1
-                continue
-            ratio = ct["total"] / ceiling
-            if ratio >= 1:
-                over = ct["total"] - ceiling
-                alerts.append(
-                    {
-                        "severity": "danger",
-                        "message": f"{ct['category__name']} ultrapassou teto em R$ {over:.2f}",
-                    }
-                )
-            elif ratio >= Decimal("0.9"):
-                alerts.append(
-                    {
-                        "severity": "warning",
-                        "message": (
-                            f"{ct['category__name']} em {ratio * 100:.0f}% do teto "
-                            f"(R$ {ct['total']:.0f} / R$ {ceiling:.0f})"
-                        ),
-                    }
-                )
+
+        def _emit(label, spent, cap, pct, status):
+            nonlocal ok_count
+            if status == "error":
+                over = spent - cap
+                alerts.append({
+                    "severity": "danger",
+                    "message": f"{label} ultrapassou teto em R$ {over:.2f}",
+                })
+            elif status == "warning":
+                alerts.append({
+                    "severity": "warning",
+                    "message": f"{label} em {pct}% do teto (R$ {spent:.0f} / R$ {cap:.0f})",
+                })
             else:
                 ok_count += 1
+
+        for row in budget_spend_for_month(user, billing_month):
+            _emit(row["name"], row["spent"], row["amount"], row["pct"], row["status"])
+        for row in orphan_category_spend_for_month(user, billing_month):
+            _emit(row["name"], row["spent"], row["ceiling"], row["pct"], row["status"])
 
         # Installment info
         active_entries = Entry.objects.filter(
@@ -204,7 +198,7 @@ class AlertsView(APIView):
             alerts.append(
                 {
                     "severity": "success",
-                    "message": f"{ok_count} categorias dentro do orçamento",
+                    "message": f"{ok_count} orçamentos dentro do teto",
                 }
             )
 

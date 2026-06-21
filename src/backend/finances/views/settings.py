@@ -2,6 +2,7 @@ import json
 from datetime import date
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.db.models import Sum
 from django.http import Http404, HttpResponse
 from django.template.loader import render_to_string
@@ -9,6 +10,7 @@ from django.urls import reverse
 from django.views.generic import TemplateView, View
 
 from finances.forms import (
+    BudgetForm,
     CategoryBudgetForm,
     CategoryCreateForm,
     IncomeForm,
@@ -16,7 +18,7 @@ from finances.forms import (
     SystemicExpenseForm,
     SystemicTemplateEditForm,
 )
-from finances.models import Category, Income, PaymentMethod, SystemicExpense
+from finances.models import Budget, Category, Income, PaymentMethod, SystemicExpense
 from finances.services.category_stats import category_moving_averages
 from finances.services.income_recurrence import apply_income_recurrence
 from finances.views.mixins import HtmxLoginRequiredMixin
@@ -27,11 +29,12 @@ def categories_tab_context(user):
     total_ceiling = Category.objects.filter(user=user).aggregate(t=Sum("budget_ceiling"))["t"]
     total_avg = sum(averages.values(), Decimal("0"))
     return {
-        "categories": Category.objects.filter(user=user),
+        "categories": Category.objects.filter(user=user).select_related("budget"),
         "form": CategoryCreateForm(),
         "category_averages": averages,
         "total_ceiling": total_ceiling,
         "total_avg_3m": total_avg or None,
+        "budgets": Budget.objects.filter(user=user),
     }
 
 
@@ -423,3 +426,110 @@ class CategoryDeleteView(HtmxLoginRequiredMixin, View):
         context = categories_tab_context(request.user)
         html = render_to_string("settings/_categories_tab.html", context, request=request)
         return HttpResponse(html)
+
+
+class CategoryAssignBudgetView(HtmxLoginRequiredMixin, View):
+    def post(self, request, pk):
+        cat = Category.objects.filter(user=request.user, pk=pk).first()
+        if not cat:
+            raise Http404
+        raw = request.POST.get("budget") or None
+        cat.budget = (
+            Budget.objects.filter(user=request.user, pk=raw).first() if raw else None
+        )
+        cat.save(update_fields=["budget", "updated_at"])
+        context = categories_tab_context(request.user)
+        html = render_to_string("settings/_categories_tab.html", context, request=request)
+        response = HttpResponse(html)
+        response["HX-Trigger"] = '{"showToast": {"message": "Orçamento da categoria atualizado!", "type": "success"}}'
+        return response
+
+
+# --- Budgets ---
+
+def _budgets_tab_context(user):
+    from finances.services.budget_stats import seed_amount_from_ceilings
+    budgets = []
+    for b in Budget.objects.filter(user=user).prefetch_related("categories"):
+        budgets.append({"obj": b, "ceiling_sum": seed_amount_from_ceilings(b),
+                        "n_categories": b.categories.count()})
+    return {"budgets": budgets, "form": BudgetForm()}
+
+
+def _render_budgets_tab(request, message=None, toast_type="success"):
+    html = render_to_string(
+        "settings/_budgets_tab.html", _budgets_tab_context(request.user), request=request
+    )
+    response = HttpResponse(html)
+    if message:
+        response["HX-Trigger"] = json.dumps(
+            {"showToast": {"message": message, "type": toast_type}}
+        )
+    return response
+
+
+class BudgetsTabView(HtmxLoginRequiredMixin, TemplateView):
+    template_name = "settings/_budgets_tab.html"
+    htmx_template_name = "settings/_budgets_tab.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(_budgets_tab_context(self.request.user))
+        return context
+
+
+class BudgetCreateView(HtmxLoginRequiredMixin, View):
+    def post(self, request):
+        form = BudgetForm(request.POST)
+        if not form.is_valid():
+            return _render_budgets_tab(request)
+        b = form.save(commit=False)
+        b.user = request.user
+        try:
+            b.validate_unique()
+        except ValidationError:
+            return _render_budgets_tab(
+                request, "Já existe um orçamento com esse nome.", toast_type="error"
+            )
+        b.save()
+        return _render_budgets_tab(request, "Orçamento criado!")
+
+
+class BudgetEditView(HtmxLoginRequiredMixin, View):
+    def post(self, request, pk):
+        b = Budget.objects.filter(user=request.user, pk=pk).first()
+        if not b:
+            raise Http404
+        form = BudgetForm(request.POST, instance=b)
+        if not form.is_valid():
+            return _render_budgets_tab(request)
+        updated = form.save(commit=False)
+        updated.user = request.user
+        try:
+            updated.validate_unique()
+        except ValidationError:
+            return _render_budgets_tab(
+                request, "Já existe um orçamento com esse nome.", toast_type="error"
+            )
+        updated.save()
+        return _render_budgets_tab(request, "Orçamento atualizado!")
+
+
+class BudgetRecalcView(HtmxLoginRequiredMixin, View):
+    def post(self, request, pk):
+        from finances.services.budget_stats import seed_amount_from_ceilings
+        b = Budget.objects.filter(user=request.user, pk=pk).first()
+        if not b:
+            raise Http404
+        b.amount = seed_amount_from_ceilings(b)
+        b.save(update_fields=["amount", "updated_at"])
+        return _render_budgets_tab(request, "Teto recalculado!")
+
+
+class BudgetDeleteView(HtmxLoginRequiredMixin, View):
+    def delete(self, request, pk):
+        b = Budget.objects.filter(user=request.user, pk=pk).first()
+        if not b:
+            raise Http404
+        b.delete()
+        return _render_budgets_tab(request)

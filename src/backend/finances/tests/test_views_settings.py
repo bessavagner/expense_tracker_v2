@@ -188,3 +188,75 @@ def test_categories_tab_shows_total_row(logged_client, user):
     body = resp.content.decode()
     assert "Total" in body
     assert "3000,00" in body  # sum of ceilings 1000 + 2000 (pt-BR floatformat)
+
+
+@pytest.mark.django_db
+class TestBudgetSettings:
+    def test_create_budget(self, logged_client, user):
+        from django.urls import reverse
+        url = reverse("finances:settings_budget_create")
+        resp = logged_client.post(url, {"name": "Casa", "amount": "1000"})
+        assert resp.status_code == 200
+        from finances.models import Budget
+        assert user.budgets.filter(name="Casa", amount=Decimal("1000")).exists()
+
+    def test_recalc_sets_amount_to_ceiling_sum(self, logged_client, user):
+        from django.urls import reverse
+        b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("0"))
+        baker.make("finances.Category", user=user, name="Luz", budget=b,
+                   budget_ceiling=Decimal("400"))
+        url = reverse("finances:settings_budget_recalc", args=[b.id])
+        resp = logged_client.post(url)
+        assert resp.status_code == 200
+        b.refresh_from_db()
+        assert b.amount == Decimal("400")
+
+    def test_delete_budget(self, logged_client, user):
+        from django.urls import reverse
+        b = baker.make("finances.Budget", user=user, name="Casa")
+        url = reverse("finances:settings_budget_delete", args=[b.id])
+        resp = logged_client.delete(url)
+        assert resp.status_code == 200
+        from finances.models import Budget
+        assert not user.budgets.filter(id=b.id).exists()
+
+    def test_duplicate_name_does_not_500(self, logged_client, user):
+        from django.urls import reverse
+        url = reverse("finances:settings_budget_create")
+        first = logged_client.post(url, {"name": "Casa", "amount": "1000"})
+        assert first.status_code == 200
+        second = logged_client.post(url, {"name": "Casa", "amount": "2000"})
+        assert second.status_code == 200  # graceful, not IntegrityError 500
+        assert user.budgets.filter(name="Casa").count() == 1
+
+    def test_assign_category_to_budget(self, logged_client, user):
+        from django.urls import reverse
+        b = baker.make("finances.Budget", user=user, name="Casa")
+        cat = baker.make("finances.Category", user=user, name="Luz", budget=None)
+        url = reverse("finances:settings_cat_assign", args=[cat.id])
+        resp = logged_client.post(url, {"budget": str(b.id)})
+        assert resp.status_code == 200
+        cat.refresh_from_db()
+        assert cat.budget_id == b.id
+
+    def test_unassign_category(self, logged_client, user):
+        from django.urls import reverse
+        b = baker.make("finances.Budget", user=user, name="Casa")
+        cat = baker.make("finances.Category", user=user, name="Luz", budget=b)
+        url = reverse("finances:settings_cat_assign", args=[cat.id])
+        resp = logged_client.post(url, {"budget": ""})
+        assert resp.status_code == 200
+        cat.refresh_from_db()
+        assert cat.budget_id is None
+
+    def test_assign_foreign_budget_is_ignored(self, logged_client, user):
+        from django.contrib.auth import get_user_model
+        from django.urls import reverse
+        other = baker.make(get_user_model())
+        foreign_b = baker.make("finances.Budget", user=other, name="Outro")
+        cat = baker.make("finances.Category", user=user, name="Luz", budget=None)
+        url = reverse("finances:settings_cat_assign", args=[cat.id])
+        resp = logged_client.post(url, {"budget": str(foreign_b.id)})
+        assert resp.status_code == 200
+        cat.refresh_from_db()
+        assert cat.budget_id is None  # foreign budget silently ignored

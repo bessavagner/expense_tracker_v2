@@ -56,6 +56,16 @@ def monthly_diverse_total_median(user, window=6, as_of=None) -> Decimal:
     return _median(totals)
 
 
+def monthly_diverse_total_ceiling(user) -> Decimal:
+    """Planned diversas ceiling: Σ budgets + ceilings of un-budgeted categories.
+
+    The "teto" alternative to ``monthly_diverse_total_median`` for the projection.
+    Imported lazily to keep this module free of a budget_stats import cycle.
+    """
+    from finances.services.budget_stats import total_diverse_ceiling
+    return total_diverse_ceiling(user)
+
+
 def category_moving_averages(user, window=3, as_of=None, entry_type=None) -> dict:
     as_of = as_of or date.today()
     months = _window_months(as_of, window)

@@ -12,6 +12,13 @@ class Category(models.Model):
         related_name="categories",
     )
     name = models.CharField(max_length=100)
+    budget = models.ForeignKey(
+        "finances.Budget",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="categories",
+    )
     budget_ceiling = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     historical_avg = models.DecimalField(
         max_digits=10,

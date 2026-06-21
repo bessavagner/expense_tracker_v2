@@ -26,6 +26,10 @@
        hx-target="#settings-content"
        hx-swap="innerHTML"
        @click="document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('tab-active')); $el.classList.add('tab-active')">Categorias</a>
+    <a class="tab" id="tab-budgets"
+       hx-get="{% url 'finances:settings_budgets' %}"
+       hx-target="#settings-content" hx-swap="innerHTML"
+       @click="document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('tab-active')); $el.classList.add('tab-active')">Orçamentos</a>
 </div>
 
 <div id="settings-content"

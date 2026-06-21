@@ -124,6 +124,28 @@ def test_projection_shows_estimated_total_row_above_estimated_balance(logged_cli
     assert body.index("Gastos totais estimados") < body.index("Saldo projetado estimado")
 
 
+@pytest.mark.django_db
+class TestEstimateToggle:
+    def test_teto_param_uses_ceiling(self, logged_client, user):
+        from decimal import Decimal
+        from model_bakery import baker
+        baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("9999"))
+        resp = logged_client.get("/projection/?estimate=teto&start=2026-07&months=1")
+        assert resp.status_code == 200
+        assert resp.context["estimate"] == "teto"
+        assert resp.context["rows"][0]["diverse_estimated"] == Decimal("9999")
+
+    def test_default_is_median(self, logged_client, user):
+        resp = logged_client.get("/projection/?start=2026-07&months=1")
+        assert resp.context["estimate"] == "median"
+
+    def test_estimate_persists_in_session(self, logged_client, user):
+        logged_client.get("/projection/?estimate=teto&start=2026-07&months=1")
+        # subsequent request without the param keeps the choice
+        resp = logged_client.get("/projection/?start=2026-07&months=1")
+        assert resp.context["estimate"] == "teto"
+
+
 def test_overlay_simulation_builds_on_estimated():
     from datetime import date as _d
     from decimal import Decimal
