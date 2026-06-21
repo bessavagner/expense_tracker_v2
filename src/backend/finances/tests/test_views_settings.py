@@ -248,3 +248,15 @@ class TestBudgetSettings:
         assert resp.status_code == 200
         cat.refresh_from_db()
         assert cat.budget_id is None
+
+    def test_assign_foreign_budget_is_ignored(self, logged_client, user):
+        from django.contrib.auth import get_user_model
+        from django.urls import reverse
+        other = baker.make(get_user_model())
+        foreign_b = baker.make("finances.Budget", user=other, name="Outro")
+        cat = baker.make("finances.Category", user=user, name="Luz", budget=None)
+        url = reverse("finances:settings_cat_assign", args=[cat.id])
+        resp = logged_client.post(url, {"budget": str(foreign_b.id)})
+        assert resp.status_code == 200
+        cat.refresh_from_db()
+        assert cat.budget_id is None  # foreign budget silently ignored
