@@ -48,6 +48,7 @@ from finances.views.projection import (
 from finances.views.settings import (
     BudgetCreateView,
     BudgetDeleteView,
+    BudgetEditModalView,
     BudgetEditView,
     BudgetRecalcView,
     BudgetsTabView,
@@ -194,6 +195,11 @@ urlpatterns = [
     ),
     path("settings/budgets/", BudgetsTabView.as_view(), name="settings_budgets"),
     path("settings/budgets/create/", BudgetCreateView.as_view(), name="settings_budget_create"),
+    path(
+        "settings/budgets/<uuid:pk>/edit-modal/",
+        BudgetEditModalView.as_view(),
+        name="settings_budget_edit_modal",
+    ),
     path(
         "settings/budgets/<uuid:pk>/edit/",
         BudgetEditView.as_view(),

@@ -128,6 +128,7 @@ def test_projection_shows_estimated_total_row_above_estimated_balance(logged_cli
 class TestEstimateToggle:
     def test_teto_param_uses_ceiling(self, logged_client, user):
         from decimal import Decimal
+
         from model_bakery import baker
         baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("9999"))
         resp = logged_client.get("/projection/?estimate=teto&start=2026-07&months=1")

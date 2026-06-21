@@ -1,0 +1,35 @@
+<h3 class="font-bold text-lg mb-4">Editar orçamento</h3>
+<form hx-post="{% url 'finances:settings_budget_edit' budget.id %}"
+      hx-target="#settings-content" hx-swap="innerHTML"
+      class="space-y-3">
+    {% csrf_token %}
+    <label class="form-control">
+        <span class="label-text">{{ form.name.label }}</span>
+        {{ form.name }}
+    </label>
+    <label class="form-control">
+        <span class="label-text">{{ form.amount.label }}</span>
+        {{ form.amount }}
+    </label>
+    {% if error %}<p class="text-error text-sm">{{ error }}</p>{% endif %}
+
+    <div class="form-control">
+        <span class="label-text mb-1">Categorias neste orçamento</span>
+        <div class="max-h-60 overflow-y-auto grid grid-cols-2 gap-1 rounded border border-base-200 p-2">
+            {% for c in categories %}
+            <label class="flex items-center gap-2 text-sm cursor-pointer py-0.5">
+                <input type="checkbox" name="categories" value="{{ c.id }}"
+                       class="checkbox checkbox-sm"
+                       {% if c.budget_id == budget.id %}checked{% endif %}>
+                <span>{{ c.name }}{% if c.budget_id and c.budget_id != budget.id %}
+                    <span class="text-xs text-base-content/50">(em {{ c.budget.name }})</span>{% endif %}</span>
+            </label>
+            {% empty %}
+            <p class="text-xs text-base-content/60 col-span-2">Nenhuma categoria cadastrada.</p>
+            {% endfor %}
+        </div>
+        <span class="text-xs text-base-content/60 mt-1">Marcar move a categoria para este orçamento (cada categoria fica em um só).</span>
+    </div>
+
+    <button type="submit" class="btn btn-accent w-full">Salvar</button>
+</form>
