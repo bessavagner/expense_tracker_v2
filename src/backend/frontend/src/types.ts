@@ -59,3 +59,10 @@ export interface InstallmentsResponse {
   plans: InstallmentData[];
   monthly_total: string;
 }
+
+export interface DiverseSavingsData {
+  baseline: string;
+  actual: string;
+  economia: string;
+  has_baseline: boolean;
+}

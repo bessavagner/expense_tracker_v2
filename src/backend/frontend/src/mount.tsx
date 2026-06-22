@@ -8,6 +8,7 @@ import RecentEntriesCard from "./cards/RecentEntriesCard";
 import InstallmentsCard from "./cards/InstallmentsCard";
 import ProjectionCard from "./cards/ProjectionCard";
 import ChatWidget from "./cards/ChatWidget";
+import EconomiaCard from "./cards/EconomiaCard";
 
 const COMPONENTS: Record<string, React.ComponentType<{ apiUrl: string }>> = {
   SummaryCard,
@@ -18,6 +19,7 @@ const COMPONENTS: Record<string, React.ComponentType<{ apiUrl: string }>> = {
   InstallmentsCard,
   ProjectionCard,
   ChatWidget,
+  EconomiaCard,
 };
 
 function mountAll() {
