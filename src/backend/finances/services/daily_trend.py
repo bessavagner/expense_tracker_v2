@@ -23,7 +23,7 @@ def _percentile(values: list[Decimal], q: Decimal) -> Decimal:
     if n == 0:
         return Decimal("0")
     if n == 1:
-        return xs[0]
+        return xs[0].quantize(_CENTS, rounding=ROUND_HALF_UP)
     pos = q * (n - 1)
     lo = int(pos)
     if lo + 1 >= n:

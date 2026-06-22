@@ -72,8 +72,9 @@ def test_robust_to_single_outlier(setup):
     series = daily_spend_trend(user, period=30, as_of=as_of)
     # Median of [50,50,50,5000,50,50,50] is 50 — outlier does not move the line.
     assert series[-1]["median"] == Decimal("50")
-    # But the band's upper edge (p75) is still 50 here (only one high value);
-    # the point is the central line stays robust.
+    # The band's upper edge (p75) is also 50.00 here — linear interpolation at
+    # position 0.75*6=4.5 between two 50s yields 50.00.
+    assert series[-1]["p75"] == Decimal("50.00")
 
 
 def test_iqr_band(setup):
