@@ -56,6 +56,34 @@ def monthly_diverse_total_median(user, window=6, as_of=None) -> Decimal:
     return _median(totals)
 
 
+def diverse_savings_for_month(user, billing_month, window=6) -> dict:
+    """Economia em diversas vs o padrão histórico robusto.
+
+    baseline = mediana das diversas dos ``window`` meses anteriores (robusta a
+    outliers); actual = total de diversas (REGULAR, >0, exclui #AJUSTE) no
+    ``billing_month``. economia = baseline - actual (>0 => gastou menos que o
+    habitual).
+    """
+    baseline = monthly_diverse_total_median(user, window=window, as_of=billing_month)
+    actual = (
+        Entry.objects.filter(
+            user=user,
+            amount__gt=0,
+            entry_type=EntryType.REGULAR,
+            billing_month=billing_month,
+        )
+        .exclude(category__name__icontains=ADJUSTMENT_CATEGORY_PATTERN)
+        .aggregate(total=Sum("amount"))["total"]
+        or Decimal("0")
+    )
+    return {
+        "baseline": baseline,
+        "actual": actual,
+        "economia": baseline - actual,
+        "has_baseline": baseline > 0,
+    }
+
+
 def monthly_diverse_total_ceiling(user) -> Decimal:
     """Planned diversas ceiling: Σ budgets + ceilings of un-budgeted categories.
 
