@@ -9,6 +9,9 @@ interface Props {
   apiUrl: string;
 }
 
+// Neutral gray for the "Outros" slice — same value in the donut and the legend.
+const OUTROS_COLOR = "var(--color-base-300, #ccc)";
+
 export default function TopCategoriesCard({ apiUrl }: Props) {
   const data = useApiData<CategoryData[]>(apiUrl);
 
@@ -53,10 +56,10 @@ export default function TopCategoriesCard({ apiUrl }: Props) {
                 >
                   {slices.map((s, i) => (
                     <Cell
-                      key={s.name}
+                      key={i}
                       fill={
                         s.name === "Outros"
-                          ? "var(--color-base-300, #ccc)"
+                          ? OUTROS_COLOR
                           : CHART_COLORS[i % CHART_COLORS.length]
                       }
                     />
@@ -68,12 +71,12 @@ export default function TopCategoriesCard({ apiUrl }: Props) {
           </div>
           <ul className="flex-1 space-y-1 text-xs">
             {slices.map((s, i) => (
-              <li key={s.name} className="flex items-center gap-2">
+              <li key={i} className="flex items-center gap-2">
                 <span
                   className="inline-block w-2.5 h-2.5 rounded-sm shrink-0"
                   style={{
                     backgroundColor:
-                      s.name === "Outros" ? "#bbb" : CHART_COLORS[i % CHART_COLORS.length],
+                      s.name === "Outros" ? OUTROS_COLOR : CHART_COLORS[i % CHART_COLORS.length],
                   }}
                 />
                 <span className="opacity-70 truncate">{s.name}</span>
