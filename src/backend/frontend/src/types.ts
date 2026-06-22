@@ -66,3 +66,15 @@ export interface DiverseSavingsData {
   economia: string;
   has_baseline: boolean;
 }
+
+export interface DailyTrendPoint {
+  date: string;
+  median: string;
+  p25: string;
+  p75: string;
+}
+
+export interface DailyTrendData {
+  period: number;
+  series: DailyTrendPoint[];
+}
