@@ -7,7 +7,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from finances.models import Category, Entry, Income
-from finances.services.category_stats import category_moving_averages
+from finances.services.category_stats import category_moving_averages, diverse_savings_for_month
+from finances.services.daily_trend import daily_spend_trend
 from finances.services.projection import build_projection
 
 
@@ -282,6 +283,50 @@ class InstallmentsView(APIView):
             {
                 "plans": plans,
                 "monthly_total": f"{monthly_total:.2f}",
+            }
+        )
+
+
+class DiverseSavingsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        year, month, billing_month = _get_month_params(request)
+        data = diverse_savings_for_month(request.user, billing_month)
+        return Response(
+            {
+                "baseline": f"{data['baseline']:.2f}",
+                "actual": f"{data['actual']:.2f}",
+                "economia": f"{data['economia']:.2f}",
+                "has_baseline": data["has_baseline"],
+            }
+        )
+
+
+class DailyTrendView(APIView):
+    permission_classes = [IsAuthenticated]
+    ALLOWED = (7, 15, 30, 90)
+
+    def get(self, request):
+        try:
+            period = int(request.query_params.get("period", 30))
+        except (TypeError, ValueError):
+            period = 30
+        if period not in self.ALLOWED:
+            period = 30
+        series = daily_spend_trend(request.user, period=period)
+        return Response(
+            {
+                "period": period,
+                "series": [
+                    {
+                        "date": f"{p['date']:%Y-%m-%d}",
+                        "median": f"{p['median']:.2f}",
+                        "p25": f"{p['p25']:.2f}",
+                        "p75": f"{p['p75']:.2f}",
+                    }
+                    for p in series
+                ],
             }
         )
 

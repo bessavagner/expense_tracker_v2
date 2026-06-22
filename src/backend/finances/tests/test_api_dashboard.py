@@ -299,6 +299,81 @@ class TestDashboardView:
         assert response.status_code == 302
 
 
+@pytest.mark.django_db
+class TestDiverseSavingsEndpoint:
+    def test_returns_json_shape(self, logged_client, user):
+        resp = logged_client.get("/api/dashboard/diverse-savings/?year=2026&month=3")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert set(body) == {"baseline", "actual", "economia", "has_baseline"}
+        assert isinstance(body["has_baseline"], bool)
+
+    def test_money_fields_are_strings(self, logged_client, user):
+        resp = logged_client.get("/api/dashboard/diverse-savings/?year=2026&month=3")
+        body = resp.json()
+        for key in ("baseline", "actual", "economia"):
+            assert isinstance(body[key], str), f"{key} should be a string"
+            # must match %.2f pattern
+            parts = body[key].split(".")
+            assert len(parts) == 2 and len(parts[1]) == 2
+
+    def test_requires_auth(self):
+        client = Client()
+        resp = client.get("/api/dashboard/diverse-savings/?year=2026&month=3")
+        assert resp.status_code == 403
+
+
+@pytest.mark.django_db
+class TestDailyTrendEndpoint:
+    def test_returns_json_shape(self, logged_client, user):
+        resp = logged_client.get("/api/dashboard/daily-trend/?period=7")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["period"] == 7
+        assert len(body["series"]) == 7
+        point = body["series"][0]
+        assert set(point) == {"date", "median", "p25", "p75"}
+
+    def test_series_money_fields_are_strings(self, logged_client, user):
+        resp = logged_client.get("/api/dashboard/daily-trend/?period=7")
+        body = resp.json()
+        point = body["series"][0]
+        for key in ("median", "p25", "p75"):
+            assert isinstance(point[key], str), f"{key} should be a string"
+            parts = point[key].split(".")
+            assert len(parts) == 2 and len(parts[1]) == 2
+
+    def test_date_format(self, logged_client, user):
+        resp = logged_client.get("/api/dashboard/daily-trend/?period=7")
+        body = resp.json()
+        # YYYY-MM-DD
+        d = body["series"][0]["date"]
+        assert len(d) == 10 and d[4] == "-" and d[7] == "-"
+
+    def test_invalid_period_clamps_to_30(self, logged_client, user):
+        resp = logged_client.get("/api/dashboard/daily-trend/?period=999")
+        assert resp.status_code == 200
+        assert resp.json()["period"] == 30
+
+    def test_missing_period_defaults_to_30(self, logged_client, user):
+        resp = logged_client.get("/api/dashboard/daily-trend/")
+        assert resp.status_code == 200
+        assert resp.json()["period"] == 30
+
+    def test_all_allowed_periods(self, logged_client, user):
+        for p in (7, 15, 30, 90):
+            resp = logged_client.get(f"/api/dashboard/daily-trend/?period={p}")
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["period"] == p
+            assert len(body["series"]) == p
+
+    def test_requires_auth(self):
+        client = Client()
+        resp = client.get("/api/dashboard/daily-trend/?period=7")
+        assert resp.status_code == 403
+
+
 def _e(user, cat, pm, amount, bm):
     return baker.make("finances.Entry", user=user, date=bm, amount=Decimal(amount),
                       category=cat, payment_method=pm, entry_type="regular",
