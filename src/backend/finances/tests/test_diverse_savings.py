@@ -4,7 +4,7 @@ from decimal import Decimal
 import pytest
 from model_bakery import baker
 
-from finances.models import Category, Entry, PaymentMethod
+from finances.models import Entry
 from finances.models.entry import EntryType
 from finances.models.payment_method import PaymentType
 from finances.services.category_stats import diverse_savings_for_month
