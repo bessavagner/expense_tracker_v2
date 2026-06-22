@@ -1,6 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import SummaryCard from "./cards/SummaryCard";
+import HeroSummaryCard from "./cards/HeroSummaryCard";
 import TopCategoriesCard from "./cards/TopCategoriesCard";
 import EvolutionCard from "./cards/EvolutionCard";
 import AlertsCard from "./cards/AlertsCard";
@@ -11,8 +11,9 @@ import ChatWidget from "./cards/ChatWidget";
 import EconomiaCard from "./cards/EconomiaCard";
 import DailyTrendCard from "./cards/DailyTrendCard";
 
-const COMPONENTS: Record<string, React.ComponentType<{ apiUrl: string }>> = {
-  SummaryCard,
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const COMPONENTS: Record<string, React.ComponentType<any>> = {
+  HeroSummaryCard,
   TopCategoriesCard,
   EvolutionCard,
   AlertsCard,
@@ -29,10 +30,11 @@ function mountAll() {
   elements.forEach((el) => {
     const name = el.getAttribute("data-react-component");
     const apiUrl = el.getAttribute("data-api-url") || "";
+    const sparkUrl = el.getAttribute("data-spark-url") ?? undefined;
     if (name && COMPONENTS[name]) {
       const Component = COMPONENTS[name];
       const root = createRoot(el);
-      root.render(<Component apiUrl={apiUrl} />);
+      root.render(<Component apiUrl={apiUrl} sparkUrl={sparkUrl} />);
     }
   });
 }

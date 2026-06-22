@@ -10,6 +10,7 @@ export function useApiData<T>(apiUrl: string): T | null {
   const [data, setData] = useState<T | null>(null);
 
   useEffect(() => {
+    if (!apiUrl) return;
     let active = true;
     const load = () => {
       fetchApi<T>(apiUrl).then((d) => {
