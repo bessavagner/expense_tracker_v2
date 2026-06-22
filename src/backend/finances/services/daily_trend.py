@@ -27,7 +27,7 @@ def _percentile(values: list[Decimal], q: Decimal) -> Decimal:
     pos = q * (n - 1)
     lo = int(pos)
     if lo + 1 >= n:
-        return xs[lo]
+        return xs[lo].quantize(_CENTS, rounding=ROUND_HALF_UP)
     frac = pos - lo
     return (xs[lo] + (xs[lo + 1] - xs[lo]) * frac).quantize(_CENTS, rounding=ROUND_HALF_UP)
 
