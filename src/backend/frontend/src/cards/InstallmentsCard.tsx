@@ -15,7 +15,7 @@ export default function InstallmentsCard({ apiUrl }: Props) {
 
   if (!data)
     return (
-      <div className="card bg-base-100 border border-base-300 shadow-sm animate-pulse h-48" />
+      <div className="card bg-base-200 border border-base-200 animate-pulse h-48" />
     );
 
   // Show the most significant installments first; collapse the long tail.
@@ -25,9 +25,9 @@ export default function InstallmentsCard({ apiUrl }: Props) {
   const shown = expanded ? plans : plans.slice(0, LIMIT);
 
   return (
-    <div className="card bg-base-100 border border-base-300 shadow-sm">
+    <div className="card bg-base-200 border border-base-200">
       <div className="card-body p-4">
-        <h3 className="card-title text-sm">Parcelas Ativas</h3>
+        <h3 className="text-[11px] uppercase tracking-wide opacity-60">Parcelas Ativas</h3>
         <div className="space-y-1">
           {shown.map((plan, i) => (
             <div

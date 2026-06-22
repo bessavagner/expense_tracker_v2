@@ -29,7 +29,7 @@ export default function AlertsCard({ apiUrl }: Props) {
 
   if (!data)
     return (
-      <div className="card bg-base-100 border border-base-300 shadow-sm animate-pulse h-48" />
+      <div className="card bg-base-200 border border-base-200 animate-pulse h-48" />
     );
 
   // Most severe first, then collapse the tail.
@@ -40,9 +40,9 @@ export default function AlertsCard({ apiUrl }: Props) {
   const shown = expanded ? alerts : alerts.slice(0, LIMIT);
 
   return (
-    <div className="card bg-base-100 border border-base-300 shadow-sm">
+    <div className="card bg-base-200 border border-base-200">
       <div className="card-body p-4">
-        <h3 className="card-title text-sm">Alertas</h3>
+        <h3 className="text-[11px] uppercase tracking-wide opacity-60">Alertas</h3>
         <div className="space-y-2">
           {shown.map((alert, i) => {
             const border = SEVERITY_BORDER[alert.severity] || SEVERITY_BORDER.info;

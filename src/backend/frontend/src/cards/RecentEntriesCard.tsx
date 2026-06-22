@@ -12,14 +12,14 @@ export default function RecentEntriesCard({ apiUrl }: Props) {
 
   if (!data)
     return (
-      <div className="card bg-base-100 border border-base-300 shadow-sm animate-pulse h-48" />
+      <div className="card bg-base-200 border border-base-200 animate-pulse h-48" />
     );
 
   if (data.length === 0) {
     return (
-      <div className="card bg-base-100 border border-base-300 shadow-sm">
+      <div className="card bg-base-200 border border-base-200">
         <div className="card-body p-4">
-          <h3 className="card-title text-sm">Últimas Entradas</h3>
+          <h3 className="text-[11px] uppercase tracking-wide opacity-60">Últimas Entradas</h3>
           <EmptyState emoji="📝" title="Nenhuma entrada recente" description="Adicione sua primeira entrada para começar" actionHref="/entries/" actionLabel="Ver entradas" />
         </div>
       </div>
@@ -27,9 +27,9 @@ export default function RecentEntriesCard({ apiUrl }: Props) {
   }
 
   return (
-    <div className="card bg-base-100 border border-base-300 shadow-sm">
+    <div className="card bg-base-200 border border-base-200">
       <div className="card-body p-4">
-        <h3 className="card-title text-sm">Últimas Entradas</h3>
+        <h3 className="text-[11px] uppercase tracking-wide opacity-60">Últimas Entradas</h3>
         <div className="space-y-1">
           {data.map((entry, i) => {
             const amount = parseFloat(entry.amount);
