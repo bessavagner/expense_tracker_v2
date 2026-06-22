@@ -173,6 +173,27 @@ Card com `ComposedChart` (Recharts):
 Testes de API (em `test_api_dashboard.py` ou novos): autenticação exigida
 (401 sem login) e shape do JSON para ambos os endpoints.
 
+## Verificação visual (obrigatória)
+
+Os testes automatizados não bastam: a entrega só é considerada completa após
+**inspeção de screenshots** da tela renderizada. É uma etapa obrigatória, não
+opcional.
+
+- Rodar a app, autenticar e abrir o dashboard; **capturar screenshot** dos dois
+  cards novos (Economia do mês e Tendência de gasto diário). Usar Playwright
+  (MCP `playwright`) ou a skill `/run`.
+- Inspecionar cada screenshot e confirmar visualmente:
+  - **Economia:** valor, cor (verde economia / âmbar acima do habitual) e a
+    legenda "habitual: R$ ..." aparecem corretos; estado "sem base histórica
+    ainda" renderiza quando não há histórico.
+  - **Tendência:** o `ComposedChart` desenha a linha de mediana e a banda IQR
+    sombreada; o `<select>` de período existe e **trocar 7/15/30/90 dias refaz o
+    gráfico** (capturar screenshot de pelo menos dois períodos para comparar).
+  - Layout não quebrado no grid (desktop e largura mobile).
+- Anexar/registrar os screenshots como evidência da verificação antes de
+  declarar a tarefa concluída. Se algo divergir do esperado, iterar e
+  recapturar.
+
 ## Fora de escopo
 
 - Refatoração não relacionada do dashboard.
