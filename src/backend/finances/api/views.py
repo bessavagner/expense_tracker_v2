@@ -138,12 +138,20 @@ class EvolutionView(APIView):
                 current = date(current.year, current.month - 1, 1)
 
         # Two bulk queries instead of 12
-        entry_totals = {
-            row["billing_month"]: row["total"]
-            for row in Entry.objects.filter(user=user, billing_month__in=months, amount__gt=0)
+        _decimal = DecimalField()
+        entry_rows = (
+            Entry.objects.filter(user=user, billing_month__in=months)
             .values("billing_month")
-            .annotate(total=Sum("amount"))
-        }
+            .annotate(
+                expenses=Sum(
+                    Case(When(amount__gt=0, then="amount"), default=Value(0), output_field=_decimal)
+                ),
+                returns=Sum(
+                    Case(When(amount__lt=0, then="amount"), default=Value(0), output_field=_decimal)
+                ),
+            )
+        )
+        entry_totals = {r["billing_month"]: r for r in entry_rows}
         income_totals = {
             row["month"]: row["total"]
             for row in Income.objects.filter(user=user, month__in=months)
@@ -154,8 +162,9 @@ class EvolutionView(APIView):
         result = [
             {
                 "month": f"{m:%Y-%m}",
-                "expenses": f"{entry_totals.get(m, Decimal('0')):.2f}",
+                "expenses": f"{(entry_totals.get(m, {}).get('expenses') or Decimal('0')):.2f}",
                 "income": f"{income_totals.get(m, Decimal('0')):.2f}",
+                "returns": f"{abs(entry_totals.get(m, {}).get('returns') or Decimal('0')):.2f}",
             }
             for m in reversed(months)  # oldest first
         ]

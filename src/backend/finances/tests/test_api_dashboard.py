@@ -190,6 +190,17 @@ class TestEvolutionEndpoint:
         assert march["expenses"] == "1000.00"
         assert march["income"] == "5000.00"
 
+    def test_includes_returns_per_month(self, logged_client, user):
+        cat = baker.make("finances.Category", user=user)
+        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+        baker.make(
+            "finances.Entry", user=user, date=date(2026, 3, 5), amount=Decimal("-150"),
+            category=cat, payment_method=pm, billing_month=date(2026, 3, 1),
+        )
+        series = logged_client.get("/api/dashboard/evolution/?year=2026&month=3").json()
+        march = next(p for p in series if p["month"] == "2026-03")
+        assert march["returns"] == "150.00"
+
 
 @pytest.mark.django_db
 class TestAlertsEndpoint:
