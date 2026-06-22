@@ -69,7 +69,7 @@ export default function TopCategoriesCard({ apiUrl }: Props) {
               </PieChart>
             </ResponsiveContainer>
           </div>
-          <ul className="flex-1 space-y-1 text-xs">
+          <ul className="flex-1 min-w-0 space-y-1 text-xs">
             {slices.map((s, i) => (
               <li key={i} className="flex items-center gap-2">
                 <span
@@ -79,7 +79,7 @@ export default function TopCategoriesCard({ apiUrl }: Props) {
                       s.name === "Outros" ? OUTROS_COLOR : CHART_COLORS[i % CHART_COLORS.length],
                   }}
                 />
-                <span className="opacity-70 truncate">{s.name}</span>
+                <span className="opacity-70 truncate min-w-0">{s.name}</span>
                 <span className="ml-auto amount font-bold whitespace-nowrap">{formatBRL(s.value)}</span>
                 <span className="opacity-50 w-10 text-right">{s.pct}%</span>
               </li>

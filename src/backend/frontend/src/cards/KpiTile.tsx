@@ -20,7 +20,7 @@ export default function KpiTile({ label, value, deltaPct, spark, invertDelta }: 
     <div className="card bg-base-100 border border-base-300 shadow-sm tile-hover min-w-0">
       <div className="card-body p-3 gap-1">
         <div className="text-[11px] uppercase tracking-wide opacity-60">{label}</div>
-        <div className="amount text-xl lg:text-2xl font-bold leading-none truncate">{value}</div>
+        <div className="amount text-xl font-bold leading-none truncate">{value}</div>
         <div className="flex items-center justify-between gap-2">
           {deltaPct === null ? (
             <span className="text-[11px] opacity-50">—</span>
