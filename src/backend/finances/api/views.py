@@ -10,6 +10,7 @@ from finances.models import Category, Entry, Income
 from finances.services.category_stats import category_moving_averages, diverse_savings_for_month
 from finances.services.daily_trend import daily_spend_trend
 from finances.services.projection import build_projection
+from finances.services.whatif import add_months
 
 
 def _get_month_params(request):
@@ -23,15 +24,12 @@ def _get_month_params(request):
 class SummaryView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        year, month, billing_month = _get_month_params(request)
-        user = request.user
-
+    @staticmethod
+    def _month_totals(user, billing_month):
+        _decimal = DecimalField()
         income = Income.objects.filter(user=user, month=billing_month).aggregate(
             total=Sum("amount")
         )["total"] or Decimal("0")
-
-        _decimal = DecimalField()
         totals = Entry.objects.filter(user=user, billing_month=billing_month).aggregate(
             expenses=Sum(
                 Case(When(amount__gt=0, then="amount"), default=Value(0), output_field=_decimal)
@@ -42,22 +40,47 @@ class SummaryView(APIView):
         )
         expenses = totals["expenses"] or Decimal("0")
         returns = abs(totals["returns"] or Decimal("0"))
+        balance = income - expenses + returns
+        return {
+            "income": income,
+            "expenses": expenses,
+            "returns": returns,
+            "balance": balance,
+        }
+
+    @staticmethod
+    def _delta_pct(cur, prev):
+        if prev == 0:
+            return None
+        return round(float(cur - prev) / float(prev) * 100, 1)
+
+    def get(self, request):
+        year, month, billing_month = _get_month_params(request)
+        user = request.user
+
+        cur = self._month_totals(user, billing_month)
+        prev = self._month_totals(user, add_months(billing_month, -1))
 
         total_ceiling = Category.objects.filter(user=user).aggregate(total=Sum("budget_ceiling"))[
             "total"
         ] or Decimal("0")
-        # No budget set -> null, so the UI can show "sem teto" instead of a bogus %.
         budget_pct = (
-            round(float(expenses) / float(total_ceiling) * 100, 1) if total_ceiling > 0 else None
+            round(float(cur["expenses"]) / float(total_ceiling) * 100, 1)
+            if total_ceiling > 0
+            else None
         )
 
         return Response(
             {
-                "income": f"{income:.2f}",
-                "expenses": f"{expenses:.2f}",
-                "returns": f"{returns:.2f}",
-                "balance": f"{income - expenses + returns:.2f}",
+                "income": f"{cur['income']:.2f}",
+                "expenses": f"{cur['expenses']:.2f}",
+                "returns": f"{cur['returns']:.2f}",
+                "balance": f"{cur['balance']:.2f}",
                 "budget_pct": budget_pct,
+                "prev": {k: f"{v:.2f}" for k, v in prev.items()},
+                "delta_pct": {
+                    k: self._delta_pct(cur[k], prev[k]) for k in cur
+                },
             }
         )
 

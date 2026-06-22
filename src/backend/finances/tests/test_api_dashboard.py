@@ -108,6 +108,35 @@ class TestSummaryEndpoint:
         data = logged_client.get("/api/dashboard/summary/?year=2026&month=3").json()
         assert data["budget_pct"] == 50.0
 
+    def test_includes_prev_and_delta(self, logged_client, user):
+        cat = baker.make("finances.Category", user=user)
+        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+        # Previous month (2026-02): expenses 200
+        baker.make(
+            "finances.Entry", user=user, date=date(2026, 2, 5), amount=Decimal("200"),
+            category=cat, payment_method=pm, billing_month=date(2026, 2, 1),
+        )
+        # Current month (2026-03): expenses 300
+        baker.make(
+            "finances.Entry", user=user, date=date(2026, 3, 5), amount=Decimal("300"),
+            category=cat, payment_method=pm, billing_month=date(2026, 3, 1),
+        )
+        data = logged_client.get("/api/dashboard/summary/?year=2026&month=3").json()
+        assert data["prev"]["expenses"] == "200.00"
+        # (300 - 200) / 200 * 100 = 50.0
+        assert data["delta_pct"]["expenses"] == 50.0
+
+    def test_delta_null_when_prev_zero(self, logged_client, user):
+        cat = baker.make("finances.Category", user=user)
+        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+        baker.make(
+            "finances.Entry", user=user, date=date(2026, 3, 5), amount=Decimal("300"),
+            category=cat, payment_method=pm, billing_month=date(2026, 3, 1),
+        )
+        data = logged_client.get("/api/dashboard/summary/?year=2026&month=3").json()
+        assert data["prev"]["expenses"] == "0.00"
+        assert data["delta_pct"]["expenses"] is None
+
     def test_unauthenticated(self):
         client = Client()
         response = client.get("/api/dashboard/summary/?year=2026&month=3")
