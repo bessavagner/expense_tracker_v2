@@ -103,12 +103,19 @@ class TopCategoriesView(APIView):
         # card can show whether the user is spending above/below their usual.
         averages = category_moving_averages(user, window=3, as_of=billing_month)
 
-        total = sum(ct["total"] for ct in category_totals) or Decimal("1")
+        # All percentages are relative to the month's GRAND total (every positive
+        # entry), so the top-N slices plus "Outros" sum to 100% in the donut legend.
+        grand_total = (
+            Entry.objects.filter(user=user, billing_month=billing_month, amount__gt=0)
+            .aggregate(total=Sum("amount"))["total"]
+            or Decimal("0")
+        )
+        pct_base = grand_total or Decimal("1")
         result = [
             {
                 "name": ct["category__name"],
                 "amount": f"{ct['total']:.2f}",
-                "pct": round(float(ct["total"]) / float(total) * 100, 1),
+                "pct": round(float(ct["total"]) / float(pct_base) * 100, 1),
                 "avg_3m": (
                     f"{averages[ct['category__id']]:.2f}"
                     if ct["category__id"] in averages
@@ -117,11 +124,6 @@ class TopCategoriesView(APIView):
             }
             for ct in category_totals
         ]
-        grand_total = (
-            Entry.objects.filter(user=user, billing_month=billing_month, amount__gt=0)
-            .aggregate(total=Sum("amount"))["total"]
-            or Decimal("0")
-        )
         shown_total = sum((ct["total"] for ct in category_totals), Decimal("0"))
         remainder = grand_total - shown_total
         if remainder > 0:
@@ -129,7 +131,7 @@ class TopCategoriesView(APIView):
                 {
                     "name": "Outros",
                     "amount": f"{remainder:.2f}",
-                    "pct": round(float(remainder) / float(grand_total) * 100, 1),
+                    "pct": round(float(remainder) / float(pct_base) * 100, 1),
                     "avg_3m": None,
                 }
             )
