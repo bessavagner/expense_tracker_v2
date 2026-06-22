@@ -117,6 +117,22 @@ class TopCategoriesView(APIView):
             }
             for ct in category_totals
         ]
+        grand_total = (
+            Entry.objects.filter(user=user, billing_month=billing_month, amount__gt=0)
+            .aggregate(total=Sum("amount"))["total"]
+            or Decimal("0")
+        )
+        shown_total = sum((ct["total"] for ct in category_totals), Decimal("0"))
+        remainder = grand_total - shown_total
+        if remainder > 0:
+            result.append(
+                {
+                    "name": "Outros",
+                    "amount": f"{remainder:.2f}",
+                    "pct": round(float(remainder) / float(grand_total) * 100, 1),
+                    "avg_3m": None,
+                }
+            )
         return Response(result)
 
 

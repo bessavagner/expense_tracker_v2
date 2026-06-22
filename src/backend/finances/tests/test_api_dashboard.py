@@ -160,8 +160,35 @@ class TestTopCategoriesEndpoint:
             )
         response = logged_client.get("/api/dashboard/top-categories/?year=2026&month=3")
         data = response.json()
-        assert len(data) == 5
+        # 7 categories -> top 5 shown + "Outros" remainder slice = 6 items
+        assert len(data) == 6
         assert data[0]["amount"] >= data[1]["amount"]
+
+    def test_appends_outros_remainder(self, logged_client, user):
+        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+        # 6 categories of 100 each -> top 5 shown, 1 spills into "Outros".
+        for i in range(6):
+            c = baker.make("finances.Category", user=user, name=f"C{i}")
+            baker.make(
+                "finances.Entry", user=user, date=date(2026, 3, 5), amount=Decimal("100"),
+                category=c, payment_method=pm, billing_month=date(2026, 3, 1),
+            )
+        data = logged_client.get("/api/dashboard/top-categories/?year=2026&month=3").json()
+        outros = [d for d in data if d["name"] == "Outros"]
+        assert len(outros) == 1
+        assert outros[0]["amount"] == "100.00"
+        assert outros[0]["avg_3m"] is None
+
+    def test_no_outros_when_five_or_fewer(self, logged_client, user):
+        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+        for i in range(3):
+            c = baker.make("finances.Category", user=user, name=f"C{i}")
+            baker.make(
+                "finances.Entry", user=user, date=date(2026, 3, 5), amount=Decimal("100"),
+                category=c, payment_method=pm, billing_month=date(2026, 3, 1),
+            )
+        data = logged_client.get("/api/dashboard/top-categories/?year=2026&month=3").json()
+        assert all(d["name"] != "Outros" for d in data)
 
 
 @pytest.mark.django_db
