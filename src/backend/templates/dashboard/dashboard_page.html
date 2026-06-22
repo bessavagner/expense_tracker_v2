@@ -28,8 +28,10 @@
 <!-- React island cards grid -->
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="dashboard-cards">
     <div data-react-component="SummaryCard" data-api-url="/api/dashboard/summary/?{{ api_params }}"></div>
+    <div data-react-component="EconomiaCard" data-api-url="/api/dashboard/diverse-savings/?{{ api_params }}"></div>
     <div data-react-component="TopCategoriesCard" data-api-url="/api/dashboard/top-categories/?{{ api_params }}"></div>
     <div data-react-component="EvolutionCard" data-api-url="/api/dashboard/evolution/?{{ api_params }}"></div>
+    <div data-react-component="DailyTrendCard" data-api-url="/api/dashboard/daily-trend/"></div>
     <div data-react-component="ProjectionCard" data-api-url="/api/dashboard/projection/?{{ api_params }}"></div>
     <div data-react-component="AlertsCard" data-api-url="/api/dashboard/alerts/?{{ api_params }}"></div>
     <div data-react-component="RecentEntriesCard" data-api-url="/api/dashboard/recent-entries/?{{ api_params }}"></div>
