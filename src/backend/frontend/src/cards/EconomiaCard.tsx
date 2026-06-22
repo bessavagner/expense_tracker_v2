@@ -18,7 +18,7 @@ export default function EconomiaCard({ apiUrl }: Props) {
   const saved = economia >= 0;
 
   return (
-    <div className="card bg-base-100 border border-base-300 shadow-sm">
+    <div className="card bg-gradient-to-br from-secondary/15 to-base-100 border border-base-300 shadow-md">
       <div className="card-body p-4">
         <h3 className="card-title text-sm">Economia do mês</h3>
 
@@ -32,7 +32,7 @@ export default function EconomiaCard({ apiUrl }: Props) {
               {saved ? "Economizou em diversas" : "Acima do habitual"}
             </div>
             <div
-              className={`amount text-2xl font-bold ${saved ? "text-success" : "text-warning"}`}
+              className={`amount text-3xl font-bold ${saved ? "text-success" : "text-warning"}`}
             >
               {formatBRL(Math.abs(economia))}
             </div>

@@ -69,7 +69,7 @@ export default function DailyTrendCard({ apiUrl }: Props) {
             <div className="text-[11px] opacity-60 mt-1">
               mediana móvel (robusta a picos) · faixa = variação típica (p25–p75)
             </div>
-            <ResponsiveContainer width="100%" height={160} className="mt-1">
+            <ResponsiveContainer width="100%" height={240} className="mt-1">
               <ComposedChart
                 data={chartData}
                 margin={{ top: 6, right: 4, bottom: 0, left: 0 }}

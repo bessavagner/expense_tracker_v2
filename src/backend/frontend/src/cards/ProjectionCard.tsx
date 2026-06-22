@@ -32,7 +32,7 @@ export default function ProjectionCard({ apiUrl }: Props) {
     return (
       <div className="card bg-base-100 border border-base-300 shadow-sm">
         <div className="card-body p-4">
-          <h3 className="card-title text-sm">Projeção</h3>
+          <h3 className="text-[11px] uppercase tracking-wide opacity-60">Projeção</h3>
           <EmptyState
             emoji="🔮"
             title="Sem projeção"
@@ -58,7 +58,7 @@ export default function ProjectionCard({ apiUrl }: Props) {
     <div className="card bg-base-100 border border-base-300 shadow-sm">
       <div className="card-body p-4">
         <div className="flex items-baseline justify-between">
-          <h3 className="card-title text-sm">Projeção</h3>
+          <h3 className="text-[11px] uppercase tracking-wide opacity-60">Projeção</h3>
           <a href="/projection/" className="link link-hover text-xs text-primary">
             Simular cenário →
           </a>

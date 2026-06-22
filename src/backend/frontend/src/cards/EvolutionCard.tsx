@@ -30,7 +30,7 @@ export default function EvolutionCard({ apiUrl }: Props) {
     return (
       <div className="card bg-base-100 border border-base-300 shadow-sm">
         <div className="card-body p-4">
-          <h3 className="card-title text-sm">Evolução</h3>
+          <h3 className="text-[11px] uppercase tracking-wide opacity-60">Evolução</h3>
           <EmptyState emoji="📈" title="Sem movimentação" description="Adicione entradas para acompanhar a evolução mensal" />
         </div>
       </div>
