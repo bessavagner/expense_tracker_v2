@@ -107,3 +107,27 @@
     letter-spacing: -0.01em;
   }
 }
+
+/* ---- Dashboard bento entrance: one orchestrated reveal on load ---- */
+@layer utilities {
+  @keyframes bento-rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .bento-enter {
+    opacity: 0;
+    animation: bento-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+  /* Quiet hover lift for medium tiles only (applied via .tile-hover). */
+  .tile-hover {
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .tile-hover:hover {
+    transform: translateY(-1px);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bento-enter { opacity: 1; animation: none; }
+    .tile-hover { transition: none; }
+    .tile-hover:hover { transform: none; }
+  }
+}

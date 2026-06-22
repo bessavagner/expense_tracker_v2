@@ -4,6 +4,13 @@ export interface SummaryData {
   returns: string;
   balance: string;
   budget_pct: number | null;
+  prev: { income: string; expenses: string; returns: string; balance: string };
+  delta_pct: {
+    income: number | null;
+    expenses: number | null;
+    returns: number | null;
+    balance: number | null;
+  };
 }
 
 export interface CategoryData {
@@ -34,6 +41,7 @@ export interface EvolutionPoint {
   month: string;
   expenses: string;
   income: string;
+  returns: string;
 }
 
 export interface AlertData {
@@ -77,4 +85,8 @@ export interface DailyTrendPoint {
 export interface DailyTrendData {
   period: number;
   series: DailyTrendPoint[];
+}
+
+export interface SparkPoint {
+  v: number;
 }
