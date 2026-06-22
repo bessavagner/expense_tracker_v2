@@ -67,7 +67,7 @@ export default function HeroSummaryCard({ apiUrl, sparkUrl }: Props) {
           </div>
         )}
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-1">
           <KpiTile label="Renda" value={formatBRL(data.income)} deltaPct={data.delta_pct.income} spark={incomeSpark} />
           <KpiTile label="Gastos" value={formatBRL(data.expenses)} deltaPct={data.delta_pct.expenses} spark={expenseSpark} invertDelta />
           <KpiTile label="Retornos" value={formatBRL(data.returns)} deltaPct={data.delta_pct.returns} />
