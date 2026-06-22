@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import {
   Area,
   ComposedChart,
@@ -81,10 +81,12 @@ export default function DailyTrendCard({ apiUrl }: Props) {
                   tickFormatter={(v: number) => formatBRLCompact(v)}
                 />
                 <Tooltip
-                  formatter={(value: number, name: string) => [
-                    formatBRL(value),
-                    name === "median" ? "Mediana" : name,
-                  ]}
+                  formatter={
+                    ((value: number, name: string) => {
+                      if (name === "base" || name === "band") return null;
+                      return [formatBRL(value), "Mediana"];
+                    }) as React.ComponentProps<typeof Tooltip>["formatter"]
+                  }
                   labelFormatter={(l: string) => `Dia ${l}`}
                 />
                 {/* transparent spacer up to p25 */}
