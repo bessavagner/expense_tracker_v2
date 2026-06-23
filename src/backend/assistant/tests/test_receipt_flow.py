@@ -186,6 +186,27 @@ def test_description_uses_product_names_not_category(seeded_user):
     assert "Itens" in out
 
 
+def test_long_description_full_in_entry_truncated_only_in_table(seeded_user):
+    """Os nomes dos produtos ficam COMPLETOS na descrição gravada; só a tabela
+    exibida é truncada (não perde produtos como o 3º item do recibo Amazon)."""
+    items = [
+        {"description": f"produto bem grande numero {i} de teste", "line_total": "10.00",
+         "category": "Alimentação"}
+        for i in range(4)
+    ]
+    ReceiptDraft.objects.create(
+        user=seeded_user,
+        payload={"store": "Loja", "payment_hint": "Pix", "items": items},
+        status=ReceiptDraftStatus.PENDING,
+    )
+    out = propose_receipt(seeded_user, payment_method_name="Pix")
+    plan = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload["plan"]
+    desc = plan["lines"][0]["description"]
+    for i in range(4):  # todos os 4 produtos presentes na descrição gravada
+        assert f"numero {i}" in desc
+    assert "…" in out  # a tabela exibida trunca
+
+
 def test_description_dedups_store_prefix(seeded_user):
     """Se o summary já repete o nome da loja, não duplica o prefixo
     (regressão 'Amazon - Amazon - ...')."""

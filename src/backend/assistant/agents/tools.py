@@ -293,22 +293,25 @@ def _items_by_category_from_items(items):
     return by_cat
 
 
-def _product_summary(descriptions, maxlen: int = 90) -> str:
+def _shorten(text: str, maxlen: int) -> str:
+    """Trunca ``text`` para no máximo ``maxlen`` chars, com reticências."""
+    t = (text or "").strip()
+    return t if len(t) <= maxlen else t[: maxlen - 1].rstrip() + "…"
+
+
+def _product_summary(descriptions, maxlen: int = 220) -> str:
     """Resumo de uma linha a partir dos NOMES dos produtos do recibo.
 
-    Junta as descrições dos itens (sem a truncagem "..." do screenshot) com "; ";
-    limita o comprimento para a tabela ficar legível. Vazio → o chamador usa o
-    nome da categoria como fallback.
+    Junta as descrições dos itens (sem a truncagem "..." do screenshot) com "; ".
+    O limite alto preserva os nomes na descrição GRAVADA (a tabela exibida é
+    encurtada à parte). Vazio → o chamador usa o nome da categoria como fallback.
     """
     names = []
     for d in descriptions:
         name = str(d or "").strip().rstrip(". ").strip()
         if name:
             names.append(name)
-    summary = "; ".join(names)
-    if len(summary) > maxlen:
-        summary = summary[: maxlen - 1].rstrip() + "…"
-    return summary
+    return _shorten("; ".join(names), maxlen)
 
 
 def _strip_store_prefix(summary: str, store: str) -> str:
@@ -437,12 +440,14 @@ def _resolve_receipt_plan(
                 or category.name
             )
         summary = _strip_store_prefix(summary, store)
-        description = f"{store} - {summary}".replace(",", " -").strip()
+        description = f"{store} - {summary}".replace(",", " -").strip()[:500]
         lines.append(
             {
                 "category_id": str(category.id),
                 "category_name": category.name,
                 "summary": summary,
+                # versão curta só para a tabela exibida (descrição gravada fica completa)
+                "summary_short": _shorten(summary, 60),
                 "description": description,
                 "amount": f"{net:.2f}",
             }
@@ -450,7 +455,8 @@ def _resolve_receipt_plan(
 
     total = sum((Decimal(ln["amount"]) for ln in lines), Decimal("0"))
     table_rows = "\n".join(
-        f"| {ln['category_name']} | {ln['summary']} | R$ {ln['amount']} |" for ln in lines
+        f"| {ln['category_name']} | {ln['summary_short']} | R$ {ln['amount']} |"
+        for ln in lines
     )
     table = (
         f"**{store}** — {entry_date:%d/%m/%Y} · {payment_method.name}\n\n"
