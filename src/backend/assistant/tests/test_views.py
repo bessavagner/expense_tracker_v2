@@ -105,7 +105,7 @@ class TestChatEndpoint:
         ).exists()
         assert ChatMessage.objects.filter(user=user, role="assistant").exists()
 
-    def test_multipart_image_routes_to_receipt_confirm(self, logged_client, user):
+    def test_multipart_image_routes_to_assistant(self, logged_client, user):
         # 1x1 PNG válido (bytes mínimos)
         png = (
             b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00"
