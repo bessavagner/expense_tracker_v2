@@ -40,7 +40,7 @@ def test_propose_stores_plan_and_writes_nothing(seeded_user):
     assert draft.status == ReceiptDraftStatus.PENDING
     plan = (draft.payload or {}).get("plan")
     assert plan is not None
-    amounts = sorted(Decimal(l["amount"]) for l in plan["lines"])
+    amounts = sorted(Decimal(ln["amount"]) for ln in plan["lines"])
     assert amounts == [Decimal("40.00"), Decimal("60.00")]
     assert plan["payment_method_name"] == "Pix"
     assert "Confirma" in out
