@@ -124,6 +124,110 @@ def create_entry(
     )
 
 
+def _resolve_entry_by_prefix(user, entry_id: str):
+    raw = (entry_id or "").strip().replace("-", "").lower()
+    if not raw:
+        return []
+    return [e for e in Entry.objects.filter(user=user) if str(e.id).replace("-", "").startswith(raw)]
+
+
+def list_recent_entries(user, limit: int = 10) -> str:
+    qs = (
+        Entry.objects.filter(user=user)
+        .select_related("category", "payment_method")
+        .order_by("-created_at")[:limit]
+    )
+    rows = list(qs)
+    if not rows:
+        return "Nenhum lançamento recente."
+    lines = []
+    for e in rows:
+        cat = e.category.name if e.category else "—"
+        pm = e.payment_method.name if e.payment_method else "—"
+        lines.append(
+            f"[{str(e.id)[:8]}] {e.date:%d/%m} R$ {e.amount} · {cat} · {pm} · {e.description}"
+        )
+    return "\n".join(lines)
+
+
+def update_entry(
+    user, entry_id, date_str=None, amount_str=None, description=None,
+    category_name=None, payment_method_name=None,
+) -> str:
+    matches = _resolve_entry_by_prefix(user, entry_id)
+    if not matches:
+        return f"Erro: lançamento '{entry_id}' não encontrado."
+    if len(matches) > 1:
+        return f"Erro: id '{entry_id}' é ambíguo ({len(matches)} lançamentos). Dê mais dígitos."
+    entry = matches[0]
+    if category_name:
+        category, m = _resolve_by_name(Category.objects.filter(user=user), category_name)
+        if category is None:
+            avail = ", ".join(list_categories(user))
+            return f"Erro: categoria '{category_name}' não encontrada. Disponíveis: {avail}"
+        entry.category = category
+    if payment_method_name:
+        pm, m = _resolve_by_name(
+            PaymentMethod.objects.filter(user=user, is_active=True), payment_method_name
+        )
+        if pm is None:
+            avail = ", ".join(list_payment_methods(user))
+            return f"Erro: forma de pagamento '{payment_method_name}' não encontrada. Disponíveis: {avail}"
+        entry.payment_method = pm
+    if date_str:
+        try:
+            entry.date = date.fromisoformat(date_str)
+        except ValueError:
+            return f"Erro: data inválida '{date_str}'. Use AAAA-MM-DD."
+    if amount_str:
+        try:
+            entry.amount = Decimal(amount_str)
+        except InvalidOperation:
+            return f"Erro: valor inválido '{amount_str}'."
+    if description:
+        entry.description = description
+    entry.billing_month_override = False
+    entry.save()
+    return (
+        f"Atualizado [{str(entry.id)[:8]}]: {entry.description} — R$ {entry.amount} "
+        f"em {entry.category.name} via {entry.payment_method.name}"
+    )
+
+
+def delete_entry(user, entry_id) -> str:
+    matches = _resolve_entry_by_prefix(user, entry_id)
+    if not matches:
+        return f"Erro: lançamento '{entry_id}' não encontrado."
+    if len(matches) > 1:
+        return f"Erro: id '{entry_id}' é ambíguo ({len(matches)} lançamentos). Dê mais dígitos."
+    entry = matches[0]
+    desc, amt = entry.description, entry.amount
+    entry.delete()
+    return f"Excluído: {desc} — R$ {amt}."
+
+
+def add_receipt_item(user, description, line_total, category="") -> str:
+    draft = (
+        ReceiptDraft.objects.filter(user=user, status=ReceiptDraftStatus.PENDING)
+        .order_by("-created_at")
+        .first()
+    )
+    if draft is None:
+        return "Não há recibo pendente para adicionar item."
+    try:
+        Decimal(str(line_total))
+    except InvalidOperation:
+        return f"Erro: valor inválido '{line_total}'."
+    payload = draft.payload or {}
+    items = payload.get("items", [])
+    items.append({"description": description, "line_total": str(line_total), "category": (category or None)})
+    payload["items"] = items
+    payload.pop("plan", None)
+    draft.payload = payload
+    draft.save(update_fields=["payload", "updated_at"])
+    return f"Item adicionado ao recibo: {description} — R$ {line_total}. Re-proponha com propose_receipt()."
+
+
 _CENTS = Decimal("0.01")
 
 

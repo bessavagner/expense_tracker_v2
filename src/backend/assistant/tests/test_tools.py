@@ -684,3 +684,68 @@ class TestRegisterReceipt:
         )
         assert "pendente" in msg.lower() or "recibo" in msg.lower()
         assert Entry.objects.filter(user=seeded_user).count() == 0
+
+
+@pytest.mark.django_db
+def test_list_recent_entries_scoped_and_formatted(seeded_user):
+    from assistant.agents.tools import create_entry, list_recent_entries
+    create_entry(seeded_user, "2026-06-20", "50.00", "feira", "Alimentação", "Pix")
+    out = list_recent_entries(seeded_user)
+    assert "feira" in out and "50.00" in out
+    # short id present (8 hex chars in brackets)
+    import re
+    assert re.search(r"\[[0-9a-f]{8}\]", out)
+
+
+@pytest.mark.django_db
+def test_update_entry_changes_fields_by_id_prefix(seeded_user):
+    from assistant.agents.tools import create_entry, update_entry
+    from finances.models import Entry
+    create_entry(seeded_user, "2026-06-20", "50.00", "feira", "Alimentação", "Pix")
+    e = Entry.objects.filter(user=seeded_user).latest("created_at")
+    prefix = str(e.id)[:8]
+    out = update_entry(seeded_user, prefix, amount_str="65.00", category_name="Lanche")
+    e.refresh_from_db()
+    assert e.amount == Decimal("65.00")
+    assert e.category.name == "Lanche"
+    assert "Atualizado" in out or "atualiz" in out.lower()
+
+
+@pytest.mark.django_db
+def test_update_entry_unknown_id(seeded_user):
+    from assistant.agents.tools import update_entry
+    assert "não encontrado" in update_entry(seeded_user, "deadbeef", amount_str="1.00").lower()
+
+
+@pytest.mark.django_db
+def test_delete_entry_removes(seeded_user):
+    from assistant.agents.tools import create_entry, delete_entry
+    from finances.models import Entry
+    create_entry(seeded_user, "2026-06-20", "50.00", "feira", "Alimentação", "Pix")
+    e = Entry.objects.filter(user=seeded_user).latest("created_at")
+    out = delete_entry(seeded_user, str(e.id)[:8])
+    assert Entry.objects.filter(id=e.id).count() == 0
+    assert "exclu" in out.lower()
+
+
+@pytest.mark.django_db
+def test_add_receipt_item_appends_and_clears_plan(seeded_user):
+    from assistant.agents.tools import add_receipt_item
+    from assistant.models import ReceiptDraft, ReceiptDraftStatus
+    d = ReceiptDraft.objects.create(
+        user=seeded_user,
+        payload={"store": "X", "items": [{"description": "a", "line_total": "10", "category": "Alimentação"}], "plan": {"stale": True}},
+        status=ReceiptDraftStatus.PENDING,
+    )
+    out = add_receipt_item(seeded_user, "frete", "39.97", "Serviço")
+    d.refresh_from_db()
+    assert len(d.payload["items"]) == 2
+    assert d.payload["items"][1]["description"] == "frete"
+    assert "plan" not in d.payload  # forces re-propose
+    assert "frete" in out
+
+
+@pytest.mark.django_db
+def test_add_receipt_item_no_draft(seeded_user):
+    from assistant.agents.tools import add_receipt_item
+    assert "pendente" in add_receipt_item(seeded_user, "x", "1.00", "Alimentação").lower()
