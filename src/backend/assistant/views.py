@@ -183,18 +183,18 @@ async def _handle_json(request, user):
 
 async def _handle_multipart(request, user):
     caption = (request.POST.get("message") or "").strip()
-    image = request.FILES.get("image")
+    images = request.FILES.getlist("image")
     audio = request.FILES.get("audio")
 
-    if image and audio:
+    if images and audio:
         return JsonResponse(
-            {"error": "Envie apenas um arquivo por mensagem."}, status=400
+            {"error": "Envie apenas um tipo de arquivo por mensagem."}, status=400
         )
-    if not image and not audio and not caption:
+    if not images and not audio and not caption:
         return JsonResponse({"error": "Nada para processar."}, status=400)
 
-    if image:
-        return await _handle_image(request, user, image, caption)
+    if images:
+        return await _handle_images(request, user, images, caption)
     if audio:
         return await _handle_audio(request, user, audio, caption)
 
@@ -237,41 +237,52 @@ async def _handle_audio(request, user, audio, caption):
     )
 
 
-async def _handle_image(request, user, image, caption):
+async def _handle_images(request, user, images, caption):
     from pydantic_ai import BinaryContent
 
+    if len(images) > settings.ASSISTANT_MAX_IMAGES:
+        return JsonResponse(
+            {"error": f"Envie no máximo {settings.ASSISTANT_MAX_IMAGES} imagens."},
+            status=400,
+        )
+
     max_bytes = settings.ASSISTANT_MAX_IMAGE_MB * 1024 * 1024
-    if image.size > max_bytes:
-        return JsonResponse({"error": "Imagem muito grande."}, status=400)
-    if image.content_type not in settings.ASSISTANT_ALLOWED_IMAGE_TYPES:
-        return JsonResponse({"error": "Formato de imagem não suportado."}, status=400)
+    prepared: list[tuple[bytes, str]] = []
+    for image in images:
+        if image.size > max_bytes:
+            return JsonResponse({"error": "Imagem muito grande."}, status=400)
+        if image.content_type not in settings.ASSISTANT_ALLOWED_IMAGE_TYPES:
+            return JsonResponse(
+                {"error": "Formato de imagem não suportado."}, status=400
+            )
+        data, media_type = prepare_receipt_image(image.read(), image.content_type)
+        prepared.append((data, media_type))
 
-    data = image.read()
-    data, media_type = prepare_receipt_image(data, image.content_type)
-
-    user_label = f"📷 [foto] {caption}".strip() if caption else "📷 [foto enviada]"
+    n = len(prepared)
+    noun = "foto" if n == 1 else f"{n} fotos"
+    if caption:
+        user_label = f"📷 [{noun}] {caption}"
+    else:
+        user_label = "📷 [foto enviada]" if n == 1 else f"📷 [{noun} enviadas]"
     chat_msg = await ChatMessage.objects.acreate(
         user=user, role=MessageRole.USER, content=user_label
     )
 
-    # Fase 1: extração estruturada com o modelo de visão. Em caso de falha,
-    # cai no fluxo de turno único (manda a imagem direto ao registrador).
+    # Fase 1: extração estruturada (combina todas as imagens num recibo).
     extraction = None
     try:
-        extraction = await extract_receipt(data, media_type)
+        extraction = await extract_receipt(prepared)
     except Exception:
         logger.exception(
             "Falha na extração estruturada do recibo; fallback para leitura direta."
         )
 
     if extraction is not None:
-        # Persiste o recibo para sobreviver ao turno (correções têm os itens).
         await ReceiptDraft.objects.acreate(
             user=user,
             chat_message=chat_msg,
             payload=extraction.model_dump(mode="json"),
         )
-        # Fase 2: bookkeeping no modelo leve — a visão já foi usada na fase 1.
         needs_review = receipt_needs_review(
             extraction, settings.ASSISTANT_RECEIPT_MIN_CONFIDENCE
         )
@@ -284,15 +295,15 @@ async def _handle_image(request, user, image, caption):
             user_text=user_label,
         )
 
-    # Fallback (extração indisponível): manda a foto ao registrador com o
-    # modelo de visão, como no fluxo anterior.
+    # Fallback: manda TODAS as fotos ao registrador com o modelo de visão.
     instruction = (
-        "Esta é a foto de um recibo/cupom. Extraia os lançamentos seguindo as "
-        "regras e confirme um resumo antes de gravar."
+        "Estas são fotos de um recibo/cupom (páginas/ângulos do mesmo recibo). "
+        "Extraia os lançamentos seguindo as regras e confirme um resumo antes de gravar."
     )
     if caption:
         instruction += f" Observação do usuário: {caption}"
-    prompt = [instruction, BinaryContent(data=data, media_type=media_type)]
+    prompt = [instruction]
+    prompt += [BinaryContent(data=d, media_type=m) for d, m in prepared]
     return _sse_response(
         user,
         registrar_agent,
