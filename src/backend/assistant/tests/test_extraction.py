@@ -175,6 +175,7 @@ async def test_extract_receipt_sends_all_images_in_one_run(monkeypatch):
 
     prompt = captured["prompt"]
     from pydantic_ai import BinaryContent
+
     binaries = [p for p in prompt if isinstance(p, BinaryContent)]
     assert len(binaries) == 2
     assert binaries[0].data == b"img-a"
@@ -185,7 +186,9 @@ async def test_extract_receipt_sends_all_images_in_one_run(monkeypatch):
 async def test_item_carries_category_and_receipt_type_defaults():
     from assistant.agents.extraction import ReceiptExtraction, ReceiptItem
 
-    ext = ReceiptExtraction(items=[ReceiptItem(description="arroz", line_total=Decimal("10"), category="Alimentação")])
+    ext = ReceiptExtraction(
+        items=[ReceiptItem(description="arroz", line_total=Decimal("10"), category="Alimentação")]
+    )
     assert ext.items[0].category == "Alimentação"
     assert ext.receipt_type == "fiscal_cupom"
     assert ext.amount_paid is None  # not "visible" by default now
@@ -194,7 +197,9 @@ async def test_item_carries_category_and_receipt_type_defaults():
 def test_consistent_true_when_amount_paid_missing():
     from assistant.agents.extraction import ReceiptExtraction, ReceiptItem, receipt_is_consistent
 
-    ext = ReceiptExtraction(items=[ReceiptItem(description="x", line_total=Decimal("10"))], amount_paid=None)
+    ext = ReceiptExtraction(
+        items=[ReceiptItem(description="x", line_total=Decimal("10"))], amount_paid=None
+    )
     assert receipt_is_consistent(ext) is True  # nothing to reconcile
 
 
@@ -203,7 +208,8 @@ def test_needs_review_false_when_amount_paid_missing_but_confident():
 
     ext = ReceiptExtraction(
         items=[ReceiptItem(description="x", line_total=Decimal("10"), category="Alimentação")],
-        amount_paid=None, confidence=0.9,
+        amount_paid=None,
+        confidence=0.9,
     )
     assert receipt_needs_review(ext, min_confidence=0.6) is False
 
@@ -213,7 +219,8 @@ def test_needs_review_true_when_amount_paid_present_and_sum_wrong():
 
     ext = ReceiptExtraction(
         items=[ReceiptItem(description="x", line_total=Decimal("10"))],
-        amount_paid=Decimal("99"), confidence=0.9,
+        amount_paid=Decimal("99"),
+        confidence=0.9,
     )
     assert receipt_needs_review(ext, min_confidence=0.6) is True
 
@@ -246,7 +253,8 @@ def test_extraction_to_prompt_auto_mode_no_indices():
 
     ext = ReceiptExtraction(
         items=[ReceiptItem(description="arroz", line_total=Decimal("10"), category="Alimentação")],
-        amount_paid=Decimal("10"), confidence=0.9,
+        amount_paid=Decimal("10"),
+        confidence=0.9,
     )
     out = extraction_to_prompt(ext, needs_review=False)
     assert "propose_receipt()" in out  # instruct calling without items_by_category

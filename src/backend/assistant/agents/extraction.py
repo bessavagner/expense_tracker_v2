@@ -88,9 +88,7 @@ def receipt_is_consistent(
     return abs(items_sum - discount - extraction.amount_paid) <= tolerance
 
 
-def receipt_needs_review(
-    extraction: ReceiptExtraction, min_confidence: float
-) -> bool:
+def receipt_needs_review(extraction: ReceiptExtraction, min_confidence: float) -> bool:
     """True se a leitura é incerta: confiança baixa, sem itens, ou soma não fecha.
 
     Nesses casos o bot confirma campo a campo em vez de auto-registrar.
@@ -121,7 +119,8 @@ async def extract_receipt(
         instruction += (
             "\nCategorias do usuário (atribua a categoria de CADA item escolhendo "
             "EXATAMENTE uma desta lista; se nenhuma servir, deixe category=null): "
-            + ", ".join(categories) + "."
+            + ", ".join(categories)
+            + "."
         )
     if payment_methods:
         instruction += (
@@ -191,8 +190,7 @@ def extraction_to_prompt(
             "'Confirma?'."
         )
     item_lines = [
-        f"{it.description} → {it.category or '?'} | R$ {it.line_total}"
-        for it in ext.items
+        f"{it.description} → {it.category or '?'} | R$ {it.line_total}" for it in ext.items
     ]
     card_info = ""
     if ext.card_last4:
@@ -208,7 +206,8 @@ def extraction_to_prompt(
         _payment_guidance(ext),
         f"Desconto: {ext.discount}",
         f"Valor pago: {ext.amount_paid}",
-        "Itens (índice INTERNO de cada item → use só em propose_receipt ao corrigir, nunca mostre ao usuário):",
+        "Itens (índice INTERNO de cada item → use só em propose_receipt ao "
+        "corrigir, nunca mostre ao usuário):",
         *item_lines,
     ]
     if caption:

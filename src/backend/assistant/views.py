@@ -77,13 +77,9 @@ async def _load_history(user):
     pydantic_messages = []
     for msg in history_messages[:-1]:
         if msg["role"] == "user":
-            pydantic_messages.append(
-                ModelRequest(parts=[UserPromptPart(content=msg["content"])])
-            )
+            pydantic_messages.append(ModelRequest(parts=[UserPromptPart(content=msg["content"])]))
         else:
-            pydantic_messages.append(
-                ModelResponse(parts=[TextPart(content=msg["content"])])
-            )
+            pydantic_messages.append(ModelResponse(parts=[TextPart(content=msg["content"])]))
     return pydantic_messages
 
 
@@ -185,9 +181,7 @@ async def _handle_json(request, user):
     if not message:
         return JsonResponse({"error": "Message is required"}, status=400)
 
-    await ChatMessage.objects.acreate(
-        user=user, role=MessageRole.USER, content=message
-    )
+    await ChatMessage.objects.acreate(user=user, role=MessageRole.USER, content=message)
     if await _pending_receipt(user):
         return _sse_response(user, receipt_confirm_agent, message, message_history=None)
     history = await _load_history(user)
@@ -200,9 +194,7 @@ async def _handle_multipart(request, user):
     audio = request.FILES.get("audio")
 
     if images and audio:
-        return JsonResponse(
-            {"error": "Envie apenas um tipo de arquivo por mensagem."}, status=400
-        )
+        return JsonResponse({"error": "Envie apenas um tipo de arquivo por mensagem."}, status=400)
     if not images and not audio and not caption:
         return JsonResponse({"error": "Nada para processar."}, status=400)
 
@@ -212,9 +204,7 @@ async def _handle_multipart(request, user):
         return await _handle_audio(request, user, audio, caption)
 
     # multipart só com texto: trata como mensagem normal
-    await ChatMessage.objects.acreate(
-        user=user, role=MessageRole.USER, content=caption
-    )
+    await ChatMessage.objects.acreate(user=user, role=MessageRole.USER, content=caption)
     if await _pending_receipt(user):
         return _sse_response(user, receipt_confirm_agent, caption, message_history=None)
     history = await _load_history(user)
@@ -243,17 +233,13 @@ async def _handle_audio(request, user, audio, caption):
         )
 
     message = f"{caption}\n{text}".strip() if caption else text
-    await ChatMessage.objects.acreate(
-        user=user, role=MessageRole.USER, content=message
-    )
+    await ChatMessage.objects.acreate(user=user, role=MessageRole.USER, content=message)
     if await _pending_receipt(user):
         return _sse_response(
             user, receipt_confirm_agent, message, message_history=None, user_text=message
         )
     history = await _load_history(user)
-    return _sse_response(
-        user, assistant_agent, message, message_history=history, user_text=message
-    )
+    return _sse_response(user, assistant_agent, message, message_history=history, user_text=message)
 
 
 async def _handle_images(request, user, images, caption):
@@ -269,9 +255,7 @@ async def _handle_images(request, user, images, caption):
         if image.size > max_bytes:
             return JsonResponse({"error": "Imagem muito grande."}, status=400)
         if image.content_type not in settings.ASSISTANT_ALLOWED_IMAGE_TYPES:
-            return JsonResponse(
-                {"error": "Formato de imagem não suportado."}, status=400
-            )
+            return JsonResponse({"error": "Formato de imagem não suportado."}, status=400)
         data, media_type = prepare_receipt_image(image.read(), image.content_type)
         prepared.append((data, media_type))
 
@@ -295,9 +279,7 @@ async def _handle_images(request, user, images, caption):
     try:
         extraction = await extract_receipt(prepared, categories=cats, payment_methods=pms)
     except Exception:
-        logger.exception(
-            "Falha na extração estruturada do recibo; tentando com modelo de visão."
-        )
+        logger.exception("Falha na extração estruturada do recibo; tentando com modelo de visão.")
 
     if extraction is not None:
         await ReceiptDraft.objects.acreate(
@@ -305,9 +287,7 @@ async def _handle_images(request, user, images, caption):
             chat_message=chat_msg,
             payload=extraction.model_dump(mode="json"),
         )
-        needs_review = receipt_needs_review(
-            extraction, settings.ASSISTANT_RECEIPT_MIN_CONFIDENCE
-        )
+        needs_review = receipt_needs_review(extraction, settings.ASSISTANT_RECEIPT_MIN_CONFIDENCE)
         prompt = extraction_to_prompt(extraction, caption, needs_review=needs_review)
         return _sse_response(
             user,
@@ -320,12 +300,15 @@ async def _handle_images(request, user, images, caption):
     # Fallback: tenta UMA vez a extração com o modelo de visão; sem sucesso,
     # pede reenvio (nunca grava direto).
     try:
-        extraction = await extract_receipt(prepared, categories=cats, payment_methods=pms, model=settings.LLM_VISION_MODEL)
+        extraction = await extract_receipt(
+            prepared, categories=cats, payment_methods=pms, model=settings.LLM_VISION_MODEL
+        )
     except Exception:
         logger.exception("Extração do recibo falhou mesmo com o modelo de visão.")
         extraction = None
 
     if extraction is None:
+
         async def _resend():
             msg = (
                 "Não consegui ler esse recibo com segurança. Pode reenviar a foto "
@@ -338,10 +321,14 @@ async def _handle_images(request, user, images, caption):
             assistant_msg = await ChatMessage.objects.acreate(
                 user=user, role=MessageRole.ASSISTANT, content=msg
             )
-            yield json.dumps(
-                {"type": "done", "message_id": str(assistant_msg.id), "data_changed": False},
-                ensure_ascii=False,
-            ) + "\n"
+            yield (
+                json.dumps(
+                    {"type": "done", "message_id": str(assistant_msg.id), "data_changed": False},
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+
         resp = StreamingHttpResponse(_resend(), content_type="text/event-stream")
         resp["Cache-Control"] = "no-cache"
         resp["X-Accel-Buffering"] = "no"
@@ -350,9 +337,7 @@ async def _handle_images(request, user, images, caption):
     await ReceiptDraft.objects.acreate(
         user=user, chat_message=chat_msg, payload=extraction.model_dump(mode="json")
     )
-    needs_review = receipt_needs_review(
-        extraction, settings.ASSISTANT_RECEIPT_MIN_CONFIDENCE
-    )
+    needs_review = receipt_needs_review(extraction, settings.ASSISTANT_RECEIPT_MIN_CONFIDENCE)
     prompt = extraction_to_prompt(extraction, caption, needs_review=needs_review)
     return _sse_response(
         user, receipt_confirm_agent, prompt, message_history=None, user_text=user_label
