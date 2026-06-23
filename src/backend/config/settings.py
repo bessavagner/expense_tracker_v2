@@ -174,6 +174,7 @@ LLM_MODEL = os.environ.get("LLM_MODEL", "openai:gpt-5.4")
 # padrão herdam LLM_MODEL para não exigir configuração extra nem chaves novas.
 LLM_ORCHESTRATOR_MODEL = os.environ.get("LLM_ORCHESTRATOR_MODEL", "openai:gpt-5.4-mini")
 LLM_WORKER_MODEL = os.environ.get("LLM_WORKER_MODEL", "openai:gpt-5.5")
+LLM_ASSISTANT_MODEL = os.environ.get("LLM_ASSISTANT_MODEL", "openai:gpt-5.4")
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
 ASSISTANT_MAX_HISTORY = int(os.environ.get("ASSISTANT_MAX_HISTORY", "20"))
 # Teto de requisições por delegação a um sub-agente (controle de custo multi-agente)

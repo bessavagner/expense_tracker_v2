@@ -530,14 +530,14 @@ def build_receipt_context(user) -> str:
 
 
 def build_pending_receipt_directive(user) -> str:
-    """Diretiva para o ORQUESTRADOR quando há um recibo de foto PENDENTE.
+    """Diretiva para o ASSISTENTE quando há um recibo de foto PENDENTE.
 
     O turno da foto mostra a tabela e pergunta "Confirma?"; a confirmação do
-    usuário ("sim") volta pelo caminho de TEXTO → orquestrador. Sem este aviso o
-    orquestrador não sabe que existe um recibo a registrar, NÃO chama
-    delegate_registro e ainda responde "registrei" (nada é gravado — bug real do
-    recibo MATEUS: draft pendente, 0 lançamentos). A diretiva força a delegação
-    e proíbe afirmar registro sem o resultado da ferramenta.
+    usuário ("sim") volta pelo caminho de TEXTO → assistente. Sem este aviso o
+    assistente não sabe que existe um recibo a registrar e ainda responde
+    "registrei" sem gravar nada (bug real do recibo MATEUS: draft pendente,
+    0 lançamentos). A diretiva força o uso das ferramentas reais de recibo e
+    proíbe afirmar registro sem o resultado da ferramenta.
     """
     draft = (
         ReceiptDraft.objects.filter(user=user, status=ReceiptDraftStatus.PENDING)
@@ -552,13 +552,16 @@ def build_pending_receipt_directive(user) -> str:
     paid_str = paid if paid is not None else "?"
     return (
         "⚠️ HÁ UM RECIBO DE FOTO PENDENTE aguardando confirmação para ser "
-        f"registrado (loja: {store}, valor pago: {paid_str}). Se a mensagem do "
-        "usuário for uma CONFIRMAÇÃO (sim, ok, pode, isso, confirmo, manda, "
-        "beleza, fechado, etc.) OU um AJUSTE ao recibo (categorias, forma de "
-        "pagamento, loja, data), você DEVE chamar delegate_registro repassando a "
-        "mensagem do usuário — é o ÚNICO caminho que grava o recibo. NUNCA diga "
-        "que registrou/registramos nem responda 'pronto' sem ter chamado "
-        "delegate_registro e recebido o resultado da ferramenta."
+        f"registrado (loja: {store}, valor pago: {paid_str}). "
+        "Se a mensagem do usuário for uma CONFIRMAÇÃO (sim, ok, pode, isso, "
+        "confirmo, manda, beleza, fechado, etc.) → chame commit_receipt(). "
+        "Se for um AJUSTE de categoria, forma de pagamento, loja ou data → "
+        "chame propose_receipt(...) com a correção e re-exiba a tabela. "
+        "Para adicionar algo que não está na foto (ex.: frete) → "
+        "add_receipt_item(descrição, valor, categoria) e re-proponha. "
+        "Para cancelar → discard_receipt(). "
+        "NUNCA diga que registrou/registramos nem responda 'pronto' sem ter "
+        "chamado commit_receipt e recebido o resultado da ferramenta."
     )
 
 
