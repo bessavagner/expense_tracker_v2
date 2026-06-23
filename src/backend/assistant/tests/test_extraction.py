@@ -89,14 +89,14 @@ def test_extraction_to_prompt_review_adds_caution():
     low = prompt.lower()
     assert "incerta" in low
     assert "confirm" in low
-    assert "não use register_receipt" in low
+    assert "não use propose_receipt" in low
 
 
 def test_extraction_to_prompt_lists_items_and_tool():
     ext = _extraction([("Soutien", "9.99"), ("Lays", "9.99")], discount="0")
     prompt = extraction_to_prompt(ext, caption="paguei no c6")
     assert "Soutien" in prompt and "Lays" in prompt
-    assert "register_receipt" in prompt
+    assert "propose_receipt" in prompt
     assert "Loja X" in prompt
     assert "paguei no c6" in prompt
 

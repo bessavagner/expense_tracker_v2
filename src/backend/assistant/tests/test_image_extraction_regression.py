@@ -122,7 +122,7 @@ def test_americanas_split_sums_to_amount_paid(seeded_user):
     from django.db.models import Sum
     from model_bakery import baker
 
-    from assistant.agents.tools import register_receipt
+    from assistant.agents.tools import commit_receipt, propose_receipt
     from finances.models import Entry
 
     baker.make("finances.Category", user=seeded_user, name="Roupa")
@@ -130,11 +130,12 @@ def test_americanas_split_sums_to_amount_paid(seeded_user):
         seeded_user, AMERICANAS_ITEMS, store="americanas sa - 1063",
         date="2026-06-12", discount="3.99", amount_paid="42.16",
     )
-    register_receipt(
+    propose_receipt(
         user=seeded_user,
         items_by_category={"Roupa": [0], "Lanche": [1, 2, 3, 4]},
         payment_method_name="Crédito C6",
     )
+    commit_receipt(user=seeded_user)
     entries = Entry.objects.filter(user=seeded_user)
     assert entries.count() == 2
     assert entries.aggregate(s=Sum("amount"))["s"] == Decimal("42.16")
@@ -148,7 +149,7 @@ def test_hipermacional_no_double_count_and_correct_total(seeded_user):
     from django.db.models import Sum
     from model_bakery import baker
 
-    from assistant.agents.tools import register_receipt
+    from assistant.agents.tools import commit_receipt, propose_receipt
     from finances.models import Entry
 
     for cat in ("Pets", "Casa", "Limpeza", "Perfumaria"):
@@ -157,12 +158,13 @@ def test_hipermacional_no_double_count_and_correct_total(seeded_user):
         seeded_user, HIPERMACIONAL_ITEMS, store="HIPERMACIONAL LTDA",
         date="2026-06-15", discount="0", amount_paid="376.70",
     )
-    msg = register_receipt(
+    propose_receipt(
         user=seeded_user,
         items_by_category=mapping,
         payment_method_name="Crédito C6",  # cartão resolvível no seeded_user
         summaries={"Alimentação": "mercearia, carnes e laticínios"},
     )
+    msg = commit_receipt(user=seeded_user)
     assert "✅" in msg
     entries = Entry.objects.filter(user=seeded_user)
     assert entries.count() == 6

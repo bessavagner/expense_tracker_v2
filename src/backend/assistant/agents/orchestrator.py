@@ -20,6 +20,7 @@ from pydantic_ai.usage import UsageLimits
 from assistant.agents.analyst import analyst_agent
 from assistant.agents.planner import planner_agent
 from assistant.agents.prompts import ORCHESTRATOR_PROMPT, build_date_instructions
+from assistant.agents.receipt_confirm import receipt_confirm_agent
 from assistant.agents.registrar import registrar_agent
 from assistant.agents.tools import (
     build_pending_receipt_directive,
@@ -100,7 +101,13 @@ async def delegate_planejamento(ctx: RunContext[User], request: str) -> str:
 assistant_agent = orchestrator_agent
 
 # Todos os agentes do sistema — útil para testes (stub de modelo em bloco).
-ALL_AGENTS = (orchestrator_agent, registrar_agent, analyst_agent, planner_agent)
+ALL_AGENTS = (
+    orchestrator_agent,
+    registrar_agent,
+    analyst_agent,
+    planner_agent,
+    receipt_confirm_agent,
+)
 
 
 @contextmanager

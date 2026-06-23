@@ -513,7 +513,7 @@ class TestReceiptContext:
         ctx = build_receipt_context(user)
         assert "Lojas Americanas" in ctx
         assert "Soutien" in ctx
-        assert "register_receipt" in ctx
+        assert "propose_receipt" in ctx
 
     def test_ignores_non_pending_draft(self, user):
         from assistant.agents.tools import build_receipt_context
@@ -527,8 +527,9 @@ class TestReceiptContext:
 
 @pytest.mark.django_db
 class TestRegisterReceipt:
-    """register_receipt: registra a partir do ReceiptDraft pendente, atribuindo
-    cada item (por ÍNDICE) a exatamente uma categoria — impede dupla contagem."""
+    """propose_receipt + commit_receipt: registra a partir do ReceiptDraft pendente,
+    atribuindo cada item (por ÍNDICE) a exatamente uma categoria — impede dupla
+    contagem. (Substitui o antigo one-shot register_receipt.)"""
 
     def _add(self, user, name):
         from model_bakery import baker
@@ -564,19 +565,20 @@ class TestRegisterReceipt:
     def test_registers_one_line_per_category_from_draft_values(self, seeded_user):
         from django.db.models import Sum
 
-        from assistant.agents.tools import register_receipt
+        from assistant.agents.tools import commit_receipt, propose_receipt
         from finances.models import Entry
 
         self._add(seeded_user, "Pets")
         draft = self._draft(
             seeded_user, [("MASSA", "9.95"), ("ENERG", "14.50"), ("RACAO", "9.45")]
         )
-        register_receipt(
+        propose_receipt(
             user=seeded_user,
             items_by_category={"Alimentação": [0], "Lanche": [1], "Pets": [2]},
             payment_method_name="Crédito C6",
             summaries={"Alimentação": "massa"},
         )
+        commit_receipt(user=seeded_user)
         entries = Entry.objects.filter(user=seeded_user)
         assert entries.count() == 3
         assert entries.aggregate(s=Sum("amount"))["s"] == Decimal("33.90")
@@ -590,7 +592,7 @@ class TestRegisterReceipt:
         assert draft.status == "registered"
 
     def test_double_counting_is_rejected(self, seeded_user):
-        from assistant.agents.tools import register_receipt
+        from assistant.agents.tools import propose_receipt
         from finances.models import Entry
 
         self._add(seeded_user, "Pets")
@@ -598,7 +600,7 @@ class TestRegisterReceipt:
             seeded_user, [("MASSA", "9.95"), ("ENERG", "14.50"), ("RACAO", "9.45")]
         )
         # idx 2 em duas categorias; idx 1 faltando
-        msg = register_receipt(
+        msg = propose_receipt(
             user=seeded_user,
             items_by_category={"Alimentação": [0, 2], "Pets": [2]},
             payment_method_name="Crédito C6",
@@ -609,11 +611,11 @@ class TestRegisterReceipt:
         assert draft.status == "pending"
 
     def test_missing_item_is_rejected(self, seeded_user):
-        from assistant.agents.tools import register_receipt
+        from assistant.agents.tools import propose_receipt
         from finances.models import Entry
 
         self._draft(seeded_user, [("MASSA", "9.95"), ("ENERG", "14.50")])
-        msg = register_receipt(
+        msg = propose_receipt(
             user=seeded_user,
             items_by_category={"Alimentação": [0]},  # falta o índice 1
             payment_method_name="Crédito C6",
@@ -624,7 +626,7 @@ class TestRegisterReceipt:
     def test_prorates_discount_to_amount_paid(self, seeded_user):
         from django.db.models import Sum
 
-        from assistant.agents.tools import register_receipt
+        from assistant.agents.tools import commit_receipt, propose_receipt
         from finances.models import Entry
 
         self._add(seeded_user, "Roupa")
@@ -634,34 +636,36 @@ class TestRegisterReceipt:
             discount="3.99",
             amount_paid="42.16",
         )
-        register_receipt(
+        propose_receipt(
             user=seeded_user,
             items_by_category={"Roupa": [0], "Lanche": [1, 2, 3, 4]},
             payment_method_name="Crédito C6",
         )
+        commit_receipt(user=seeded_user)
         entries = Entry.objects.filter(user=seeded_user)
         assert entries.aggregate(s=Sum("amount"))["s"] == Decimal("42.16")
         assert entries.get(category__name="Roupa").amount == Decimal("9.13")
         assert entries.get(category__name="Lanche").amount == Decimal("33.03")
 
     def test_payment_falls_back_to_unambiguous_hint(self, seeded_user):
-        from assistant.agents.tools import register_receipt
+        from assistant.agents.tools import commit_receipt, propose_receipt
         from finances.models import Entry
 
         self._draft(seeded_user, [("ENERG", "14.50")], payment_hint="Pix")
-        register_receipt(
+        propose_receipt(
             user=seeded_user,
             items_by_category={"Lanche": [0]},
             payment_method_name="",  # vazio → cai no hint do recibo
         )
+        commit_receipt(user=seeded_user)
         assert Entry.objects.get(user=seeded_user).payment_method.name == "Pix"
 
     def test_generic_credit_hint_asks_which_card(self, seeded_user):
-        from assistant.agents.tools import register_receipt
+        from assistant.agents.tools import propose_receipt
         from finances.models import Entry
 
         self._draft(seeded_user, [("ENERG", "14.50")], payment_hint="Cartão Crédito")
-        msg = register_receipt(
+        msg = propose_receipt(
             user=seeded_user,
             items_by_category={"Lanche": [0]},
             payment_method_name="",  # genérico não resolve → pergunta
@@ -670,13 +674,13 @@ class TestRegisterReceipt:
         assert Entry.objects.filter(user=seeded_user).count() == 0
 
     def test_no_pending_draft_errors(self, seeded_user):
-        from assistant.agents.tools import register_receipt
+        from assistant.agents.tools import propose_receipt
         from finances.models import Entry
 
-        msg = register_receipt(
+        msg = propose_receipt(
             user=seeded_user,
             items_by_category={"Lanche": [0]},
             payment_method_name="Pix",
         )
-        assert "erro" in msg.lower() and "recibo" in msg.lower()
+        assert "pendente" in msg.lower() or "recibo" in msg.lower()
         assert Entry.objects.filter(user=seeded_user).count() == 0

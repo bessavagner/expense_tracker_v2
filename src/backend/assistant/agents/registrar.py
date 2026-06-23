@@ -26,9 +26,6 @@ from assistant.agents.tools import (
     update_income,
 )
 from assistant.agents.tools import (
-    register_receipt as _register_receipt,
-)
-from assistant.agents.tools import (
     set_systemic_amount as _set_systemic_amount,
 )
 
@@ -81,39 +78,6 @@ async def register_entry(
         description=description,
         category_name=category_name,
         payment_method_name=payment_method_name,
-    )
-
-
-@registrar_agent.tool
-async def register_receipt(
-    ctx: RunContext[User],
-    items_by_category: dict[str, list[int]],
-    payment_method_name: str = "",
-    summaries: dict[str, str] | None = None,
-) -> str:
-    """Registra o recibo de FOTO pendente em N linhas (uma por categoria).
-
-    Use para cupom de foto: loja, data, desconto e VALORES dos itens vêm do
-    recibo já lido (não redigite valores). Você só atribui cada item à sua
-    categoria, por ÍNDICE. A soma e o rateio do desconto são determinísticos.
-
-    Args:
-        items_by_category: Mapa categoria -> lista de ÍNDICES (0-based, na ordem
-            do recibo) dos itens daquela categoria. Cada índice deve aparecer em
-            EXATAMENTE uma categoria (ex.: {"Alimentação": [0,1,4], "Lanche":
-            [2], "Pets": [3]}).
-        payment_method_name: Forma de pagamento (ex.: "Crédito Santander").
-            Vazio usa o que foi lido no cupom; se o cupom só disser "Cartão
-            Crédito" e houver vários cartões, pergunte ao usuário qual antes.
-        summaries: Mapa categoria -> resumo curto do conteúdo (ex.:
-            {"Alimentação": "grãos, legumes e verduras, laticínios"}). Vira a
-            descrição "<loja> - <resumo>".
-    """
-    return await sync_to_async(_register_receipt)(
-        user=ctx.deps,
-        items_by_category=items_by_category,
-        payment_method_name=payment_method_name,
-        summaries=summaries,
     )
 
 

@@ -27,7 +27,7 @@ MUTATING_TOOLS = frozenset(
     {
         "delegate_registro",
         "register_entry",
-        "register_receipt",
+        "commit_receipt",
         "add_category",
         "set_category_budget",
         "add_payment_method",

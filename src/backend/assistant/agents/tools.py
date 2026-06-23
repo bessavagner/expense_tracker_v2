@@ -305,145 +305,6 @@ def propose_receipt(user, items_by_category, payment_method_name="", summaries=N
     return f"{plan['table']}\n\nConfirma?"
 
 
-def register_receipt(
-    user,
-    items_by_category: dict[str, list[int]],
-    payment_method_name: str = "",
-    summaries: dict[str, str] | None = None,
-) -> str:
-    """Registra o recibo de FOTO pendente (ReceiptDraft) em N linhas, uma por
-    categoria, atribuindo cada item por ÍNDICE.
-
-    ``items_by_category`` mapeia o NOME da categoria para a lista de ÍNDICES
-    (0-based, na ordem em que o recibo foi lido) dos itens daquela categoria.
-    Cada item DEVE aparecer em exatamente UMA categoria; a soma usa os valores
-    do recibo (fonte da verdade), nunca valores redigitados — então a soma das
-    linhas bate com o valor pago e nenhum item é contado duas vezes.
-
-    ``summaries`` (opcional) mapeia categoria → resumo curto do conteúdo (ex.:
-    "grãos, legumes e verduras, laticínios"); a descrição fica "<loja> - <resumo>".
-
-    ``payment_method_name`` vazio cai na forma de pagamento lida no cupom; se o
-    cupom só disser "Cartão Crédito" (genérico, vários cartões), pergunta qual.
-    """
-    draft = (
-        ReceiptDraft.objects.filter(user=user, status=ReceiptDraftStatus.PENDING)
-        .order_by("-created_at")
-        .first()
-    )
-    if draft is None:
-        return "Erro: nenhum recibo (foto) pendente para registrar."
-    payload = draft.payload or {}
-    items = payload.get("items", [])
-    n = len(items)
-    if n == 0:
-        return "Erro: o recibo pendente não tem itens."
-
-    # Cada item em exatamente UMA categoria (impede dupla contagem / omissão).
-    assigned = [i for idxs in items_by_category.values() for i in idxs]
-    if sorted(assigned) != list(range(n)):
-        seen: set[int] = set()
-        dups = sorted({i for i in assigned if (i in seen) or seen.add(i)})
-        missing = sorted(set(range(n)) - set(assigned))
-        out_of_range = sorted(i for i in assigned if i < 0 or i >= n)
-        problems = []
-        if missing:
-            problems.append(f"faltando={missing}")
-        if dups:
-            problems.append(f"repetidos={dups}")
-        if out_of_range:
-            problems.append(f"fora do intervalo 0..{n - 1}={out_of_range}")
-        return (
-            f"Erro: cada um dos {n} itens deve ser atribuído a exatamente UMA "
-            f"categoria ({'; '.join(problems)})."
-        )
-
-    # Forma de pagamento: o modelo informa; senão, o que foi lido no cupom.
-    pm_name = (payment_method_name or "").strip() or str(
-        payload.get("payment_hint") or ""
-    ).strip()
-    payment_method, pm_matches = _resolve_by_name(
-        PaymentMethod.objects.filter(user=user, is_active=True), pm_name
-    )
-    if payment_method is None:
-        available = ", ".join(list_payment_methods(user))
-        if len(pm_matches) > 1:
-            return f"Forma de pagamento '{pm_name}' é ambígua. Qual? {', '.join(pm_matches)}"
-        hint = str(payload.get("payment_hint") or "").strip()
-        last4 = str(payload.get("card_last4") or "").strip()
-        extra = f" O cupom indica '{hint}'." if hint else ""
-        if last4:
-            extra += f" Cartão final {last4}."
-        return (
-            f"Qual a forma de pagamento?{extra} Não consegui resolver "
-            f"'{pm_name}'. Disponíveis: {available}"
-        )
-
-    # Resolve categorias e soma cada grupo pelos VALORES do recibo.
-    resolved: dict[str, Category] = {}
-    category_sums: dict[str, Decimal] = {}
-    for cat_name, idxs in items_by_category.items():
-        category, cat_matches = _resolve_by_name(
-            Category.objects.filter(user=user), cat_name
-        )
-        if category is None:
-            if len(cat_matches) > 1:
-                return (
-                    f"Erro: categoria '{cat_name}' é ambígua. "
-                    f"Você quis dizer: {', '.join(cat_matches)}?"
-                )
-            available = ", ".join(list_categories(user))
-            return f"Erro: categoria '{cat_name}' não encontrada. Disponíveis: {available}"
-        try:
-            subtotal = sum(
-                (Decimal(str(items[i].get("line_total", "0"))) for i in idxs),
-                Decimal("0"),
-            )
-        except InvalidOperation:
-            return f"Erro: valor inválido nos itens da categoria '{cat_name}'."
-        resolved[cat_name] = category
-        category_sums[cat_name] = subtotal
-
-    try:
-        discount_val = Decimal(str(payload.get("discount") or "0"))
-    except InvalidOperation:
-        discount_val = Decimal("0")
-    discount_by_cat = _prorate_discount(category_sums, discount_val)
-
-    store = str(payload.get("store") or "Recibo").strip()
-    date_str = payload.get("date")
-    try:
-        entry_date = date.fromisoformat(date_str) if date_str else timezone.localdate()
-    except (ValueError, TypeError):
-        entry_date = timezone.localdate()
-
-    summaries = summaries or {}
-    created = []
-    with transaction.atomic():
-        for cat_name, category in resolved.items():
-            net = (category_sums[cat_name] - discount_by_cat[cat_name]).quantize(_CENTS)
-            summary = (summaries.get(cat_name) or "").strip() or category.name
-            description = f"{store} - {summary}".replace(",", " -").strip()
-            entry = Entry.objects.create(
-                user=user,
-                date=entry_date,
-                amount=net,
-                description=description,
-                category=category,
-                payment_method=payment_method,
-            )
-            created.append((category.name, entry.amount))
-        draft.status = ReceiptDraftStatus.REGISTERED
-        draft.save(update_fields=["status", "updated_at"])
-
-    total_paid = sum((amt for _, amt in created), Decimal("0"))
-    lines = "; ".join(f"{name} R$ {amt:.2f}" for name, amt in created)
-    return (
-        f"✅ Registrado de {store} em {entry_date:%d/%m/%Y} via "
-        f"{payment_method.name}: {lines} (total R$ {total_paid:.2f})"
-    )
-
-
 def commit_receipt(user) -> str:
     """Grava (uma vez) o recibo PENDENTE a partir do plano salvo. Determinístico."""
     draft = (
@@ -516,7 +377,7 @@ def build_receipt_context(user) -> str:
         return ""
     payload = draft.payload or {}
     items = payload.get("items", [])
-    # Itens NUMERADOS (índice) — register_receipt atribui cada índice a 1 categoria.
+    # Itens NUMERADOS (índice) — propose_receipt atribui cada índice a 1 categoria.
     item_lines = "; ".join(
         f"[{idx}] {i.get('description', '?')} R$ {i.get('line_total', '?')}"
         for idx, i in enumerate(items)
@@ -530,7 +391,7 @@ def build_receipt_context(user) -> str:
         f"desconto={payload.get('discount', '0')}, "
         f"valor_pago={payload.get('amount_paid', '?')}, "
         f"itens(índice INTERNO, NÃO mostrar ao usuário)=[{item_lines}]. Use "
-        "register_receipt passando items_by_category como {categoria: [índices]} "
+        "propose_receipt passando items_by_category como {categoria: [índices]} "
         "(cada índice em UMA só categoria) e summaries {categoria: resumo do "
         "conteúdo}; mostre ao usuário só uma tabela limpa (Categoria | Itens). "
         "Forma de pagamento: bandeira de cartão é genérica — resolva pelo final "

@@ -130,9 +130,9 @@ def extraction_to_prompt(
     """Monta o prompt (fase 2) para o registrador a partir da extração.
 
     Entrega os itens já lidos como TEXTO, para o bookkeeping rodar no modelo
-    leve (a visão já foi usada na fase 1). Instrui o uso de ``register_receipt``.
+    leve (a visão já foi usada na fase 1). Instrui o uso de ``propose_receipt``.
     Quando ``needs_review`` é True (leitura incerta), pede confirmação ANTES de
-    gravar. Os índices dos itens são argumento de ``register_receipt`` e NUNCA
+    gravar. Os índices dos itens são argumento de ``propose_receipt`` e NUNCA
     devem ser exibidos ao usuário — a tabela mostrada é limpa (Categoria | Itens).
     """
     if needs_review:
@@ -141,13 +141,13 @@ def extraction_to_prompt(
             "soma não fechou). Mostre uma tabela LIMPA com colunas 'Categoria | "
             "Itens' (resuma o conteúdo), aponte o que ficou duvidoso e PEÇA "
             "CONFIRMAÇÃO. Os índices abaixo são internos: NUNCA os exiba ao "
-            "usuário. NÃO use register_receipt nem grave nada até o usuário "
+            "usuário. NÃO use propose_receipt nem grave nada até o usuário "
             "confirmar. Termine com UMA única pergunta."
         )
     else:
         head = (
             "Recibo lido da foto. Os itens vêm NUMERADOS abaixo APENAS para você "
-            "chamar register_receipt (items_by_category={categoria: [índices]}, "
+            "chamar propose_receipt (items_by_category={categoria: [índices]}, "
             "cada índice em UMA só categoria; summaries={categoria: resumo curto}). "
             "NUNCA exiba esses índices ao usuário. Para o usuário, mostre uma "
             "tabela LIMPA com colunas 'Categoria | Itens' (resuma o conteúdo), mais "
@@ -173,7 +173,7 @@ def extraction_to_prompt(
         _payment_guidance(ext),
         f"Desconto: {ext.discount}",
         f"Valor pago: {ext.amount_paid}",
-        "Itens (índice INTERNO → use só em register_receipt, não mostre ao usuário):",
+        "Itens (índice INTERNO → use só em propose_receipt, não mostre ao usuário):",
         *item_lines,
     ]
     if caption:
