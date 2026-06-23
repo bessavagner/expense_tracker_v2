@@ -90,15 +90,18 @@ def receipt_needs_review(
     return not receipt_is_consistent(extraction)
 
 
-async def extract_receipt(images: list[tuple[bytes, str]]) -> ReceiptExtraction:
+async def extract_receipt(
+    images: list[tuple[bytes, str]], model=None
+) -> ReceiptExtraction:
     """Lê as fotos do recibo e devolve a extração estruturada.
 
     ``images`` é uma lista de ``(data, media_type)``. Quando há mais de uma, são
     páginas/ângulos do MESMO recibo e vão juntas num único run de visão.
+    ``model`` permite sobrescrever o modelo por chamada (usado no fallback de visão).
     """
     prompt = [EXTRACTION_INSTRUCTION]
     prompt += [BinaryContent(data=data, media_type=mt) for data, mt in images]
-    result = await extraction_agent.run(prompt)
+    result = await extraction_agent.run(prompt, model=model)
     return result.output
 
 

@@ -105,7 +105,7 @@ class TestChatEndpoint:
         ).exists()
         assert ChatMessage.objects.filter(user=user, role="assistant").exists()
 
-    def test_multipart_image_routes_to_registrar(self, logged_client, user):
+    def test_multipart_image_routes_to_receipt_confirm(self, logged_client, user):
         # 1x1 PNG válido (bytes mínimos)
         png = (
             b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00"
@@ -113,9 +113,13 @@ class TestChatEndpoint:
             b"c\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
         )
         image = SimpleUploadedFile("recibo.png", png, content_type="image/png")
-        from assistant.agents.registrar import registrar_agent
+        from assistant.agents.extraction import extraction_agent
+        from assistant.agents.receipt_confirm import receipt_confirm_agent
 
-        with registrar_agent.override(model=TestModel()):
+        with (
+            extraction_agent.override(model=TestModel()),
+            receipt_confirm_agent.override(model=TestModel()),
+        ):
             response = logged_client.post(
                 "/api/assistant/chat/", data={"image": image}
             )
@@ -131,7 +135,7 @@ class TestChatEndpoint:
     def test_image_creates_receipt_draft(self, logged_client, user):
         """Fase 1: a foto gera um ReceiptDraft persistido com a extração."""
         from assistant.agents.extraction import extraction_agent
-        from assistant.agents.registrar import registrar_agent
+        from assistant.agents.receipt_confirm import receipt_confirm_agent
         from assistant.models import ReceiptDraft
 
         png = (
@@ -142,7 +146,7 @@ class TestChatEndpoint:
         image = SimpleUploadedFile("recibo.png", png, content_type="image/png")
         with (
             extraction_agent.override(model=TestModel()),
-            registrar_agent.override(model=TestModel()),
+            receipt_confirm_agent.override(model=TestModel()),
         ):
             response = logged_client.post(
                 "/api/assistant/chat/", data={"image": image}
@@ -150,7 +154,9 @@ class TestChatEndpoint:
             consume_streaming(response)
 
         assert response.status_code == 200
-        assert ReceiptDraft.objects.filter(user=user, status="pending").exists()
+        # TestModel calls all tools including discard_receipt, so the draft may
+        # transition pending → discarded; assert creation happened (any status).
+        assert ReceiptDraft.objects.filter(user=user).exists()
 
     def test_multipart_rejects_two_files(self, logged_client, user):
         a = SimpleUploadedFile("n.webm", b"\x00", content_type="audio/webm")
@@ -199,28 +205,36 @@ class TestChatEndpoint:
         )
         assert response.status_code == 400
 
-    def test_image_uses_vision_model_setting(
+    def test_image_fallback_uses_vision_model(
         self, logged_client, user, monkeypatch, settings
     ):
-        """A foto deve ser lida com LLM_VISION_MODEL, não com o modelo do registrador."""
+        """Quando a extração inicial falha, o fallback tenta com LLM_VISION_MODEL."""
         settings.LLM_VISION_MODEL = "openai:vision-sentinel"
         captured = {}
 
-        def fake_sse(user_, agent, prompt, *, message_history, user_text=None, model=None):
-            captured["model"] = model
-            from django.http import HttpResponse
+        async def fake_extract(images, model=None):
+            captured.setdefault("calls", []).append(model)
+            if model is None:
+                raise RuntimeError("primeira extração falha")
+            # segunda chamada com vision model tem sucesso
+            from assistant.agents.extraction import ReceiptExtraction
+            return ReceiptExtraction()
 
-            return HttpResponse("ok")
+        monkeypatch.setattr("assistant.views.extract_receipt", fake_extract)
 
-        monkeypatch.setattr("assistant.views._sse_response", fake_sse)
+        from assistant.agents.receipt_confirm import receipt_confirm_agent
         png = (
             b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00"
             b"\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9c"
             b"c\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
         )
         image = SimpleUploadedFile("recibo.png", png, content_type="image/png")
-        logged_client.post("/api/assistant/chat/", data={"image": image})
-        assert captured["model"] == "openai:vision-sentinel"
+        with receipt_confirm_agent.override(model=TestModel()):
+            response = logged_client.post("/api/assistant/chat/", data={"image": image})
+            consume_streaming(response)
+
+        assert captured["calls"][0] is None, "primeira chamada sem model override"
+        assert captured["calls"][1] == "openai:vision-sentinel", "segunda usa LLM_VISION_MODEL"
 
     def test_image_is_preprocessed_before_send(
         self, logged_client, user, monkeypatch
@@ -230,25 +244,30 @@ class TestChatEndpoint:
 
         def fake_prepare(data, media_type):
             calls["called"] = True
+            calls["media_type"] = media_type
             return b"PREPPED", "image/jpeg"
 
         monkeypatch.setattr("assistant.views.prepare_receipt_image", fake_prepare)
 
-        def fake_sse(user_, agent, prompt, *, message_history, user_text=None, model=None):
-            calls["prompt"] = prompt
-            from django.http import HttpResponse
+        from assistant.agents.extraction import ReceiptExtraction
 
-            return HttpResponse("ok")
+        async def fake_extract(images, model=None):
+            calls["extract_images"] = images
+            return ReceiptExtraction()
 
-        monkeypatch.setattr("assistant.views._sse_response", fake_sse)
+        monkeypatch.setattr("assistant.views.extract_receipt", fake_extract)
+
+        from assistant.agents.receipt_confirm import receipt_confirm_agent
         png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
         image = SimpleUploadedFile("recibo.png", png, content_type="image/png")
-        logged_client.post("/api/assistant/chat/", data={"image": image})
+        with receipt_confirm_agent.override(model=TestModel()):
+            response = logged_client.post("/api/assistant/chat/", data={"image": image})
+            consume_streaming(response)
+
         assert calls.get("called") is True
-        # o BinaryContent deve carregar os bytes pré-processados
-        binary = calls["prompt"][1]
-        assert binary.data == b"PREPPED"
-        assert binary.media_type == "image/jpeg"
+        # os bytes pré-processados chegam ao extract_receipt
+        assert calls["extract_images"][0][0] == b"PREPPED"
+        assert calls["extract_images"][0][1] == "image/jpeg"
 
     _PNG = (
         b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00"
@@ -259,11 +278,11 @@ class TestChatEndpoint:
     def test_multiple_images_one_extraction(self, logged_client, user, monkeypatch):
         """N fotos => UMA chamada a extract_receipt com N imagens (mesmo recibo)."""
         from assistant.agents.extraction import ReceiptExtraction
-        from assistant.agents.registrar import registrar_agent
+        from assistant.agents.receipt_confirm import receipt_confirm_agent
 
         captured = {}
 
-        async def fake_extract(images):
+        async def fake_extract(images, model=None):
             captured["images"] = images
             return ReceiptExtraction()
 
@@ -271,7 +290,7 @@ class TestChatEndpoint:
 
         img1 = SimpleUploadedFile("a.png", self._PNG, content_type="image/png")
         img2 = SimpleUploadedFile("b.png", self._PNG, content_type="image/png")
-        with registrar_agent.override(model=TestModel()):
+        with receipt_confirm_agent.override(model=TestModel()):
             response = logged_client.post(
                 "/api/assistant/chat/",
                 data={"image": [img1, img2], "message": "isso é mercado"},
@@ -301,6 +320,24 @@ class TestChatEndpoint:
             "/api/assistant/chat/", data={"image": [good, bad]}
         )
         assert response.status_code == 400
+
+    def test_image_proposes_without_writing(self, logged_client, seeded_user):
+        """Turno de imagem NUNCA cria Entry — apenas propõe via receipt_confirm_agent."""
+        from assistant.agents.extraction import extraction_agent
+        from assistant.agents.receipt_confirm import receipt_confirm_agent
+        from finances.models import Entry
+
+        image = SimpleUploadedFile("recibo.png", self._PNG, content_type="image/png")
+        with (
+            extraction_agent.override(model=TestModel()),
+            receipt_confirm_agent.override(model=TestModel()),
+        ):
+            resp = logged_client.post(
+                "/api/assistant/chat/", {"image": image}
+            )
+            consume_streaming(resp)
+
+        assert Entry.objects.filter(user=seeded_user).count() == 0
 
 
 @pytest.mark.django_db

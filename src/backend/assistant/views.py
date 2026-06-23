@@ -12,7 +12,7 @@ from assistant.agents.extraction import (
     receipt_needs_review,
 )
 from assistant.agents.orchestrator import assistant_agent
-from assistant.agents.registrar import registrar_agent
+from assistant.agents.receipt_confirm import receipt_confirm_agent
 from assistant.models import ChatMessage, MessageRole, ReceiptDraft
 from assistant.services.image_prep import prepare_receipt_image
 from assistant.services.transcription import transcribe_audio
@@ -238,8 +238,6 @@ async def _handle_audio(request, user, audio, caption):
 
 
 async def _handle_images(request, user, images, caption):
-    from pydantic_ai import BinaryContent
-
     if len(images) > settings.ASSISTANT_MAX_IMAGES:
         return JsonResponse(
             {"error": f"Envie no máximo {settings.ASSISTANT_MAX_IMAGES} imagens."},
@@ -274,7 +272,7 @@ async def _handle_images(request, user, images, caption):
         extraction = await extract_receipt(prepared)
     except Exception:
         logger.exception(
-            "Falha na extração estruturada do recibo; fallback para leitura direta."
+            "Falha na extração estruturada do recibo; tentando com modelo de visão."
         )
 
     if extraction is not None:
@@ -289,28 +287,51 @@ async def _handle_images(request, user, images, caption):
         prompt = extraction_to_prompt(extraction, caption, needs_review=needs_review)
         return _sse_response(
             user,
-            registrar_agent,
+            receipt_confirm_agent,
             prompt,
             message_history=None,
             user_text=user_label,
         )
 
-    # Fallback: manda TODAS as fotos ao registrador com o modelo de visão.
-    instruction = (
-        "Estas são fotos de um recibo/cupom (páginas/ângulos do mesmo recibo). "
-        "Extraia os lançamentos seguindo as regras e confirme um resumo antes de gravar."
+    # Fallback: tenta UMA vez a extração com o modelo de visão; sem sucesso,
+    # pede reenvio (nunca grava direto).
+    try:
+        extraction = await extract_receipt(prepared, model=settings.LLM_VISION_MODEL)
+    except Exception:
+        logger.exception("Extração do recibo falhou mesmo com o modelo de visão.")
+        extraction = None
+
+    if extraction is None:
+        async def _resend():
+            msg = (
+                "Não consegui ler esse recibo com segurança. Pode reenviar a foto "
+                "(mais nítida / completa) ou me diga os itens por texto?"
+            )
+            yield (
+                json.dumps({"type": "user_text", "content": user_label}, ensure_ascii=False) + "\n"
+            )
+            yield json.dumps({"type": "token", "content": msg}, ensure_ascii=False) + "\n"
+            assistant_msg = await ChatMessage.objects.acreate(
+                user=user, role=MessageRole.ASSISTANT, content=msg
+            )
+            yield json.dumps(
+                {"type": "done", "message_id": str(assistant_msg.id), "data_changed": False},
+                ensure_ascii=False,
+            ) + "\n"
+        resp = StreamingHttpResponse(_resend(), content_type="text/event-stream")
+        resp["Cache-Control"] = "no-cache"
+        resp["X-Accel-Buffering"] = "no"
+        return resp
+
+    await ReceiptDraft.objects.acreate(
+        user=user, chat_message=chat_msg, payload=extraction.model_dump(mode="json")
     )
-    if caption:
-        instruction += f" Observação do usuário: {caption}"
-    prompt = [instruction]
-    prompt += [BinaryContent(data=d, media_type=m) for d, m in prepared]
+    needs_review = receipt_needs_review(
+        extraction, settings.ASSISTANT_RECEIPT_MIN_CONFIDENCE
+    )
+    prompt = extraction_to_prompt(extraction, caption, needs_review=needs_review)
     return _sse_response(
-        user,
-        registrar_agent,
-        prompt,
-        message_history=None,
-        user_text=user_label,
-        model=settings.LLM_VISION_MODEL,
+        user, receipt_confirm_agent, prompt, message_history=None, user_text=user_label
     )
 
 
