@@ -103,3 +103,49 @@ class TestRunsWithTestModel:
             ) as stream:
                 chunks = [text async for text in stream.stream_text()]
                 assert len(chunks) > 0
+
+
+@pytest.mark.django_db
+class TestPendingReceiptDirective:
+    """Confirmação de recibo de foto ('sim') volta pelo orquestrador; sem aviso
+    de pendência ele não delega o registro e ainda afirma sucesso (bug do
+    recibo MATEUS: draft pendente, 0 lançamentos). A diretiva força a delegação.
+    """
+
+    def _make_pending(self, user):
+        from assistant.models import ReceiptDraft, ReceiptDraftStatus
+
+        return ReceiptDraft.objects.create(
+            user=user,
+            payload={
+                "store": "MATEUS SUPERMERCADOS",
+                "amount_paid": "745.85",
+                "items": [{"description": "arroz", "line_total": "10.00"}],
+            },
+            status=ReceiptDraftStatus.PENDING,
+        )
+
+    def test_directive_present_when_draft_pending(self, user):
+        from assistant.agents.tools import build_pending_receipt_directive
+
+        self._make_pending(user)
+        out = build_pending_receipt_directive(user)
+        assert "delegate_registro" in out
+        assert "MATEUS SUPERMERCADOS" in out
+        assert "NUNCA diga que registrou" in out
+
+    def test_directive_empty_when_no_pending(self, user):
+        from assistant.agents.tools import build_pending_receipt_directive
+
+        assert build_pending_receipt_directive(user) == ""
+
+    def test_directive_empty_when_already_registered(self, user):
+        from assistant.agents.tools import build_pending_receipt_directive
+        from assistant.models import ReceiptDraft, ReceiptDraftStatus
+
+        ReceiptDraft.objects.create(
+            user=user,
+            payload={"store": "X", "items": []},
+            status=ReceiptDraftStatus.REGISTERED,
+        )
+        assert build_pending_receipt_directive(user) == ""
