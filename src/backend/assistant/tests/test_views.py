@@ -212,7 +212,7 @@ class TestChatEndpoint:
         settings.LLM_VISION_MODEL = "openai:vision-sentinel"
         captured = {}
 
-        async def fake_extract(images, model=None):
+        async def fake_extract(images, categories=None, payment_methods=None, model=None):
             captured.setdefault("calls", []).append(model)
             if model is None:
                 raise RuntimeError("primeira extração falha")
@@ -251,7 +251,7 @@ class TestChatEndpoint:
 
         from assistant.agents.extraction import ReceiptExtraction
 
-        async def fake_extract(images, model=None):
+        async def fake_extract(images, categories=None, payment_methods=None, model=None):
             calls["extract_images"] = images
             return ReceiptExtraction()
 
@@ -282,7 +282,7 @@ class TestChatEndpoint:
 
         captured = {}
 
-        async def fake_extract(images, model=None):
+        async def fake_extract(images, categories=None, payment_methods=None, model=None):
             captured["images"] = images
             return ReceiptExtraction()
 
@@ -426,6 +426,31 @@ class TestChatEndpoint:
         assert Entry.objects.filter(user=seeded_user).count() == 2
         draft.refresh_from_db()
         assert draft.status == ReceiptDraftStatus.REGISTERED
+
+
+    def test_images_pass_user_taxonomy_to_extraction(self, logged_client, user, monkeypatch):
+        from assistant.agents.extraction import ReceiptExtraction
+
+        baker.make("finances.Category", user=user, name="Alimentação")
+        baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")
+
+        captured = {}
+
+        async def fake_extract(images, categories=None, payment_methods=None, model=None):
+            captured["categories"] = categories
+            captured["payment_methods"] = payment_methods
+            return ReceiptExtraction(amount_paid=None)
+
+        monkeypatch.setattr("assistant.views.extract_receipt", fake_extract)
+        img = SimpleUploadedFile("a.png", self._PNG, content_type="image/png")
+        from assistant.agents.receipt_confirm import receipt_confirm_agent
+
+        with receipt_confirm_agent.override(model=TestModel()):
+            response = logged_client.post("/api/assistant/chat/", data={"image": img})
+            consume_streaming(response)
+
+        assert "Alimentação" in (captured["categories"] or [])
+        assert "Pix" in (captured["payment_methods"] or [])
 
 
 @pytest.mark.django_db

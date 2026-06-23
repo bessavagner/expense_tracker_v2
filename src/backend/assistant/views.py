@@ -1,6 +1,7 @@
 import json
 import logging
 
+from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.http import JsonResponse, StreamingHttpResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -284,10 +285,15 @@ async def _handle_images(request, user, images, caption):
         user=user, role=MessageRole.USER, content=user_label
     )
 
+    from assistant.agents.tools import list_categories, list_payment_methods
+
+    cats = await sync_to_async(list_categories)(user)
+    pms = await sync_to_async(list_payment_methods)(user)
+
     # Fase 1: extração estruturada (combina todas as imagens num recibo).
     extraction = None
     try:
-        extraction = await extract_receipt(prepared)
+        extraction = await extract_receipt(prepared, categories=cats, payment_methods=pms)
     except Exception:
         logger.exception(
             "Falha na extração estruturada do recibo; tentando com modelo de visão."
@@ -314,7 +320,7 @@ async def _handle_images(request, user, images, caption):
     # Fallback: tenta UMA vez a extração com o modelo de visão; sem sucesso,
     # pede reenvio (nunca grava direto).
     try:
-        extraction = await extract_receipt(prepared, model=settings.LLM_VISION_MODEL)
+        extraction = await extract_receipt(prepared, categories=cats, payment_methods=pms, model=settings.LLM_VISION_MODEL)
     except Exception:
         logger.exception("Extração do recibo falhou mesmo com o modelo de visão.")
         extraction = None
