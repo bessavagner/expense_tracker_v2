@@ -12,30 +12,20 @@ from assistant.agents.extraction import (
     extraction_to_prompt,
     receipt_needs_review,
 )
-from assistant.agents.orchestrator import assistant_agent
-from assistant.agents.receipt_confirm import receipt_confirm_agent
+from assistant.agents.assistant import assistant_agent
 from assistant.models import ChatMessage, MessageRole, ReceiptDraft
 from assistant.services.image_prep import prepare_receipt_image
 from assistant.services.transcription import transcribe_audio
 
 logger = logging.getLogger(__name__)
 
-# Ferramentas que ESCREVEM dados financeiros. Cobrem os dois caminhos: o
-# orquestrador delega escrita via ``delegate_registro``; o registrador (usado
-# direto no fluxo de imagem) chama as ferramentas concretas. Detectar qualquer
-# uma sinaliza ao front que a tela deve recarregar (item #5).
-MUTATING_TOOLS = frozenset(
-    {
-        "delegate_registro",
-        "register_entry",
-        "commit_receipt",
-        "add_category",
-        "set_category_budget",
-        "add_payment_method",
-        "set_income",
-        "set_systemic_amount",
-    }
-)
+# Ferramentas que ESCREVEM dados financeiros. Detectar qualquer uma sinaliza ao
+# front que a tela deve recarregar (item #5).
+MUTATING_TOOLS = frozenset({
+    "register_entry", "commit_receipt", "add_category", "set_category_budget",
+    "add_payment_method", "set_income", "set_systemic_amount",
+    "update_entry", "delete_entry",
+})
 
 
 def _run_mutated_data(messages) -> bool:
@@ -183,7 +173,7 @@ async def _handle_json(request, user):
 
     await ChatMessage.objects.acreate(user=user, role=MessageRole.USER, content=message)
     if await _pending_receipt(user):
-        return _sse_response(user, receipt_confirm_agent, message, message_history=None)
+        return _sse_response(user, assistant_agent, message, message_history=None)
     history = await _load_history(user)
     return _sse_response(user, assistant_agent, message, message_history=history)
 
@@ -206,7 +196,7 @@ async def _handle_multipart(request, user):
     # multipart só com texto: trata como mensagem normal
     await ChatMessage.objects.acreate(user=user, role=MessageRole.USER, content=caption)
     if await _pending_receipt(user):
-        return _sse_response(user, receipt_confirm_agent, caption, message_history=None)
+        return _sse_response(user, assistant_agent, caption, message_history=None)
     history = await _load_history(user)
     return _sse_response(user, assistant_agent, caption, message_history=history)
 
@@ -236,7 +226,7 @@ async def _handle_audio(request, user, audio, caption):
     await ChatMessage.objects.acreate(user=user, role=MessageRole.USER, content=message)
     if await _pending_receipt(user):
         return _sse_response(
-            user, receipt_confirm_agent, message, message_history=None, user_text=message
+            user, assistant_agent, message, message_history=None, user_text=message
         )
     history = await _load_history(user)
     return _sse_response(user, assistant_agent, message, message_history=history, user_text=message)
@@ -291,7 +281,7 @@ async def _handle_images(request, user, images, caption):
         prompt = extraction_to_prompt(extraction, caption, needs_review=needs_review)
         return _sse_response(
             user,
-            receipt_confirm_agent,
+            assistant_agent,
             prompt,
             message_history=None,
             user_text=user_label,
@@ -340,7 +330,7 @@ async def _handle_images(request, user, images, caption):
     needs_review = receipt_needs_review(extraction, settings.ASSISTANT_RECEIPT_MIN_CONFIDENCE)
     prompt = extraction_to_prompt(extraction, caption, needs_review=needs_review)
     return _sse_response(
-        user, receipt_confirm_agent, prompt, message_history=None, user_text=user_label
+        user, assistant_agent, prompt, message_history=None, user_text=user_label
     )
 
 

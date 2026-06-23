@@ -7,7 +7,7 @@ from django.test import Client
 from model_bakery import baker
 from pydantic_ai.models.test import TestModel
 
-from assistant.agents.orchestrator import agents_override
+from assistant.agents.assistant import agents_override, assistant_agent
 from assistant.models import ChatMessage
 
 
@@ -114,11 +114,10 @@ class TestChatEndpoint:
         )
         image = SimpleUploadedFile("recibo.png", png, content_type="image/png")
         from assistant.agents.extraction import extraction_agent
-        from assistant.agents.receipt_confirm import receipt_confirm_agent
 
         with (
             extraction_agent.override(model=TestModel()),
-            receipt_confirm_agent.override(model=TestModel()),
+            assistant_agent.override(model=TestModel()),
         ):
             response = logged_client.post(
                 "/api/assistant/chat/", data={"image": image}
@@ -135,7 +134,6 @@ class TestChatEndpoint:
     def test_image_creates_receipt_draft(self, logged_client, user):
         """Fase 1: a foto gera um ReceiptDraft persistido com a extração."""
         from assistant.agents.extraction import extraction_agent
-        from assistant.agents.receipt_confirm import receipt_confirm_agent
         from assistant.models import ReceiptDraft
 
         png = (
@@ -146,7 +144,7 @@ class TestChatEndpoint:
         image = SimpleUploadedFile("recibo.png", png, content_type="image/png")
         with (
             extraction_agent.override(model=TestModel()),
-            receipt_confirm_agent.override(model=TestModel()),
+            assistant_agent.override(model=TestModel()),
         ):
             response = logged_client.post(
                 "/api/assistant/chat/", data={"image": image}
@@ -222,14 +220,13 @@ class TestChatEndpoint:
 
         monkeypatch.setattr("assistant.views.extract_receipt", fake_extract)
 
-        from assistant.agents.receipt_confirm import receipt_confirm_agent
         png = (
             b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00"
             b"\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9c"
             b"c\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
         )
         image = SimpleUploadedFile("recibo.png", png, content_type="image/png")
-        with receipt_confirm_agent.override(model=TestModel()):
+        with assistant_agent.override(model=TestModel()):
             response = logged_client.post("/api/assistant/chat/", data={"image": image})
             consume_streaming(response)
 
@@ -257,10 +254,9 @@ class TestChatEndpoint:
 
         monkeypatch.setattr("assistant.views.extract_receipt", fake_extract)
 
-        from assistant.agents.receipt_confirm import receipt_confirm_agent
         png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
         image = SimpleUploadedFile("recibo.png", png, content_type="image/png")
-        with receipt_confirm_agent.override(model=TestModel()):
+        with assistant_agent.override(model=TestModel()):
             response = logged_client.post("/api/assistant/chat/", data={"image": image})
             consume_streaming(response)
 
@@ -278,7 +274,6 @@ class TestChatEndpoint:
     def test_multiple_images_one_extraction(self, logged_client, user, monkeypatch):
         """N fotos => UMA chamada a extract_receipt com N imagens (mesmo recibo)."""
         from assistant.agents.extraction import ReceiptExtraction
-        from assistant.agents.receipt_confirm import receipt_confirm_agent
 
         captured = {}
 
@@ -290,7 +285,7 @@ class TestChatEndpoint:
 
         img1 = SimpleUploadedFile("a.png", self._PNG, content_type="image/png")
         img2 = SimpleUploadedFile("b.png", self._PNG, content_type="image/png")
-        with receipt_confirm_agent.override(model=TestModel()):
+        with assistant_agent.override(model=TestModel()):
             response = logged_client.post(
                 "/api/assistant/chat/",
                 data={"image": [img1, img2], "message": "isso é mercado"},
@@ -322,15 +317,14 @@ class TestChatEndpoint:
         assert response.status_code == 400
 
     def test_image_proposes_without_writing(self, logged_client, seeded_user):
-        """Turno de imagem NUNCA cria Entry — apenas propõe via receipt_confirm_agent."""
+        """Turno de imagem NUNCA cria Entry — apenas propõe via assistant_agent."""
         from assistant.agents.extraction import extraction_agent
-        from assistant.agents.receipt_confirm import receipt_confirm_agent
         from finances.models import Entry
 
         image = SimpleUploadedFile("recibo.png", self._PNG, content_type="image/png")
         with (
             extraction_agent.override(model=TestModel()),
-            receipt_confirm_agent.override(model=TestModel()),
+            assistant_agent.override(model=TestModel()),
         ):
             resp = logged_client.post(
                 "/api/assistant/chat/", {"image": image}
@@ -342,7 +336,6 @@ class TestChatEndpoint:
 
 
     def test_pending_receipt_routes_confirm_and_commits_once(self, logged_client, seeded_user):
-        from assistant.agents.receipt_confirm import receipt_confirm_agent
         from assistant.agents.tools import propose_receipt
         from assistant.models import ReceiptDraft, ReceiptDraftStatus
         from finances.models import Entry
@@ -362,7 +355,7 @@ class TestChatEndpoint:
 
         # A TestModel that calls only commit_receipt simulates the user's "sim".
         tm = TestModel(call_tools=["commit_receipt"])
-        with receipt_confirm_agent.override(model=tm):
+        with assistant_agent.override(model=tm):
             resp = logged_client.post(
                 "/api/assistant/chat/", {"message": "sim"},
                 content_type="application/json",
@@ -373,7 +366,7 @@ class TestChatEndpoint:
         assert draft.status == ReceiptDraftStatus.REGISTERED
 
         # A second "sim" must NOT duplicate (draft no longer PENDING -> commit no-op).
-        with receipt_confirm_agent.override(model=TestModel(call_tools=["commit_receipt"])):
+        with assistant_agent.override(model=TestModel(call_tools=["commit_receipt"])):
             resp2 = logged_client.post(
                 "/api/assistant/chat/", {"message": "sim"},
                 content_type="application/json",
@@ -385,9 +378,7 @@ class TestChatEndpoint:
     def test_pending_receipt_audio_routes_confirm_and_commits_once(
         self, logged_client, seeded_user, monkeypatch
     ):
-        """Voice confirmation of a pending receipt must route to receipt_confirm_agent,
-        not the orchestrator — regression guard for the audio path."""
-        from assistant.agents.receipt_confirm import receipt_confirm_agent
+        """Voice confirmation of a pending receipt must route to assistant_agent — regression guard for the audio path (single-agent mode)."""
         from assistant.agents.tools import propose_receipt
         from assistant.models import ReceiptDraft, ReceiptDraftStatus
         from finances.models import Entry
@@ -417,7 +408,7 @@ class TestChatEndpoint:
             "confirm.webm", b"\x00\x01\x02", content_type="audio/webm"
         )
         tm = TestModel(call_tools=["commit_receipt"])
-        with receipt_confirm_agent.override(model=tm):
+        with assistant_agent.override(model=tm):
             resp = logged_client.post(
                 "/api/assistant/chat/", data={"audio": audio}
             )
@@ -443,9 +434,7 @@ class TestChatEndpoint:
 
         monkeypatch.setattr("assistant.views.extract_receipt", fake_extract)
         img = SimpleUploadedFile("a.png", self._PNG, content_type="image/png")
-        from assistant.agents.receipt_confirm import receipt_confirm_agent
-
-        with receipt_confirm_agent.override(model=TestModel()):
+        with assistant_agent.override(model=TestModel()):
             response = logged_client.post("/api/assistant/chat/", data={"image": img})
             consume_streaming(response)
 
