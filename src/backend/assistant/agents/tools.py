@@ -311,6 +311,19 @@ def _product_summary(descriptions, maxlen: int = 90) -> str:
     return summary
 
 
+def _strip_store_prefix(summary: str, store: str) -> str:
+    """Remove um prefixo redundante da loja no summary (evita 'Loja - Loja - ...'
+    quando o modelo já repete o nome da loja no resumo). A descrição final já é
+    montada como 'Loja - summary'."""
+    s = (summary or "").strip()
+    st = (store or "").strip()
+    if st and s.lower().startswith(st.lower()):
+        stripped = s[len(st):].lstrip().lstrip("-").strip()
+        if stripped:
+            return stripped
+    return s
+
+
 def _resolve_receipt_plan(
     user, draft, items_by_category=None, payment_method_name="", summaries=None,
     store_name="",
@@ -423,6 +436,7 @@ def _resolve_receipt_plan(
                 _product_summary(items[i].get("description") for i in items_by_category[cat_name])
                 or category.name
             )
+        summary = _strip_store_prefix(summary, store)
         description = f"{store} - {summary}".replace(",", " -").strip()
         lines.append(
             {
@@ -629,11 +643,13 @@ def build_pending_receipt_directive(user) -> str:
         "add_receipt_item(descrição, valor, categoria) para CADA um e re-proponha.\n"
         "- Corrigir CATEGORIA de itens: propose_receipt(items_by_category={categoria: "
         "[índices]}).\n"
-        "- Loja errada/ausente: propose_receipt(store_name=\"<loja>\") — ex.: "
-        "\"Mercado Livre\". A descrição de cada linha já é montada dos NOMES dos "
-        "produtos; para outro texto use propose_receipt(summaries={categoria: "
-        "\"texto\"}). A tabela mostra a coluna 'Itens' (produtos) para o usuário "
-        "conferir.\n"
+        "- Loja errada/ausente OU pedido de PREFIXO de loja (ex.: 'adicione "
+        "Amazon - como prefixo'): isso é a LOJA → propose_receipt(store_name="
+        "\"Amazon\"). A descrição de cada linha já vira 'LOJA - <nomes dos "
+        "produtos>' automaticamente: NO CASO NORMAL não passe summaries e NUNCA "
+        "inclua o nome da loja no summary (senão vira 'Loja - Loja - ...'). Só use "
+        "summaries={categoria: \"texto\"} se o usuário pedir explicitamente outro "
+        "texto. A tabela mostra a coluna 'Itens' (produtos) para conferência.\n"
         "- Forma de pagamento: se o usuário JÁ a informou no texto (ex.: 'pix'), "
         "passe-a em propose_receipt(payment_method_name=...) e NÃO pergunte de novo; "
         "pergunte no máximo UMA vez.\n"

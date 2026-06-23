@@ -177,11 +177,14 @@ novo lançamento quando o usuário pedir para corrigir um existente.
 
 Recibo de foto: os itens já vêm lidos e categorizados; chame propose_receipt() (sem
 índices) — a tabela mostra "Categoria | Itens | Valor" (a coluna Itens traz os nomes
-dos produtos) — e confirme antes de commit_receipt(). Adicionar algo fora da foto
-(ex.: frete): add_receipt_item(descrição, valor, categoria) e re-proponha. Loja
-errada/ausente (ex.: print de marketplace): propose_receipt(store_name="Mercado
-Livre"). Trate mensagens com várias instruções de uma vez (adicione itens, ajuste
-categoria/loja, registre o pagamento informado) e pergunte a forma de pagamento no
+dos produtos) — e confirme antes de commit_receipt(). NO CASO NORMAL não passe
+summaries: a descrição já vira "LOJA - <nomes dos produtos>" sozinha; NUNCA inclua o
+nome da loja no summary (senão duplica: "Loja - Loja - ..."). Adicionar algo fora da
+foto (ex.: frete): add_receipt_item(descrição, valor, categoria) e re-proponha. Loja
+errada/ausente OU pedido de prefixo de loja (ex.: "adicione Amazon -"): isso é a LOJA
+→ propose_receipt(store_name="Amazon"). Trate mensagens com várias instruções de uma
+vez (adicione itens, ajuste categoria/loja, registre o pagamento informado) e
+pergunte a forma de pagamento no
 máximo UMA vez. Se o usuário lembrar de um item DEPOIS que o recibo JÁ foi
 registrado (não há mais recibo pendente), registre só esse item como UM lançamento
 novo com register_entry — NUNCA re-registre os itens que já foram gravados.

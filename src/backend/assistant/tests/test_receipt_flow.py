@@ -186,6 +186,22 @@ def test_description_uses_product_names_not_category(seeded_user):
     assert "Itens" in out
 
 
+def test_description_dedups_store_prefix(seeded_user):
+    """Se o summary já repete o nome da loja, não duplica o prefixo
+    (regressão 'Amazon - Amazon - ...')."""
+    _draft_categorized(seeded_user)  # store=MATEUS
+    propose_receipt(
+        seeded_user,
+        payment_method_name="Pix",
+        summaries={"Alimentação": "MATEUS - arroz", "Lanche": "MATEUS bebida"},
+    )
+    plan = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload["plan"]
+    descs = {ln["category_name"]: ln["description"] for ln in plan["lines"]}
+    assert descs["Alimentação"] == "MATEUS - arroz"
+    assert descs["Lanche"] == "MATEUS - bebida"
+    assert "MATEUS - MATEUS" not in descs["Alimentação"]
+
+
 def test_explicit_summary_still_wins(seeded_user):
     _draft_categorized(seeded_user)
     propose_receipt(
