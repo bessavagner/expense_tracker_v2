@@ -136,6 +136,31 @@ def test_extraction_to_prompt_brand_payment_routes_through_card_and_memory():
 async def test_extract_receipt_returns_extraction():
     png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
     with extraction_agent.override(model=TestModel()):
-        result = await extract_receipt(png, "image/png")
+        result = await extract_receipt([(png, "image/png")])
     assert isinstance(result, ReceiptExtraction)
     assert isinstance(result.confidence, float)
+
+
+@pytest.mark.anyio
+async def test_extract_receipt_sends_all_images_in_one_run(monkeypatch):
+    """Várias imagens (páginas do mesmo recibo) vão num único run de visão."""
+    captured = {}
+
+    real_run = extraction_agent.run
+
+    async def spy_run(prompt, *args, **kwargs):
+        captured["prompt"] = prompt
+        return await real_run(prompt, *args, **kwargs)
+
+    monkeypatch.setattr(extraction_agent, "run", spy_run)
+
+    images = [(b"img-a", "image/jpeg"), (b"img-b", "image/png")]
+    with extraction_agent.override(model=TestModel()):
+        await extract_receipt(images)
+
+    prompt = captured["prompt"]
+    from pydantic_ai import BinaryContent
+    binaries = [p for p in prompt if isinstance(p, BinaryContent)]
+    assert len(binaries) == 2
+    assert binaries[0].data == b"img-a"
+    assert binaries[1].media_type == "image/png"

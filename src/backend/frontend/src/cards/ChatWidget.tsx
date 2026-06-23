@@ -7,7 +7,16 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   created_at?: string;
+  images?: string[];
 }
+
+interface Attachment {
+  id: string;
+  file: File;
+  url: string;
+}
+
+const MAX_IMAGES = 5;
 
 interface Props {
   apiUrl: string;
@@ -187,6 +196,8 @@ export default function ChatWidget({ apiUrl }: Props) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const attachMenuRef = useRef<HTMLDivElement>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const attachmentsRef = useRef<Attachment[]>([]);
 
   // Pin/resize (item #2)
   const [isPinned, setIsPinned] = useState(false);
@@ -301,9 +312,45 @@ export default function ChatWidget({ apiUrl }: Props) {
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [attachMenuOpen]);
 
+  // Mantém a ref sincronizada para o cleanup de desmontagem acessar a lista atual.
+  useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
+
+  // Revoga object URLs ao desmontar o componente (evita vazamento de memória).
+  // Usa a ref para capturar os anexos atuais, não o snapshot do mount inicial.
+  useEffect(() => {
+    return () => {
+      attachmentsRef.current.forEach((a) => URL.revokeObjectURL(a.url));
+    };
+  }, []);
+
   const sendMessage = async (overrideMessage?: string) => {
+    if (isStreaming) return;
+
+    // Há imagens encartadas: envia tudo (texto + fotos) como multipart.
+    if (attachments.length > 0 && overrideMessage === undefined) {
+      const caption = input.trim();
+      const form = new FormData();
+      attachments.forEach((a) => form.append("image", a.file));
+      if (caption) form.append("message", caption);
+      const n = attachments.length;
+      const label = caption
+        ? caption
+        : `📷 ${n} ${n === 1 ? "foto" : "fotos"}`;
+      // Captura as URLs ANTES de limpar o estado. Não revoga aqui — as mesmas
+      // strings são passadas para o bubble de mensagem enviada e continuam
+      // válidas durante a sessão. O cleanup de desmontagem (via attachmentsRef)
+      // não as alcançará porque já foram removidas do estado antes.
+      const previews = attachments.map((a) => a.url);
+      setInput("");
+      setAttachments([]);
+      await sendMultipart(form, label, previews);
+      return;
+    }
+
     const text = overrideMessage ?? input;
-    if (!text.trim() || isStreaming) return;
+    if (!text.trim()) return;
 
     const userMsg: Message = {
       id: randomId(),
@@ -438,13 +485,17 @@ export default function ChatWidget({ apiUrl }: Props) {
     }
   };
 
-  const sendMultipart = async (form: FormData, placeholderLabel: string) => {
+  const sendMultipart = async (
+    form: FormData,
+    placeholderLabel: string,
+    previewUrls: string[] = [],
+  ) => {
     if (isStreaming) return;
     const userId = randomId();
     const assistantId = randomId();
     setMessages((prev) => [
       ...prev,
-      { id: userId, role: "user", content: placeholderLabel },
+      { id: userId, role: "user", content: placeholderLabel, images: previewUrls },
       { id: assistantId, role: "assistant", content: "" },
     ]);
     setIsStreaming(true);
@@ -467,12 +518,31 @@ export default function ChatWidget({ apiUrl }: Props) {
     }
   };
 
+  const addFiles = (files: FileList | File[]) => {
+    const picked = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    if (picked.length === 0) return;
+    setAttachments((prev) => {
+      const room = MAX_IMAGES - prev.length;
+      const next = picked.slice(0, Math.max(0, room)).map((file) => ({
+        id: randomId(),
+        file,
+        url: URL.createObjectURL(file),
+      }));
+      return [...prev, ...next];
+    });
+  };
+
+  const removeAttachment = (id: string) => {
+    setAttachments((prev) => {
+      const found = prev.find((a) => a.id === id);
+      if (found) URL.revokeObjectURL(found.url);
+      return prev.filter((a) => a.id !== id);
+    });
+  };
+
+
   const handleImagePick = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const form = new FormData();
-    form.append("image", file);
-    sendMultipart(form, "📷 foto enviada…");
+    if (e.target.files) addFiles(e.target.files);
     e.target.value = "";
   };
 
@@ -614,11 +684,21 @@ export default function ChatWidget({ apiUrl }: Props) {
         >
           <div
             className={`chat-bubble text-sm ${
-              msg.role === "user"
-                ? "chat-bubble-primary"
-                : "chat-bubble-neutral"
+              msg.role === "user" ? "chat-bubble-primary" : "chat-bubble-neutral"
             }`}
           >
+            {msg.images && msg.images.length > 0 && (
+              <div className="flex flex-wrap gap-1 mb-1">
+                {msg.images.map((src, i) => (
+                  <img
+                    key={i}
+                    src={src}
+                    alt="anexo"
+                    className="w-16 h-16 object-cover rounded"
+                  />
+                ))}
+              </div>
+            )}
             {msg.content ? (
               msg.role === "assistant" ? (
                 <MarkdownMessage content={msg.content} />
@@ -663,6 +743,7 @@ export default function ChatWidget({ apiUrl }: Props) {
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        multiple
         className="hidden"
         onChange={handleImagePick}
       />
@@ -675,6 +756,29 @@ export default function ChatWidget({ apiUrl }: Props) {
         className="hidden"
         onChange={handleImagePick}
       />
+      {/* Miniaturas das imagens em staging — aparecem acima da linha de input */}
+      {attachments.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-2">
+          {attachments.map((a) => (
+            <div key={a.id} className="relative w-14 h-14">
+              <img
+                src={a.url}
+                alt="anexo"
+                className="w-14 h-14 object-cover rounded border border-base-300"
+              />
+              <button
+                type="button"
+                onClick={() => removeAttachment(a.id)}
+                className="absolute -top-1.5 -right-1.5 btn btn-xs btn-circle btn-error"
+                title="Remover"
+                aria-label="Remover imagem"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       {isRecording ? (
         <div className="flex items-center gap-2">
           <span className="flex-1 text-sm text-error flex items-center gap-2">
@@ -703,7 +807,7 @@ export default function ChatWidget({ apiUrl }: Props) {
             <button
               onClick={() => setAttachMenuOpen((v) => !v)}
               className="btn btn-sm btn-ghost btn-square"
-              disabled={isStreaming}
+              disabled={isStreaming || attachments.length >= MAX_IMAGES}
               title="Anexar"
               aria-label="Anexar arquivo ou foto"
               aria-haspopup="menu"
@@ -761,7 +865,7 @@ export default function ChatWidget({ apiUrl }: Props) {
           <button
             onClick={() => sendMessage()}
             className="btn btn-sm btn-accent btn-square"
-            disabled={isStreaming || !input.trim()}
+            disabled={isStreaming || (!input.trim() && attachments.length === 0)}
           >
             →
           </button>

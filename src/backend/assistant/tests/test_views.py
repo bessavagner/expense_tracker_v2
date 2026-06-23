@@ -250,6 +250,58 @@ class TestChatEndpoint:
         assert binary.data == b"PREPPED"
         assert binary.media_type == "image/jpeg"
 
+    _PNG = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00"
+        b"\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9c"
+        b"c\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+
+    def test_multiple_images_one_extraction(self, logged_client, user, monkeypatch):
+        """N fotos => UMA chamada a extract_receipt com N imagens (mesmo recibo)."""
+        from assistant.agents.extraction import ReceiptExtraction
+        from assistant.agents.registrar import registrar_agent
+
+        captured = {}
+
+        async def fake_extract(images):
+            captured["images"] = images
+            return ReceiptExtraction()
+
+        monkeypatch.setattr("assistant.views.extract_receipt", fake_extract)
+
+        img1 = SimpleUploadedFile("a.png", self._PNG, content_type="image/png")
+        img2 = SimpleUploadedFile("b.png", self._PNG, content_type="image/png")
+        with registrar_agent.override(model=TestModel()):
+            response = logged_client.post(
+                "/api/assistant/chat/",
+                data={"image": [img1, img2], "message": "isso é mercado"},
+            )
+            consume_streaming(response)
+
+        assert response.status_code == 200
+        assert len(captured["images"]) == 2
+        # legenda vira rótulo do usuário com contagem de fotos
+        assert ChatMessage.objects.filter(
+            user=user, role="user", content__icontains="2 fotos"
+        ).exists()
+
+    def test_rejects_too_many_images(self, logged_client, user, settings):
+        settings.ASSISTANT_MAX_IMAGES = 1
+        img1 = SimpleUploadedFile("a.png", self._PNG, content_type="image/png")
+        img2 = SimpleUploadedFile("b.png", self._PNG, content_type="image/png")
+        response = logged_client.post(
+            "/api/assistant/chat/", data={"image": [img1, img2]}
+        )
+        assert response.status_code == 400
+
+    def test_rejects_bad_type_among_images(self, logged_client, user):
+        good = SimpleUploadedFile("a.png", self._PNG, content_type="image/png")
+        bad = SimpleUploadedFile("x.txt", b"\x00", content_type="text/plain")
+        response = logged_client.post(
+            "/api/assistant/chat/", data={"image": [good, bad]}
+        )
+        assert response.status_code == 400
+
 
 @pytest.mark.django_db
 class TestHistoryEndpoint:
