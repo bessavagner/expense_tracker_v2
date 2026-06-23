@@ -463,6 +463,9 @@ def commit_receipt(user) -> str:
     created = []
     with transaction.atomic():
         for line in plan["lines"]:
+            # billing_month_override intentionally omitted: deixa Entry.save()
+            # computar o billing_month a partir de date+payment_method (evita o
+            # bug histórico de billing_month congelado).
             entry = Entry.objects.create(
                 user=user,
                 date=entry_date,
