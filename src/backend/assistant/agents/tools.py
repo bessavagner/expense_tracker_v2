@@ -262,9 +262,9 @@ def _resolve_receipt_plan(
             }
         )
 
-    total = sum((Decimal(l["amount"]) for l in lines), Decimal("0"))
+    total = sum((Decimal(ln["amount"]) for ln in lines), Decimal("0"))
     table_rows = "\n".join(
-        f"| {l['category_name']} | R$ {l['amount']} |" for l in lines
+        f"| {ln['category_name']} | R$ {ln['amount']} |" for ln in lines
     )
     table = (
         f"**{store}** — {entry_date:%d/%m/%Y} · {payment_method.name}\n\n"
@@ -442,6 +442,59 @@ def register_receipt(
         f"✅ Registrado de {store} em {entry_date:%d/%m/%Y} via "
         f"{payment_method.name}: {lines} (total R$ {total_paid:.2f})"
     )
+
+
+def commit_receipt(user) -> str:
+    """Grava (uma vez) o recibo PENDENTE a partir do plano salvo. Determinístico."""
+    draft = (
+        ReceiptDraft.objects.filter(user=user, status=ReceiptDraftStatus.PENDING)
+        .order_by("-created_at")
+        .first()
+    )
+    plan = (draft.payload or {}).get("plan") if draft else None
+    if draft is None or not plan:
+        return "Não há recibo pendente para registrar."
+
+    try:
+        entry_date = date.fromisoformat(plan["date"])
+    except (ValueError, TypeError, KeyError):
+        entry_date = timezone.localdate()
+
+    created = []
+    with transaction.atomic():
+        for line in plan["lines"]:
+            entry = Entry.objects.create(
+                user=user,
+                date=entry_date,
+                amount=Decimal(line["amount"]),
+                description=line["description"],
+                category_id=line["category_id"],
+                payment_method_id=plan["payment_method_id"],
+            )
+            created.append((line["category_name"], entry.amount))
+        draft.status = ReceiptDraftStatus.REGISTERED
+        draft.save(update_fields=["status", "updated_at"])
+
+    total = sum((amt for _, amt in created), Decimal("0"))
+    parts = "; ".join(f"{name} R$ {amt:.2f}" for name, amt in created)
+    return (
+        f"✅ Registrado de {plan['store']} em {entry_date:%d/%m/%Y} via "
+        f"{plan['payment_method_name']}: {parts} (total R$ {total:.2f})"
+    )
+
+
+def discard_receipt(user) -> str:
+    """Descarta o recibo (foto) PENDENTE mais recente sem gravar."""
+    draft = (
+        ReceiptDraft.objects.filter(user=user, status=ReceiptDraftStatus.PENDING)
+        .order_by("-created_at")
+        .first()
+    )
+    if draft is None:
+        return "Não há recibo pendente para descartar."
+    draft.status = ReceiptDraftStatus.DISCARDED
+    draft.save(update_fields=["status", "updated_at"])
+    return "Recibo descartado. Nada foi registrado."
 
 
 def build_receipt_context(user) -> str:
