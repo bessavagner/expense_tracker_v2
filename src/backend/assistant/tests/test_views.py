@@ -382,6 +382,52 @@ class TestChatEndpoint:
         assert Entry.objects.filter(user=seeded_user).count() == 2
 
 
+    def test_pending_receipt_audio_routes_confirm_and_commits_once(
+        self, logged_client, seeded_user, monkeypatch
+    ):
+        """Voice confirmation of a pending receipt must route to receipt_confirm_agent,
+        not the orchestrator — regression guard for the audio path."""
+        from assistant.agents.receipt_confirm import receipt_confirm_agent
+        from assistant.agents.tools import propose_receipt
+        from assistant.models import ReceiptDraft, ReceiptDraftStatus
+        from finances.models import Entry
+
+        draft = ReceiptDraft.objects.create(
+            user=seeded_user,
+            status=ReceiptDraftStatus.PENDING,
+            payload={
+                "store": "MATEUS",
+                "date": "2026-06-22",
+                "discount": "0",
+                "payment_hint": "Pix",
+                "items": [
+                    {"description": "arroz", "line_total": "60.00"},
+                    {"description": "refri", "line_total": "40.00"},
+                ],
+            },
+        )
+        propose_receipt(seeded_user, {"Alimentação": [0], "Lanche": [1]}, "Pix")
+
+        async def fake_transcribe(data, filename, content_type, *, client=None):
+            return "sim"
+
+        monkeypatch.setattr("assistant.views.transcribe_audio", fake_transcribe)
+
+        audio = SimpleUploadedFile(
+            "confirm.webm", b"\x00\x01\x02", content_type="audio/webm"
+        )
+        tm = TestModel(call_tools=["commit_receipt"])
+        with receipt_confirm_agent.override(model=tm):
+            resp = logged_client.post(
+                "/api/assistant/chat/", data={"audio": audio}
+            )
+            consume_streaming(resp)
+
+        assert Entry.objects.filter(user=seeded_user).count() == 2
+        draft.refresh_from_db()
+        assert draft.status == ReceiptDraftStatus.REGISTERED
+
+
 @pytest.mark.django_db
 class TestHistoryEndpoint:
     def test_returns_messages(self, logged_client, user):

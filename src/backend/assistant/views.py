@@ -245,6 +245,10 @@ async def _handle_audio(request, user, audio, caption):
     await ChatMessage.objects.acreate(
         user=user, role=MessageRole.USER, content=message
     )
+    if await _pending_receipt(user):
+        return _sse_response(
+            user, receipt_confirm_agent, message, message_history=None, user_text=message
+        )
     history = await _load_history(user)
     return _sse_response(
         user, assistant_agent, message, message_history=history, user_text=message
