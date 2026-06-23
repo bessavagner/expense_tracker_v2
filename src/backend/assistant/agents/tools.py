@@ -332,6 +332,39 @@ def build_receipt_context(user) -> str:
     )
 
 
+def build_pending_receipt_directive(user) -> str:
+    """Diretiva para o ORQUESTRADOR quando há um recibo de foto PENDENTE.
+
+    O turno da foto mostra a tabela e pergunta "Confirma?"; a confirmação do
+    usuário ("sim") volta pelo caminho de TEXTO → orquestrador. Sem este aviso o
+    orquestrador não sabe que existe um recibo a registrar, NÃO chama
+    delegate_registro e ainda responde "registrei" (nada é gravado — bug real do
+    recibo MATEUS: draft pendente, 0 lançamentos). A diretiva força a delegação
+    e proíbe afirmar registro sem o resultado da ferramenta.
+    """
+    draft = (
+        ReceiptDraft.objects.filter(user=user, status=ReceiptDraftStatus.PENDING)
+        .order_by("-created_at")
+        .first()
+    )
+    if draft is None:
+        return ""
+    payload = draft.payload or {}
+    store = str(payload.get("store") or "recibo").strip()
+    paid = payload.get("amount_paid")
+    paid_str = paid if paid is not None else "?"
+    return (
+        "⚠️ HÁ UM RECIBO DE FOTO PENDENTE aguardando confirmação para ser "
+        f"registrado (loja: {store}, valor pago: {paid_str}). Se a mensagem do "
+        "usuário for uma CONFIRMAÇÃO (sim, ok, pode, isso, confirmo, manda, "
+        "beleza, fechado, etc.) OU um AJUSTE ao recibo (categorias, forma de "
+        "pagamento, loja, data), você DEVE chamar delegate_registro repassando a "
+        "mensagem do usuário — é o ÚNICO caminho que grava o recibo. NUNCA diga "
+        "que registrou/registramos nem responda 'pronto' sem ter chamado "
+        "delegate_registro e recebido o resultado da ferramenta."
+    )
+
+
 def _billing_month(year: int, month: int) -> "date | str":
     """Return a date for the first of the month, or an error string if invalid."""
     try:

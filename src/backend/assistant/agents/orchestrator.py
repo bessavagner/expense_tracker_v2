@@ -21,7 +21,10 @@ from assistant.agents.analyst import analyst_agent
 from assistant.agents.planner import planner_agent
 from assistant.agents.prompts import ORCHESTRATOR_PROMPT, build_date_instructions
 from assistant.agents.registrar import registrar_agent
-from assistant.agents.tools import build_receipt_context
+from assistant.agents.tools import (
+    build_pending_receipt_directive,
+    build_receipt_context,
+)
 
 User = get_user_model()
 
@@ -36,6 +39,14 @@ orchestrator_agent = Agent(
 
 # Injeta a data de hoje a cada execução (resolução de referências relativas).
 orchestrator_agent.instructions(build_date_instructions)
+
+
+@orchestrator_agent.instructions
+async def pending_receipt_instructions(ctx: RunContext[User]) -> str:
+    """Avisa o orquestrador quando há recibo de foto pendente, forçando a
+    delegação do registro na confirmação (senão ele responde "registrei" sem
+    gravar — ver build_pending_receipt_directive)."""
+    return await sync_to_async(build_pending_receipt_directive)(ctx.deps)
 
 
 @orchestrator_agent.tool
