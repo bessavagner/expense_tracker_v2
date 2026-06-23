@@ -342,8 +342,6 @@ class TestChatEndpoint:
 
 
     def test_pending_receipt_routes_confirm_and_commits_once(self, logged_client, seeded_user):
-        from pydantic_ai.models.test import TestModel  # noqa: F401 already imported at top
-
         from assistant.agents.receipt_confirm import receipt_confirm_agent
         from assistant.agents.tools import propose_receipt
         from assistant.models import ReceiptDraft, ReceiptDraftStatus
@@ -373,6 +371,15 @@ class TestChatEndpoint:
         assert Entry.objects.filter(user=seeded_user).count() == 2
         draft.refresh_from_db()
         assert draft.status == ReceiptDraftStatus.REGISTERED
+
+        # A second "sim" must NOT duplicate (draft no longer PENDING -> commit no-op).
+        with receipt_confirm_agent.override(model=TestModel(call_tools=["commit_receipt"])):
+            resp2 = logged_client.post(
+                "/api/assistant/chat/", {"message": "sim"},
+                content_type="application/json",
+            )
+            consume_streaming(resp2)
+        assert Entry.objects.filter(user=seeded_user).count() == 2
 
 
 @pytest.mark.django_db
