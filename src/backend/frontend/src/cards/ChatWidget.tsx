@@ -9,6 +9,14 @@ interface Message {
   created_at?: string;
 }
 
+interface Attachment {
+  id: string;
+  file: File;
+  url: string;
+}
+
+const MAX_IMAGES = 5;
+
 interface Props {
   apiUrl: string;
 }
@@ -187,6 +195,7 @@ export default function ChatWidget({ apiUrl }: Props) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const attachMenuRef = useRef<HTMLDivElement>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
 
   // Pin/resize (item #2)
   const [isPinned, setIsPinned] = useState(false);
@@ -300,6 +309,14 @@ export default function ChatWidget({ apiUrl }: Props) {
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [attachMenuOpen]);
+
+  // Revoga object URLs ao desmontar o componente (evita vazamento de memória)
+  useEffect(() => {
+    return () => {
+      attachments.forEach((a) => URL.revokeObjectURL(a.url));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const sendMessage = async (overrideMessage?: string) => {
     const text = overrideMessage ?? input;
@@ -467,12 +484,30 @@ export default function ChatWidget({ apiUrl }: Props) {
     }
   };
 
+  const addFiles = (files: FileList | File[]) => {
+    const picked = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    if (picked.length === 0) return;
+    setAttachments((prev) => {
+      const room = MAX_IMAGES - prev.length;
+      const next = picked.slice(0, Math.max(0, room)).map((file) => ({
+        id: randomId(),
+        file,
+        url: URL.createObjectURL(file),
+      }));
+      return [...prev, ...next];
+    });
+  };
+
+  const removeAttachment = (id: string) => {
+    setAttachments((prev) => {
+      const found = prev.find((a) => a.id === id);
+      if (found) URL.revokeObjectURL(found.url);
+      return prev.filter((a) => a.id !== id);
+    });
+  };
+
   const handleImagePick = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const form = new FormData();
-    form.append("image", file);
-    sendMultipart(form, "📷 foto enviada…");
+    if (e.target.files) addFiles(e.target.files);
     e.target.value = "";
   };
 
@@ -663,6 +698,7 @@ export default function ChatWidget({ apiUrl }: Props) {
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        multiple
         className="hidden"
         onChange={handleImagePick}
       />
@@ -675,6 +711,29 @@ export default function ChatWidget({ apiUrl }: Props) {
         className="hidden"
         onChange={handleImagePick}
       />
+      {/* Miniaturas das imagens em staging — aparecem acima da linha de input */}
+      {attachments.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-2">
+          {attachments.map((a) => (
+            <div key={a.id} className="relative w-14 h-14">
+              <img
+                src={a.url}
+                alt="anexo"
+                className="w-14 h-14 object-cover rounded border border-base-300"
+              />
+              <button
+                type="button"
+                onClick={() => removeAttachment(a.id)}
+                className="absolute -top-1.5 -right-1.5 btn btn-xs btn-circle btn-error"
+                title="Remover"
+                aria-label="Remover imagem"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       {isRecording ? (
         <div className="flex items-center gap-2">
           <span className="flex-1 text-sm text-error flex items-center gap-2">
