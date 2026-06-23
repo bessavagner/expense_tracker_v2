@@ -259,7 +259,16 @@ async def _handle_images(request, user, images, caption):
         user=user, role=MessageRole.USER, content=user_label
     )
 
-    from assistant.agents.tools import list_categories, list_payment_methods
+    from assistant.agents.tools import (
+        discard_pending_receipts,
+        list_categories,
+        list_payment_methods,
+    )
+
+    # Nova foto = novo recibo: abandona qualquer pendente anterior, garantindo no
+    # máximo UM draft pendente (evita ressuscitar drafts órfãos num commit
+    # posterior — bug real do frete pós-commit que regravou um draft antigo).
+    await sync_to_async(discard_pending_receipts)(user)
 
     cats = await sync_to_async(list_categories)(user)
     pms = await sync_to_async(list_payment_methods)(user)

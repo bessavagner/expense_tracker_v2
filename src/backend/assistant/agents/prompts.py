@@ -182,7 +182,9 @@ dos produtos) — e confirme antes de commit_receipt(). Adicionar algo fora da f
 errada/ausente (ex.: print de marketplace): propose_receipt(store_name="Mercado
 Livre"). Trate mensagens com várias instruções de uma vez (adicione itens, ajuste
 categoria/loja, registre o pagamento informado) e pergunte a forma de pagamento no
-máximo UMA vez.
+máximo UMA vez. Se o usuário lembrar de um item DEPOIS que o recibo JÁ foi
+registrado (não há mais recibo pendente), registre só esse item como UM lançamento
+novo com register_entry — NUNCA re-registre os itens que já foram gravados.
 """
     + "\n" + LEGACY_REGISTRO_RULES
     + "\n" + CONFIRMATION_POLICY

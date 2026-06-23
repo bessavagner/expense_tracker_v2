@@ -214,6 +214,53 @@ def test_store_name_override(seeded_user):
     assert "Mercado Livre" in out
 
 
+def test_commit_discards_other_pending_drafts(seeded_user):
+    """Após registrar, drafts pendentes ÓRFÃOS são descartados — não podem ser
+    ressuscitados depois (bug real do frete pós-commit: re-registro em massa de
+    um draft antigo)."""
+    stale = ReceiptDraft.objects.create(
+        user=seeded_user,
+        payload={
+            "store": "VELHO",
+            "payment_hint": "Pix",
+            "items": [{"description": "antigo", "line_total": "5.00", "category": "Alimentação"}],
+        },
+        status=ReceiptDraftStatus.PENDING,
+    )
+    _draft_categorized(seeded_user)  # recibo real, mais recente
+    propose_receipt(seeded_user, payment_method_name="Pix")
+    commit_receipt(seeded_user)
+    stale.refresh_from_db()
+    assert stale.status == ReceiptDraftStatus.DISCARDED
+    # só as 2 linhas do recibo real foram gravadas (o item do stale NÃO)
+    assert Entry.objects.filter(user=seeded_user).count() == 2
+    assert (
+        ReceiptDraft.objects.filter(
+            user=seeded_user, status=ReceiptDraftStatus.PENDING
+        ).count()
+        == 0
+    )
+
+
+def test_discard_pending_receipts_helper(seeded_user):
+    from assistant.agents.tools import discard_pending_receipts
+
+    ReceiptDraft.objects.create(
+        user=seeded_user, payload={"items": []}, status=ReceiptDraftStatus.PENDING
+    )
+    ReceiptDraft.objects.create(
+        user=seeded_user, payload={"items": []}, status=ReceiptDraftStatus.PENDING
+    )
+    n = discard_pending_receipts(seeded_user)
+    assert n == 2
+    assert (
+        ReceiptDraft.objects.filter(
+            user=seeded_user, status=ReceiptDraftStatus.PENDING
+        ).count()
+        == 0
+    )
+
+
 def test_pending_directive_guides_compound_and_store(seeded_user):
     from assistant.agents.tools import build_pending_receipt_directive
 

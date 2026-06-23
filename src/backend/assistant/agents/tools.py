@@ -517,6 +517,12 @@ def commit_receipt(user) -> str:
             created.append((line["category_name"], entry.amount))
         draft.status = ReceiptDraftStatus.REGISTERED
         draft.save(update_fields=["status", "updated_at"])
+        # Higiene: descarta quaisquer OUTROS drafts pendentes órfãos do usuário
+        # (de tentativas abandonadas) para que não sejam ressuscitados depois —
+        # bug real do frete pós-commit, que regravou em massa um draft antigo.
+        ReceiptDraft.objects.filter(
+            user=user, status=ReceiptDraftStatus.PENDING
+        ).exclude(pk=draft.pk).update(status=ReceiptDraftStatus.DISCARDED)
 
     total = sum((amt for _, amt in created), Decimal("0"))
     parts = "; ".join(f"{name} R$ {amt:.2f}" for name, amt in created)
@@ -538,6 +544,18 @@ def discard_receipt(user) -> str:
     draft.status = ReceiptDraftStatus.DISCARDED
     draft.save(update_fields=["status", "updated_at"])
     return "Recibo descartado. Nada foi registrado."
+
+
+def discard_pending_receipts(user) -> int:
+    """Descarta TODOS os recibos pendentes do usuário sem gravar.
+
+    Higiene: garante no máximo UM draft pendente por vez. Chamado ao chegar uma
+    nova foto (abandona tentativas anteriores) para que drafts órfãos não sejam
+    ressuscitados depois. Retorna quantos foram descartados.
+    """
+    return ReceiptDraft.objects.filter(
+        user=user, status=ReceiptDraftStatus.PENDING
+    ).update(status=ReceiptDraftStatus.DISCARDED)
 
 
 def build_receipt_context(user) -> str:
