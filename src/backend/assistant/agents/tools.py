@@ -154,6 +154,157 @@ def _prorate_discount(
     return allocated
 
 
+def _resolve_receipt_plan(
+    user, draft, items_by_category, payment_method_name="", summaries=None
+):
+    """Validate + resolve a committable plan from a pending receipt draft.
+
+    Returns (plan, "") on success or (None, error_message). No DB writes.
+    """
+    payload = draft.payload or {}
+    items = payload.get("items", [])
+    n = len(items)
+    if n == 0:
+        return None, "Erro: o recibo pendente não tem itens."
+
+    assigned = [i for idxs in items_by_category.values() for i in idxs]
+    if sorted(assigned) != list(range(n)):
+        seen: set[int] = set()
+        dups = sorted({i for i in assigned if (i in seen) or seen.add(i)})
+        missing = sorted(set(range(n)) - set(assigned))
+        out_of_range = sorted(i for i in assigned if i < 0 or i >= n)
+        problems = []
+        if missing:
+            problems.append(f"faltando={missing}")
+        if dups:
+            problems.append(f"repetidos={dups}")
+        if out_of_range:
+            problems.append(f"fora do intervalo 0..{n - 1}={out_of_range}")
+        return None, (
+            f"Erro: cada um dos {n} itens deve ser atribuído a exatamente UMA "
+            f"categoria ({'; '.join(problems)})."
+        )
+
+    pm_name = (payment_method_name or "").strip() or str(
+        payload.get("payment_hint") or ""
+    ).strip()
+    payment_method, pm_matches = _resolve_by_name(
+        PaymentMethod.objects.filter(user=user, is_active=True), pm_name
+    )
+    if payment_method is None:
+        available = ", ".join(list_payment_methods(user))
+        if len(pm_matches) > 1:
+            return None, (
+                f"Forma de pagamento '{pm_name}' é ambígua. Qual? "
+                f"{', '.join(pm_matches)}"
+            )
+        hint = str(payload.get("payment_hint") or "").strip()
+        last4 = str(payload.get("card_last4") or "").strip()
+        extra = f" O cupom indica '{hint}'." if hint else ""
+        if last4:
+            extra += f" Cartão final {last4}."
+        return None, (
+            f"Qual a forma de pagamento?{extra} Não consegui resolver "
+            f"'{pm_name}'. Disponíveis: {available}"
+        )
+
+    resolved: dict[str, object] = {}
+    category_sums: dict[str, Decimal] = {}
+    for cat_name, idxs in items_by_category.items():
+        category, cat_matches = _resolve_by_name(
+            Category.objects.filter(user=user), cat_name
+        )
+        if category is None:
+            if len(cat_matches) > 1:
+                return None, (
+                    f"Erro: categoria '{cat_name}' é ambígua. "
+                    f"Você quis dizer: {', '.join(cat_matches)}?"
+                )
+            available = ", ".join(list_categories(user))
+            return None, (
+                f"Erro: categoria '{cat_name}' não encontrada. Disponíveis: {available}"
+            )
+        try:
+            subtotal = sum(
+                (Decimal(str(items[i].get("line_total", "0"))) for i in idxs),
+                Decimal("0"),
+            )
+        except InvalidOperation:
+            return None, f"Erro: valor inválido nos itens da categoria '{cat_name}'."
+        resolved[cat_name] = category
+        category_sums[cat_name] = subtotal
+
+    try:
+        discount_val = Decimal(str(payload.get("discount") or "0"))
+    except InvalidOperation:
+        discount_val = Decimal("0")
+    discount_by_cat = _prorate_discount(category_sums, discount_val)
+
+    store = str(payload.get("store") or "Recibo").strip()
+    date_str = payload.get("date")
+    try:
+        entry_date = date.fromisoformat(date_str) if date_str else timezone.localdate()
+    except (ValueError, TypeError):
+        entry_date = timezone.localdate()
+
+    summaries = summaries or {}
+    lines = []
+    for cat_name, category in resolved.items():
+        net = (category_sums[cat_name] - discount_by_cat[cat_name]).quantize(_CENTS)
+        summary = (summaries.get(cat_name) or "").strip() or category.name
+        description = f"{store} - {summary}".replace(",", " -").strip()
+        lines.append(
+            {
+                "category_id": str(category.id),
+                "category_name": category.name,
+                "description": description,
+                "amount": f"{net:.2f}",
+            }
+        )
+
+    total = sum((Decimal(l["amount"]) for l in lines), Decimal("0"))
+    table_rows = "\n".join(
+        f"| {l['category_name']} | R$ {l['amount']} |" for l in lines
+    )
+    table = (
+        f"**{store}** — {entry_date:%d/%m/%Y} · {payment_method.name}\n\n"
+        f"| Categoria | Valor |\n|---|---|\n{table_rows}\n\n"
+        f"Total: R$ {total:.2f}"
+    )
+    plan = {
+        "store": store,
+        "date": entry_date.isoformat(),
+        "payment_method_id": str(payment_method.id),
+        "payment_method_name": payment_method.name,
+        "lines": lines,
+        "total": f"{total:.2f}",
+        "table": table,
+    }
+    return plan, ""
+
+
+def propose_receipt(user, items_by_category, payment_method_name="", summaries=None) -> str:
+    """Plan (não grava) o recibo de FOTO pendente: valida, rateia e SALVA o plano
+    no draft. Mostre a tabela e PEÇA confirmação; só grava no commit."""
+    draft = (
+        ReceiptDraft.objects.filter(user=user, status=ReceiptDraftStatus.PENDING)
+        .order_by("-created_at")
+        .first()
+    )
+    if draft is None:
+        return "Não há recibo (foto) pendente para preparar."
+    plan, err = _resolve_receipt_plan(
+        user, draft, items_by_category, payment_method_name, summaries
+    )
+    if err:
+        return err
+    payload = draft.payload or {}
+    payload["plan"] = plan
+    draft.payload = payload
+    draft.save(update_fields=["payload", "updated_at"])
+    return f"{plan['table']}\n\nConfirma?"
+
+
 def register_receipt(
     user,
     items_by_category: dict[str, list[int]],
