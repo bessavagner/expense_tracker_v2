@@ -7,11 +7,8 @@ o lançamento ia para um billing_month invisível no mês corrente.
 
 from django.utils import timezone
 
-from assistant.agents.analyst import analyst_agent
-from assistant.agents.orchestrator import orchestrator_agent
-from assistant.agents.planner import planner_agent
+from assistant.agents.assistant import assistant_agent
 from assistant.agents.prompts import build_date_instructions
-from assistant.agents.registrar import registrar_agent
 
 
 class TestBuildDateInstructions:
@@ -31,14 +28,5 @@ class TestBuildDateInstructions:
 
 
 class TestAgentsHaveDateInstructions:
-    def test_orchestrator_has_dynamic_instructions(self):
-        assert len(orchestrator_agent._instructions) >= 1
-
-    def test_registrar_has_dynamic_instructions(self):
-        assert len(registrar_agent._instructions) >= 1
-
-    def test_analyst_has_dynamic_instructions(self):
-        assert len(analyst_agent._instructions) >= 1
-
-    def test_planner_has_dynamic_instructions(self):
-        assert len(planner_agent._instructions) >= 1
+    def test_assistant_has_dynamic_instructions(self):
+        assert len(assistant_agent._instructions) >= 1

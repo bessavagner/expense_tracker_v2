@@ -106,19 +106,13 @@ def test_discard_blocks_commit(seeded_user):
     assert "pendente" in out.lower()
 
 
-def test_receipt_agent_has_no_generic_write_tools():
-    from assistant.agents.receipt_confirm import receipt_confirm_agent
+def test_assistant_agent_exposes_receipt_and_write_tools():
+    from assistant.agents.assistant import assistant_agent
 
-    names = set(receipt_confirm_agent._function_toolset.tools.keys())
+    names = set(assistant_agent._function_toolset.tools.keys())
     assert {"propose_receipt", "commit_receipt", "discard_receipt"} <= names
-    assert "register_entry" not in names
+    assert {"register_entry", "add_receipt_item"} <= names
     assert "register_receipt" not in names
-
-
-def test_registrar_no_longer_exposes_register_receipt():
-    from assistant.agents.registrar import registrar_agent
-
-    assert "register_receipt" not in set(registrar_agent._function_toolset.tools.keys())
 
 
 def _draft_categorized(user):
