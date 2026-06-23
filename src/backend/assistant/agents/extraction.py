@@ -138,22 +138,21 @@ def extraction_to_prompt(
     if needs_review:
         head = (
             "Recibo lido da foto, mas a LEITURA ESTÁ INCERTA (confiança baixa ou a "
-            "soma não fechou). Mostre uma tabela LIMPA com colunas 'Categoria | "
-            "Itens' (resuma o conteúdo), aponte o que ficou duvidoso e PEÇA "
-            "CONFIRMAÇÃO. Os índices abaixo são internos: NUNCA os exiba ao "
-            "usuário. NÃO use propose_receipt nem grave nada até o usuário "
-            "confirmar. Termine com UMA única pergunta."
+            "soma não fechou). Categorize os itens e chame propose_receipt "
+            "(items_by_category={categoria: [índices]}, cada índice em UMA só "
+            "categoria; summaries={categoria: resumo curto}). Os índices são "
+            "internos: NUNCA os exiba. propose_receipt NÃO grava — ele mostra a "
+            "tabela. Aponte o que ficou duvidoso e termine com UMA pergunta "
+            "'Confirma?'. NÃO registre nada até o usuário confirmar."
         )
     else:
         head = (
-            "Recibo lido da foto. Os itens vêm NUMERADOS abaixo APENAS para você "
-            "chamar propose_receipt (items_by_category={categoria: [índices]}, "
-            "cada índice em UMA só categoria; summaries={categoria: resumo curto}). "
-            "NUNCA exiba esses índices ao usuário. Para o usuário, mostre uma "
-            "tabela LIMPA com colunas 'Categoria | Itens' (resuma o conteúdo), mais "
-            "loja, data, forma de pagamento e valor pago. NÃO redigite valores: a "
-            "soma e o rateio do desconto saem do recibo. Termine com UMA única "
-            "pergunta 'Confirma?'."
+            "Recibo lido da foto. Categorize os itens NUMERADOS abaixo e chame "
+            "propose_receipt (items_by_category={categoria: [índices]}, cada índice "
+            "em UMA só categoria; summaries={categoria: resumo curto}). NUNCA exiba "
+            "os índices. propose_receipt NÃO grava — apenas prepara e mostra a "
+            "tabela LIMPA 'Categoria | Valor' com loja, data, pagamento e total. "
+            "NÃO redigite valores. Termine com UMA única pergunta 'Confirma?'."
         )
     item_lines = [
         f"[{idx}] {it.description} | R$ {it.line_total}"

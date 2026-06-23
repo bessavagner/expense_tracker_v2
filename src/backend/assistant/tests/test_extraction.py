@@ -89,7 +89,7 @@ def test_extraction_to_prompt_review_adds_caution():
     low = prompt.lower()
     assert "incerta" in low
     assert "confirm" in low
-    assert "não use propose_receipt" in low
+    assert "propose_receipt" in prompt
 
 
 def test_extraction_to_prompt_lists_items_and_tool():
@@ -102,7 +102,7 @@ def test_extraction_to_prompt_lists_items_and_tool():
 
 
 def test_extraction_to_prompt_instructs_hiding_internal_indices():
-    """Os índices [0,1,...] são argumento de register_receipt, NÃO devem ser
+    """Os índices [0,1,...] são argumento de propose_receipt, NÃO devem ser
     exibidos ao usuário; o prompt precisa instruir isso explicitamente."""
     ext = _extraction([("a", "10.00"), ("b", "5.00")], discount="0")
     low = extraction_to_prompt(ext).lower()
@@ -130,6 +130,21 @@ def test_extraction_to_prompt_brand_payment_routes_through_card_and_memory():
     assert "check_memory" in low
     assert "save_memory_rule" in low
     assert "get_payment_methods" in low
+
+
+def test_extraction_prompt_instructs_propose_not_write():
+    ext = ReceiptExtraction(
+        store="MATEUS",
+        date="2026-06-22",
+        items=[],
+        amount_paid=Decimal("0"),
+        discount=Decimal("0"),
+    )
+    for needs_review in (False, True):
+        p = extraction_to_prompt(ext, "", needs_review=needs_review)
+        assert "propose_receipt" in p
+        assert "register_receipt" not in p
+        assert "Confirma" in p
 
 
 @pytest.mark.anyio
