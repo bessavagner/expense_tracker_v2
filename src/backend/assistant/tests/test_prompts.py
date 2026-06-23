@@ -118,3 +118,14 @@ class TestPhotoPolicySplitAndTable:
 
     def test_photo_policy_included_in_registrar(self):
         assert prompts.PHOTO_POLICY in prompts.REGISTRAR_PROMPT
+
+
+def test_assistant_prompt_covers_all_capabilities():
+    from assistant.agents.prompts import ASSISTANT_PROMPT
+    p = ASSISTANT_PROMPT.lower()
+    for needle in ["registr", "analis", "planej", "recibo", "memó", "confirm"]:
+        assert needle in p, needle
+    # edit/correct + add-item guidance present
+    assert "list_recent_entries" in ASSISTANT_PROMPT
+    assert "update_entry" in ASSISTANT_PROMPT
+    assert "add_receipt_item" in ASSISTANT_PROMPT
