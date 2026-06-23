@@ -154,8 +154,27 @@ def _prorate_discount(
     return allocated
 
 
+def _items_by_category_from_items(items):
+    """Deriva {categoria: [índices]} a partir do campo category de cada item.
+    Retorna string de erro se algum item não tiver categoria."""
+    by_cat: dict[str, list[int]] = {}
+    missing = []
+    for i, it in enumerate(items):
+        cat = (it.get("category") or "").strip()
+        if not cat:
+            missing.append(i)
+            continue
+        by_cat.setdefault(cat, []).append(i)
+    if missing:
+        return (
+            "Itens sem categoria definida pela leitura — me diga a categoria de cada "
+            "um (ex.: 'os 2 primeiros são Alimentação')."
+        )
+    return by_cat
+
+
 def _resolve_receipt_plan(
-    user, draft, items_by_category, payment_method_name="", summaries=None
+    user, draft, items_by_category=None, payment_method_name="", summaries=None
 ):
     """Validate + resolve a committable plan from a pending receipt draft.
 
@@ -166,6 +185,12 @@ def _resolve_receipt_plan(
     n = len(items)
     if n == 0:
         return None, "Erro: o recibo pendente não tem itens."
+
+    if items_by_category is None:
+        derived = _items_by_category_from_items(items)
+        if isinstance(derived, str):
+            return None, derived
+        items_by_category = derived
 
     assigned = [i for idxs in items_by_category.values() for i in idxs]
     if sorted(assigned) != list(range(n)):
@@ -236,7 +261,7 @@ def _resolve_receipt_plan(
 
     try:
         discount_val = Decimal(str(payload.get("discount") or "0"))
-    except InvalidOperation:
+    except (InvalidOperation, ValueError):
         discount_val = Decimal("0")
     discount_by_cat = _prorate_discount(category_sums, discount_val)
 
@@ -283,7 +308,7 @@ def _resolve_receipt_plan(
     return plan, ""
 
 
-def propose_receipt(user, items_by_category, payment_method_name="", summaries=None) -> str:
+def propose_receipt(user, items_by_category=None, payment_method_name="", summaries=None) -> str:
     """Plan (não grava) o recibo de FOTO pendente: valida, rateia e SALVA o plano
     no draft. Mostre a tabela e PEÇA confirmação; só grava no commit."""
     draft = (

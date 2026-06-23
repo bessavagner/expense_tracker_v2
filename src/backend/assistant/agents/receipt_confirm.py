@@ -51,7 +51,7 @@ async def get_payment_methods(ctx: RunContext[User]) -> list[str]:
 @receipt_confirm_agent.tool
 async def propose_receipt(
     ctx: RunContext[User],
-    items_by_category: dict[str, list[int]],
+    items_by_category: dict[str, list[int]] | None = None,
     payment_method_name: str = "",
     summaries: dict[str, str] | None = None,
 ) -> str:
