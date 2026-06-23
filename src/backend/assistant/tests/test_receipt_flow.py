@@ -1,7 +1,6 @@
 from decimal import Decimal
 
 import pytest
-from model_bakery import baker
 
 from assistant.agents.tools import propose_receipt
 from assistant.models import ReceiptDraft, ReceiptDraftStatus
