@@ -2,7 +2,12 @@ from decimal import Decimal
 
 import pytest
 
-from assistant.agents.tools import commit_receipt, discard_receipt, propose_receipt
+from assistant.agents.tools import (
+    add_receipt_item,
+    commit_receipt,
+    discard_receipt,
+    propose_receipt,
+)
 from assistant.models import ReceiptDraft, ReceiptDraftStatus
 from finances.models import Entry
 
@@ -150,3 +155,91 @@ def test_propose_auto_mode_errors_when_item_uncategorized(seeded_user):
     assert "plan" not in (
         ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload or {}
     )
+
+
+def test_description_uses_product_names_not_category(seeded_user):
+    """Sem summaries explícitos, a descrição é montada dos NOMES dos produtos
+    (não o nome da categoria). Regressão do recibo Mercado Livre."""
+    ReceiptDraft.objects.create(
+        user=seeded_user,
+        payload={
+            "store": "Mercado Livre",
+            "date": "2026-06-23",
+            "discount": "0",
+            "amount_paid": "100.00",
+            "payment_hint": "Pix",
+            "items": [
+                {"description": "arroz tipo 1", "line_total": "60.00", "category": "Alimentação"},
+                {"description": "feijão preto", "line_total": "40.00", "category": "Alimentação"},
+            ],
+        },
+        status=ReceiptDraftStatus.PENDING,
+    )
+    out = propose_receipt(seeded_user, payment_method_name="Pix")
+    plan = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload["plan"]
+    desc = plan["lines"][0]["description"]
+    assert "arroz tipo 1" in desc and "feijão preto" in desc
+    assert desc.startswith("Mercado Livre -")
+    assert desc != "Mercado Livre - Alimentação"  # not the bare category name
+    # the proposal table shows the items so the user can verify before commit
+    assert "arroz tipo 1" in out
+    assert "Itens" in out
+
+
+def test_explicit_summary_still_wins(seeded_user):
+    _draft_categorized(seeded_user)
+    propose_receipt(
+        seeded_user,
+        payment_method_name="Pix",
+        summaries={"Alimentação": "grãos", "Lanche": "bebida"},
+    )
+    plan = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload["plan"]
+    descs = {ln["category_name"]: ln["description"] for ln in plan["lines"]}
+    assert descs["Alimentação"] == "MATEUS - grãos"
+    assert descs["Lanche"] == "MATEUS - bebida"
+
+
+def test_store_name_override(seeded_user):
+    _draft(seeded_user, store=None)  # no store → would fall back to "Recibo"
+    out = propose_receipt(
+        seeded_user,
+        items_by_category={"Alimentação": [0], "Lanche": [1]},
+        payment_method_name="Pix",
+        store_name="Mercado Livre",
+    )
+    draft = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at")
+    assert draft.payload["store"] == "Mercado Livre"  # persisted for re-propose
+    for ln in draft.payload["plan"]["lines"]:
+        assert ln["description"].startswith("Mercado Livre -")
+    assert "Mercado Livre" in out
+
+
+def test_pending_directive_guides_compound_and_store(seeded_user):
+    from assistant.agents.tools import build_pending_receipt_directive
+
+    ReceiptDraft.objects.create(
+        user=seeded_user,
+        payload={
+            "store": "Recibo",
+            "amount_paid": "100.00",
+            "items": [{"description": "x", "line_total": "10.00", "category": "Alimentação"}],
+        },
+        status=ReceiptDraftStatus.PENDING,
+    )
+    out = build_pending_receipt_directive(seeded_user)
+    assert "add_receipt_item" in out
+    assert "store_name" in out
+    assert "commit_receipt" in out
+    assert "delegate_registro" not in out
+    assert "uma vez" in out.lower()  # ask payment at most once
+
+
+def test_add_receipt_item_then_propose_folds_frete(seeded_user):
+    """O frete adicionado entra na categoria e na descrição ao re-propor."""
+    _draft_categorized(seeded_user)  # arroz 60 Alimentação, refri 40 Lanche
+    add_receipt_item(seeded_user, "frete", "39.97", "Alimentação")
+    propose_receipt(seeded_user, payment_method_name="Pix")
+    plan = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload["plan"]
+    ali = next(ln for ln in plan["lines"] if ln["category_name"] == "Alimentação")
+    assert "frete" in ali["description"]
+    assert Decimal(ali["amount"]) == Decimal("99.97")  # 60.00 + 39.97

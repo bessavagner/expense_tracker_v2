@@ -293,8 +293,27 @@ def _items_by_category_from_items(items):
     return by_cat
 
 
+def _product_summary(descriptions, maxlen: int = 90) -> str:
+    """Resumo de uma linha a partir dos NOMES dos produtos do recibo.
+
+    Junta as descrições dos itens (sem a truncagem "..." do screenshot) com "; ";
+    limita o comprimento para a tabela ficar legível. Vazio → o chamador usa o
+    nome da categoria como fallback.
+    """
+    names = []
+    for d in descriptions:
+        name = str(d or "").strip().rstrip(". ").strip()
+        if name:
+            names.append(name)
+    summary = "; ".join(names)
+    if len(summary) > maxlen:
+        summary = summary[: maxlen - 1].rstrip() + "…"
+    return summary
+
+
 def _resolve_receipt_plan(
-    user, draft, items_by_category=None, payment_method_name="", summaries=None
+    user, draft, items_by_category=None, payment_method_name="", summaries=None,
+    store_name="",
 ):
     """Validate + resolve a committable plan from a pending receipt draft.
 
@@ -385,7 +404,7 @@ def _resolve_receipt_plan(
         discount_val = Decimal("0")
     discount_by_cat = _prorate_discount(category_sums, discount_val)
 
-    store = str(payload.get("store") or "Recibo").strip()
+    store = (store_name or "").strip() or str(payload.get("store") or "Recibo").strip()
     date_str = payload.get("date")
     try:
         entry_date = date.fromisoformat(date_str) if date_str else timezone.localdate()
@@ -396,12 +415,20 @@ def _resolve_receipt_plan(
     lines = []
     for cat_name, category in resolved.items():
         net = (category_sums[cat_name] - discount_by_cat[cat_name]).quantize(_CENTS)
-        summary = (summaries.get(cat_name) or "").strip() or category.name
+        explicit = (summaries.get(cat_name) or "").strip()
+        if explicit:
+            summary = explicit
+        else:
+            summary = (
+                _product_summary(items[i].get("description") for i in items_by_category[cat_name])
+                or category.name
+            )
         description = f"{store} - {summary}".replace(",", " -").strip()
         lines.append(
             {
                 "category_id": str(category.id),
                 "category_name": category.name,
+                "summary": summary,
                 "description": description,
                 "amount": f"{net:.2f}",
             }
@@ -409,11 +436,11 @@ def _resolve_receipt_plan(
 
     total = sum((Decimal(ln["amount"]) for ln in lines), Decimal("0"))
     table_rows = "\n".join(
-        f"| {ln['category_name']} | R$ {ln['amount']} |" for ln in lines
+        f"| {ln['category_name']} | {ln['summary']} | R$ {ln['amount']} |" for ln in lines
     )
     table = (
         f"**{store}** — {entry_date:%d/%m/%Y} · {payment_method.name}\n\n"
-        f"| Categoria | Valor |\n|---|---|\n{table_rows}\n\n"
+        f"| Categoria | Itens | Valor |\n|---|---|---|\n{table_rows}\n\n"
         f"Total: R$ {total:.2f}"
     )
     plan = {
@@ -428,9 +455,14 @@ def _resolve_receipt_plan(
     return plan, ""
 
 
-def propose_receipt(user, items_by_category=None, payment_method_name="", summaries=None) -> str:
+def propose_receipt(
+    user, items_by_category=None, payment_method_name="", summaries=None, store_name=""
+) -> str:
     """Plan (não grava) o recibo de FOTO pendente: valida, rateia e SALVA o plano
-    no draft. Mostre a tabela e PEÇA confirmação; só grava no commit."""
+    no draft. Mostre a tabela e PEÇA confirmação; só grava no commit.
+
+    ``store_name`` sobrescreve a loja lida (ex.: a foto é de um pedido de
+    marketplace sem cabeçalho — passe "Mercado Livre"); fica persistido no draft."""
     draft = (
         ReceiptDraft.objects.filter(user=user, status=ReceiptDraftStatus.PENDING)
         .order_by("-created_at")
@@ -439,11 +471,13 @@ def propose_receipt(user, items_by_category=None, payment_method_name="", summar
     if draft is None:
         return "Não há recibo (foto) pendente para preparar."
     plan, err = _resolve_receipt_plan(
-        user, draft, items_by_category, payment_method_name, summaries
+        user, draft, items_by_category, payment_method_name, summaries, store_name
     )
     if err:
         return err
     payload = draft.payload or {}
+    if (store_name or "").strip():
+        payload["store"] = store_name.strip()
     payload["plan"] = plan
     draft.payload = payload
     draft.save(update_fields=["payload", "updated_at"])
@@ -566,19 +600,32 @@ def build_pending_receipt_directive(user) -> str:
     store = str(payload.get("store") or "recibo").strip()
     paid = payload.get("amount_paid")
     paid_str = paid if paid is not None else "?"
-    return (
+    context = build_receipt_context(user)
+    base = (
         "⚠️ HÁ UM RECIBO DE FOTO PENDENTE aguardando confirmação para ser "
-        f"registrado (loja: {store}, valor pago: {paid_str}). "
-        "Se a mensagem do usuário for uma CONFIRMAÇÃO (sim, ok, pode, isso, "
-        "confirmo, manda, beleza, fechado, etc.) → chame commit_receipt(). "
-        "Se for um AJUSTE de categoria, forma de pagamento, loja ou data → "
-        "chame propose_receipt(...) com a correção e re-exiba a tabela. "
-        "Para adicionar algo que não está na foto (ex.: frete) → "
-        "add_receipt_item(descrição, valor, categoria) e re-proponha. "
-        "Para cancelar → discard_receipt(). "
-        "NUNCA diga que registrou/registramos nem responda 'pronto' sem ter "
-        "chamado commit_receipt e recebido o resultado da ferramenta."
+        f"registrado (loja: {store}, valor pago: {paid_str}). Trate a mensagem do "
+        "usuário de forma COMPLETA — ela pode conter VÁRIAS instruções de uma vez "
+        "(ex.: 'sim, mas adicione o frete 39,97 como Serviço, paguei no pix'): "
+        "execute TODAS antes de re-exibir a tabela ou gravar.\n"
+        "- Item que NÃO está na foto (frete, embalagem, seguro): "
+        "add_receipt_item(descrição, valor, categoria) para CADA um e re-proponha.\n"
+        "- Corrigir CATEGORIA de itens: propose_receipt(items_by_category={categoria: "
+        "[índices]}).\n"
+        "- Loja errada/ausente: propose_receipt(store_name=\"<loja>\") — ex.: "
+        "\"Mercado Livre\". A descrição de cada linha já é montada dos NOMES dos "
+        "produtos; para outro texto use propose_receipt(summaries={categoria: "
+        "\"texto\"}). A tabela mostra a coluna 'Itens' (produtos) para o usuário "
+        "conferir.\n"
+        "- Forma de pagamento: se o usuário JÁ a informou no texto (ex.: 'pix'), "
+        "passe-a em propose_receipt(payment_method_name=...) e NÃO pergunte de novo; "
+        "pergunte no máximo UMA vez.\n"
+        "- CONFIRMAÇÃO (sim, ok, pode, isso, confirmo, manda, beleza, fechado) e nada "
+        "mais a ajustar → commit_receipt(). CANCELAR (não, cancela, descarta) → "
+        "discard_receipt().\n"
+        "NUNCA diga que registrou/registramos nem responda 'pronto' sem ter chamado "
+        "commit_receipt e recebido o resultado da ferramenta."
     )
+    return f"{base}\n\n{context}" if context else base
 
 
 def _billing_month(year: int, month: int) -> "date | str":

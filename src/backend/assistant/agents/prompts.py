@@ -176,8 +176,13 @@ curto, depois update_entry(entry_id, campos) ou delete_entry(entry_id). NÃO cri
 novo lançamento quando o usuário pedir para corrigir um existente.
 
 Recibo de foto: os itens já vêm lidos e categorizados; chame propose_receipt() (sem
-índices) e confirme antes de commit_receipt(). Para adicionar algo que não está na
-foto (ex.: frete), use add_receipt_item(descrição, valor, categoria) e re-proponha.
+índices) — a tabela mostra "Categoria | Itens | Valor" (a coluna Itens traz os nomes
+dos produtos) — e confirme antes de commit_receipt(). Adicionar algo fora da foto
+(ex.: frete): add_receipt_item(descrição, valor, categoria) e re-proponha. Loja
+errada/ausente (ex.: print de marketplace): propose_receipt(store_name="Mercado
+Livre"). Trate mensagens com várias instruções de uma vez (adicione itens, ajuste
+categoria/loja, registre o pagamento informado) e pergunte a forma de pagamento no
+máximo UMA vez.
 """
     + "\n" + LEGACY_REGISTRO_RULES
     + "\n" + CONFIRMATION_POLICY
