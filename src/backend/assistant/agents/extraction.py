@@ -43,6 +43,7 @@ class ReceiptItem(BaseModel):
     quantity: Decimal = Decimal("1")
     unit_price: Decimal | None = None
     line_total: Decimal
+    category: str | None = None
 
 
 class ReceiptExtraction(BaseModel):
@@ -52,9 +53,10 @@ class ReceiptExtraction(BaseModel):
     cnpj: str | None = None
     date: str | None = None  # ISO (AAAA-MM-DD); None se ilegível
     items: list[ReceiptItem] = []
-    total: Decimal = Decimal("0")
-    discount: Decimal = Decimal("0")
-    amount_paid: Decimal = Decimal("0")
+    receipt_type: str = "fiscal_cupom"
+    total: Decimal | None = None
+    discount: Decimal | None = None
+    amount_paid: Decimal | None = None
     payment_hint: str | None = None  # ex.: "VISA CRÉDITO", "PIX", "DINHEIRO"
     card_last4: str | None = None  # últimos 4 dígitos do cartão, se legíveis
     card_first_digits: str | None = None  # primeiros dígitos/BIN, se legíveis
@@ -71,9 +73,15 @@ extraction_agent = Agent(
 def receipt_is_consistent(
     extraction: ReceiptExtraction, tolerance: Decimal = Decimal("0.05")
 ) -> bool:
-    """True se a soma das linhas, menos o desconto, bate com o valor pago."""
+    """True se a soma das linhas, menos o desconto, bate com o valor pago.
+
+    Retorna True imediatamente quando amount_paid é None (nada a reconciliar).
+    """
+    if extraction.amount_paid is None:
+        return True
     items_sum = sum((i.line_total for i in extraction.items), Decimal("0"))
-    return abs(items_sum - extraction.discount - extraction.amount_paid) <= tolerance
+    discount = extraction.discount or Decimal("0")
+    return abs(items_sum - discount - extraction.amount_paid) <= tolerance
 
 
 def receipt_needs_review(
