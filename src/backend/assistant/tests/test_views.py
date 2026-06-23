@@ -337,7 +337,8 @@ class TestChatEndpoint:
             )
             consume_streaming(resp)
 
-        assert Entry.objects.filter(user=seeded_user).count() == 0
+        # The image turn must PROPOSE, never write: zero entries created at all.
+        assert Entry.objects.count() == 0
 
 
 @pytest.mark.django_db
