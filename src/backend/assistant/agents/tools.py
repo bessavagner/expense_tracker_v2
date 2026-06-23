@@ -128,7 +128,11 @@ def _resolve_entry_by_prefix(user, entry_id: str):
     raw = (entry_id or "").strip().replace("-", "").lower()
     if not raw:
         return []
-    return [e for e in Entry.objects.filter(user=user) if str(e.id).replace("-", "").startswith(raw)]
+    return [
+        e
+        for e in Entry.objects.filter(user=user)
+        if str(e.id).replace("-", "").startswith(raw)
+    ]
 
 
 def list_recent_entries(user, limit: int = 10) -> str:
@@ -172,7 +176,10 @@ def update_entry(
         )
         if pm is None:
             avail = ", ".join(list_payment_methods(user))
-            return f"Erro: forma de pagamento '{payment_method_name}' não encontrada. Disponíveis: {avail}"
+            return (
+                f"Erro: forma de pagamento '{payment_method_name}' não encontrada. "
+                f"Disponíveis: {avail}"
+            )
         entry.payment_method = pm
     if date_str:
         try:
@@ -220,12 +227,21 @@ def add_receipt_item(user, description, line_total, category="") -> str:
         return f"Erro: valor inválido '{line_total}'."
     payload = draft.payload or {}
     items = payload.get("items", [])
-    items.append({"description": description, "line_total": str(line_total), "category": (category or None)})
+    items.append(
+        {
+            "description": description,
+            "line_total": str(line_total),
+            "category": (category or None),
+        }
+    )
     payload["items"] = items
     payload.pop("plan", None)
     draft.payload = payload
     draft.save(update_fields=["payload", "updated_at"])
-    return f"Item adicionado ao recibo: {description} — R$ {line_total}. Re-proponha com propose_receipt()."
+    return (
+        f"Item adicionado ao recibo: {description} — R$ {line_total}. "
+        "Re-proponha com propose_receipt()."
+    )
 
 
 _CENTS = Decimal("0.01")

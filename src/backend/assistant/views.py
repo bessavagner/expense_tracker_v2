@@ -7,12 +7,12 @@ from django.http import JsonResponse, StreamingHttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
+from assistant.agents.assistant import assistant_agent
 from assistant.agents.extraction import (
     extract_receipt,
     extraction_to_prompt,
     receipt_needs_review,
 )
-from assistant.agents.assistant import assistant_agent
 from assistant.models import ChatMessage, MessageRole, ReceiptDraft
 from assistant.services.image_prep import prepare_receipt_image
 from assistant.services.transcription import transcribe_audio

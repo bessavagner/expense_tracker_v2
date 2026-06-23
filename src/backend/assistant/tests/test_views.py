@@ -378,7 +378,8 @@ class TestChatEndpoint:
     def test_pending_receipt_audio_routes_confirm_and_commits_once(
         self, logged_client, seeded_user, monkeypatch
     ):
-        """Voice confirmation of a pending receipt must route to assistant_agent — regression guard for the audio path (single-agent mode)."""
+        """Voice confirmation of a pending receipt must route to assistant_agent —
+        regression guard for the audio path (single-agent mode)."""
         from assistant.agents.tools import propose_receipt
         from assistant.models import ReceiptDraft, ReceiptDraftStatus
         from finances.models import Entry

@@ -734,7 +734,11 @@ def test_add_receipt_item_appends_and_clears_plan(seeded_user):
     from assistant.models import ReceiptDraft, ReceiptDraftStatus
     d = ReceiptDraft.objects.create(
         user=seeded_user,
-        payload={"store": "X", "items": [{"description": "a", "line_total": "10", "category": "Alimentação"}], "plan": {"stale": True}},
+        payload={
+            "store": "X",
+            "items": [{"description": "a", "line_total": "10", "category": "Alimentação"}],
+            "plan": {"stale": True},
+        },
         status=ReceiptDraftStatus.PENDING,
     )
     out = add_receipt_item(seeded_user, "frete", "39.97", "Serviço")

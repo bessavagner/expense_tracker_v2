@@ -19,20 +19,19 @@ from pydantic_ai import Agent, RunContext
 from assistant.agents import analytics
 from assistant.agents.prompts import ASSISTANT_PROMPT, build_date_instructions
 from assistant.agents.tools import (
+    add_receipt_item as _add_receipt_item,
+)
+from assistant.agents.tools import (
     build_pending_receipt_directive,
-    commit_receipt as _commit_receipt,
     create_category,
     create_entry,
     create_memory_rule,
     create_payment_method,
-    discard_receipt as _discard_receipt,
     list_categories,
     list_memory_rules,
     list_payment_methods,
-    list_recent_entries as _list_recent_entries,
     list_systemic_expenses,
     lookup_memory_async,
-    propose_receipt as _propose_receipt,
     query_balance,
     query_budget_status,
     query_expenses,
@@ -41,9 +40,24 @@ from assistant.agents.tools import (
     update_income,
 )
 from assistant.agents.tools import (
-    add_receipt_item as _add_receipt_item,
+    commit_receipt as _commit_receipt,
+)
+from assistant.agents.tools import (
     delete_entry as _delete_entry,
+)
+from assistant.agents.tools import (
+    discard_receipt as _discard_receipt,
+)
+from assistant.agents.tools import (
+    list_recent_entries as _list_recent_entries,
+)
+from assistant.agents.tools import (
+    propose_receipt as _propose_receipt,
+)
+from assistant.agents.tools import (
     set_systemic_amount as _set_systemic_amount,
+)
+from assistant.agents.tools import (
     update_entry as _update_entry,
 )
 from finances.services.whatif import HypotheticalItem, simulate_projection_summary
