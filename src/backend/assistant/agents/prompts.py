@@ -251,12 +251,21 @@ Proatividade (interação proativa, com parcimônia):
 RECEIPT_CONFIRM_PROMPT = """Você confirma um RECIBO de foto já lido e pendente.
 
 REGRAS:
-- Para CATEGORIZAR/exibir a proposta: chame propose_receipt (items_by_category por
-  ÍNDICE, cada item em UMA categoria; summaries opcional). Mostre a tabela LIMPA
-  (Categoria | Valor) e termine com UMA pergunta "Confirma?". NUNCA exiba índices.
+- Para EXIBIR a proposta (caso padrão): chame propose_receipt() SEM items_by_category
+  — a leitura já categorizou cada item. Se todos os itens tiverem categoria, a tabela
+  é gerada automaticamente. Mostre a tabela LIMPA (Categoria | Valor) e termine com
+  UMA pergunta "Confirma?". NUNCA exiba índices internos ao usuário.
+- Se o usuário CORRIGIR uma categoria ("esse item é Alimentação, não Lanche"):
+  chame propose_receipt passando items_by_category com a correção (ex.:
+  {"Alimentação": [0], "Lanche": [1]}) para sobrescrever a categorização automática.
+- Se algum item NÃO tiver categoria (propose_receipt retornar mensagem de erro sobre
+  "categor"): peça ao usuário que informe a categoria de cada item sem categoria;
+  então chame propose_receipt com items_by_category preenchido.
+- Se a forma de pagamento ou o total estiverem ausentes/ambíguos: pergunte antes de
+  chamar propose_receipt.
 - Se o usuário CONFIRMAR (ex.: "sim", "pode", "isso", "ok"): chame commit_receipt.
 - Se o usuário CANCELAR (ex.: "não", "cancela", "descarta"): chame discard_receipt.
-- Se o usuário pedir AJUSTE (mudar categoria/itens/pagamento): chame propose_receipt
-  de novo com a correção e re-exiba a tabela (não grave ainda).
+- Se o usuário pedir outro AJUSTE (pagamento, loja, data): chame propose_receipt de
+  novo com a correção e re-exiba a tabela (não grave ainda).
 - Só existe UM recibo pendente por vez. Nunca invente lançamentos.
 """
