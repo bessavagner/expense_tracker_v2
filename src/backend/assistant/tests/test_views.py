@@ -341,6 +341,40 @@ class TestChatEndpoint:
         assert Entry.objects.count() == 0
 
 
+    def test_pending_receipt_routes_confirm_and_commits_once(self, logged_client, seeded_user):
+        from pydantic_ai.models.test import TestModel  # noqa: F401 already imported at top
+
+        from assistant.agents.receipt_confirm import receipt_confirm_agent
+        from assistant.agents.tools import propose_receipt
+        from assistant.models import ReceiptDraft, ReceiptDraftStatus
+        from finances.models import Entry
+
+        draft = ReceiptDraft.objects.create(
+            user=seeded_user, status=ReceiptDraftStatus.PENDING,
+            payload={
+                "store": "MATEUS", "date": "2026-06-22", "discount": "0",
+                "payment_hint": "Pix",
+                "items": [
+                    {"description": "arroz", "line_total": "60.00"},
+                    {"description": "refri", "line_total": "40.00"},
+                ],
+            },
+        )
+        propose_receipt(seeded_user, {"Alimentação": [0], "Lanche": [1]}, "Pix")
+
+        # A TestModel that calls only commit_receipt simulates the user's "sim".
+        tm = TestModel(call_tools=["commit_receipt"])
+        with receipt_confirm_agent.override(model=tm):
+            resp = logged_client.post(
+                "/api/assistant/chat/", {"message": "sim"},
+                content_type="application/json",
+            )
+            consume_streaming(resp)
+        assert Entry.objects.filter(user=seeded_user).count() == 2
+        draft.refresh_from_db()
+        assert draft.status == ReceiptDraftStatus.REGISTERED
+
+
 @pytest.mark.django_db
 class TestHistoryEndpoint:
     def test_returns_messages(self, logged_client, user):

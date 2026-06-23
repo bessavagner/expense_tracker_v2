@@ -164,6 +164,16 @@ async def chat_view(request):
     return await _handle_json(request, user)
 
 
+async def _pending_receipt(user):
+    from assistant.models import ReceiptDraft, ReceiptDraftStatus
+
+    return await (
+        ReceiptDraft.objects.filter(user=user, status=ReceiptDraftStatus.PENDING)
+        .order_by("-created_at")
+        .afirst()
+    )
+
+
 async def _handle_json(request, user):
     try:
         body = json.loads(request.body)
@@ -177,6 +187,8 @@ async def _handle_json(request, user):
     await ChatMessage.objects.acreate(
         user=user, role=MessageRole.USER, content=message
     )
+    if await _pending_receipt(user):
+        return _sse_response(user, receipt_confirm_agent, message, message_history=None)
     history = await _load_history(user)
     return _sse_response(user, assistant_agent, message, message_history=history)
 
@@ -202,6 +214,8 @@ async def _handle_multipart(request, user):
     await ChatMessage.objects.acreate(
         user=user, role=MessageRole.USER, content=caption
     )
+    if await _pending_receipt(user):
+        return _sse_response(user, receipt_confirm_agent, caption, message_history=None)
     history = await _load_history(user)
     return _sse_response(user, assistant_agent, caption, message_history=history)
 
