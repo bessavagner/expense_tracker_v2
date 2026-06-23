@@ -216,3 +216,38 @@ def test_needs_review_true_when_amount_paid_present_and_sum_wrong():
         amount_paid=Decimal("99"), confidence=0.9,
     )
     assert receipt_needs_review(ext, min_confidence=0.6) is True
+
+
+@pytest.mark.anyio
+async def test_extract_receipt_injects_user_taxonomy(monkeypatch):
+    from assistant.agents.extraction import extract_receipt, extraction_agent
+
+    captured = {}
+    real_run = extraction_agent.run
+
+    async def spy(prompt, *a, **k):
+        captured["prompt"] = prompt
+        return await real_run(prompt, *a, **k)
+
+    monkeypatch.setattr(extraction_agent, "run", spy)
+    with extraction_agent.override(model=TestModel()):
+        await extract_receipt(
+            [(b"img", "image/jpeg")],
+            categories=["Alimentação", "Limpeza"],
+            payment_methods=["Pix", "Crédito Santander"],
+        )
+    text = captured["prompt"][0]  # instruction string is first element
+    assert "Alimentação" in text and "Limpeza" in text
+    assert "Crédito Santander" in text
+
+
+def test_extraction_to_prompt_auto_mode_no_indices():
+    from assistant.agents.extraction import ReceiptExtraction, ReceiptItem, extraction_to_prompt
+
+    ext = ReceiptExtraction(
+        items=[ReceiptItem(description="arroz", line_total=Decimal("10"), category="Alimentação")],
+        amount_paid=Decimal("10"), confidence=0.9,
+    )
+    out = extraction_to_prompt(ext, needs_review=False)
+    assert "propose_receipt()" in out  # instruct calling without items_by_category
+    assert "Alimentação" in out
