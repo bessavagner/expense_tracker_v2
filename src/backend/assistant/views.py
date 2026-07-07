@@ -232,6 +232,45 @@ async def _handle_audio(request, user, audio, caption):
     return _sse_response(user, assistant_agent, message, message_history=history, user_text=message)
 
 
+async def _dispatch_extraction(user, chat_msg, extraction, caption, user_label):
+    """Rota comum após uma extração bem-sucedida.
+
+    Se a foto parece um recibo JÁ REGISTRADO (reenvio para corrigir/identificar),
+    NÃO abre um novo fluxo de commit — orienta o assistente a corrigir os
+    lançamentos existentes, com histórico, evitando a duplicata (incidente PAGUE
+    MENOS). Caso contrário, cria o draft pendente e segue o fluxo normal de
+    proposta/confirmação (sem histórico, focado no recibo).
+    """
+    from assistant.agents.tools import (
+        build_duplicate_receipt_directive,
+        find_registered_duplicate,
+    )
+
+    payload = extraction.model_dump(mode="json")
+    dup = await sync_to_async(find_registered_duplicate)(user, payload)
+    if dup is not None:
+        directive = await sync_to_async(build_duplicate_receipt_directive)(user, payload, dup)
+        if caption:
+            directive = f"{directive}\n\nMensagem do usuário: {caption}"
+        history = await _load_history(user)
+        return _sse_response(
+            user,
+            assistant_agent,
+            directive,
+            message_history=history,
+            user_text=user_label,
+        )
+
+    await ReceiptDraft.objects.acreate(
+        user=user, chat_message=chat_msg, payload=payload
+    )
+    needs_review = receipt_needs_review(extraction, settings.ASSISTANT_RECEIPT_MIN_CONFIDENCE)
+    prompt = extraction_to_prompt(extraction, caption, needs_review=needs_review)
+    return _sse_response(
+        user, assistant_agent, prompt, message_history=None, user_text=user_label
+    )
+
+
 async def _handle_images(request, user, images, caption):
     if len(images) > settings.ASSISTANT_MAX_IMAGES:
         return JsonResponse(
@@ -281,20 +320,7 @@ async def _handle_images(request, user, images, caption):
         logger.exception("Falha na extração estruturada do recibo; tentando com modelo de visão.")
 
     if extraction is not None:
-        await ReceiptDraft.objects.acreate(
-            user=user,
-            chat_message=chat_msg,
-            payload=extraction.model_dump(mode="json"),
-        )
-        needs_review = receipt_needs_review(extraction, settings.ASSISTANT_RECEIPT_MIN_CONFIDENCE)
-        prompt = extraction_to_prompt(extraction, caption, needs_review=needs_review)
-        return _sse_response(
-            user,
-            assistant_agent,
-            prompt,
-            message_history=None,
-            user_text=user_label,
-        )
+        return await _dispatch_extraction(user, chat_msg, extraction, caption, user_label)
 
     # Fallback: tenta UMA vez a extração com o modelo de visão; sem sucesso,
     # pede reenvio (nunca grava direto).
@@ -333,14 +359,7 @@ async def _handle_images(request, user, images, caption):
         resp["X-Accel-Buffering"] = "no"
         return resp
 
-    await ReceiptDraft.objects.acreate(
-        user=user, chat_message=chat_msg, payload=extraction.model_dump(mode="json")
-    )
-    needs_review = receipt_needs_review(extraction, settings.ASSISTANT_RECEIPT_MIN_CONFIDENCE)
-    prompt = extraction_to_prompt(extraction, caption, needs_review=needs_review)
-    return _sse_response(
-        user, assistant_agent, prompt, message_history=None, user_text=user_label
-    )
+    return await _dispatch_extraction(user, chat_msg, extraction, caption, user_label)
 
 
 @require_GET

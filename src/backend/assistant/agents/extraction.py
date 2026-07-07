@@ -8,11 +8,48 @@ rateio do desconto deixam de depender de aritmética "de cabeça" do modelo.
 Roda no modelo de visão (``LLM_VISION_MODEL``).
 """
 
+import re
+from datetime import date
 from decimal import Decimal
 
 from django.conf import settings
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from pydantic_ai import Agent, BinaryContent
+
+_BR_DATE_RE = re.compile(r"^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})$")
+
+
+def normalize_receipt_date(value) -> str | None:
+    """Normaliza a data lida do cupom para ISO ``AAAA-MM-DD`` (ou ``None``).
+
+    O modelo de visão às vezes devolve a data em formato brasileiro e/ou com
+    hora (ex.: ``"04/07/2026 12:09:32"``), que ``date.fromisoformat`` não
+    parseia — sem esta normalização o recibo caía silenciosamente na data de
+    HOJE (bug real do cupom PAGUE MENOS). Aceita ISO, ISO+hora, ``dd/mm/aaaa``
+    e ``dd/mm/aa`` (com ``/``, ``.`` ou ``-``). Devolve ``None`` se ilegível.
+    """
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    # descarta o componente de hora (separado por espaço ou 'T')
+    s = s.replace("T", " ").split(" ", 1)[0].strip()
+    try:
+        return date.fromisoformat(s).isoformat()
+    except ValueError:
+        pass
+    m = _BR_DATE_RE.match(s)
+    if m:
+        day, month, year = (int(g) for g in m.groups())
+        if year < 100:
+            year += 2000
+        try:
+            return date(year, month, day).isoformat()
+        except ValueError:
+            return None
+    return None
+
 
 EXTRACTION_PROMPT = """\
 Você extrai dados de fotos de recibos/cupons/pedidos de compra (e-commerce)
@@ -70,6 +107,12 @@ class ReceiptExtraction(BaseModel):
     card_last4: str | None = None  # últimos 4 dígitos do cartão, se legíveis
     card_first_digits: str | None = None  # primeiros dígitos/BIN, se legíveis
     confidence: float = 0.0
+
+    @field_validator("date", mode="before")
+    @classmethod
+    def _normalize_date(cls, v):
+        """Normaliza a data para ISO na entrada (aceita BR + hora do modelo)."""
+        return normalize_receipt_date(v)
 
 
 extraction_agent = Agent(

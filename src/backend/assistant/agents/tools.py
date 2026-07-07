@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from asgiref.sync import sync_to_async as _sync_to_async
@@ -6,6 +6,7 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 
+from assistant.agents.extraction import normalize_receipt_date
 from assistant.agents.memory import (
     AUTO_APPLY,
     CONFIRM_APPLY,
@@ -24,6 +25,22 @@ from finances.models import (
     SystemicExpense,
 )
 from finances.models.payment_method import PaymentType
+
+
+def _parse_receipt_date(value) -> "date | None":
+    """Parseia a data do cupom (ISO, ISO+hora ou dd/mm/aaaa) para ``date``.
+
+    Delega a normalização a ``normalize_receipt_date`` (mesma lógica da extração)
+    para que uma data em formato brasileiro/​com hora NÃO caia silenciosamente na
+    data de hoje. Devolve ``None`` quando não há data legível.
+    """
+    iso = normalize_receipt_date(value)
+    if not iso:
+        return None
+    try:
+        return date.fromisoformat(iso)
+    except ValueError:
+        return None
 
 
 def list_categories(user) -> list[str]:
@@ -421,11 +438,7 @@ def _resolve_receipt_plan(
     discount_by_cat = _prorate_discount(category_sums, discount_val)
 
     store = (store_name or "").strip() or str(payload.get("store") or "Recibo").strip()
-    date_str = payload.get("date")
-    try:
-        entry_date = date.fromisoformat(date_str) if date_str else timezone.localdate()
-    except (ValueError, TypeError):
-        entry_date = timezone.localdate()
+    entry_date = _parse_receipt_date(payload.get("date")) or timezone.localdate()
 
     summaries = summaries or {}
     lines = []
@@ -576,6 +589,83 @@ def discard_pending_receipts(user) -> int:
     return ReceiptDraft.objects.filter(
         user=user, status=ReceiptDraftStatus.PENDING
     ).update(status=ReceiptDraftStatus.DISCARDED)
+
+
+_DUP_WINDOW_HOURS = 48
+
+
+def _to_decimal(value):
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
+def _items_total(items) -> Decimal:
+    return sum(
+        (_to_decimal(i.get("line_total")) or Decimal("0") for i in items), Decimal("0")
+    )
+
+
+def find_registered_duplicate(user, payload, within_hours: int = _DUP_WINDOW_HOURS):
+    """Retorna um ReceiptDraft já REGISTRADO que parece ser o MESMO recibo de
+    ``payload`` (loja + valor pago, ou loja + nº de itens e soma das linhas),
+    dentro da janela recente. Serve para não re-registrar quando o usuário
+    reenvia a nota só para corrigir/identificar (bug real: duplicata PAGUE
+    MENOS). Devolve ``None`` se não houver correspondência.
+    """
+    store = (payload.get("store") or "").strip().lower()
+    items = payload.get("items") or []
+    n = len(items)
+    if not store or n == 0:
+        return None
+    paid = _to_decimal(payload.get("amount_paid"))
+    items_total = _items_total(items)
+    cutoff = timezone.now() - timedelta(hours=within_hours)
+    candidates = (
+        ReceiptDraft.objects.filter(
+            user=user, status=ReceiptDraftStatus.REGISTERED, created_at__gte=cutoff
+        )
+        .order_by("-created_at")[:20]
+    )
+    for draft in candidates:
+        p = draft.payload or {}
+        if (p.get("store") or "").strip().lower() != store:
+            continue
+        cpaid = _to_decimal(p.get("amount_paid"))
+        if paid is not None and cpaid is not None:
+            if paid == cpaid:
+                return draft
+            continue
+        citems = p.get("items") or []
+        ctotal = _items_total(citems)
+        if len(citems) == n and items_total > 0 and ctotal == items_total:
+            return draft
+    return None
+
+
+def build_duplicate_receipt_directive(user, payload, dup) -> str:
+    """Diretiva quando uma foto reenviada bate com um recibo JÁ REGISTRADO.
+
+    Em vez de abrir um novo fluxo de commit (que gerava a duplicata quando o
+    'sim' seguinte era sequestrado para commit_receipt), orienta o assistente a
+    tratar como CORREÇÃO dos lançamentos existentes.
+    """
+    store = str(payload.get("store") or "recibo").strip()
+    paid = payload.get("amount_paid")
+    when = timezone.localtime(dup.created_at).strftime("%d/%m/%Y")
+    n = len(payload.get("items") or [])
+    paid_str = f" (total R$ {paid})" if paid not in (None, "") else ""
+    return (
+        f"⚠️ Esta foto parece ser um recibo JÁ REGISTRADO: {store}{paid_str}, "
+        f"{n} itens, registrado em {when}. NÃO registre novamente e NÃO chame "
+        "commit_receipt/propose_receipt/register_entry por conta própria. O mais "
+        "provável é que o usuário queira CORRIGIR os lançamentos já existentes "
+        "(ex.: a data): use list_recent_entries para localizá-los e update_entry "
+        "para ajustar o que ele pedir; confirme a mudança antes de aplicar. Só "
+        "registre uma nova cópia se o usuário disser explicitamente que é uma "
+        "compra NOVA idêntica — nesse caso, pergunte antes."
+    )
 
 
 def build_receipt_context(user) -> str:

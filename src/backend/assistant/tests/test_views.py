@@ -156,6 +156,61 @@ class TestChatEndpoint:
         # transition pending → discarded; assert creation happened (any status).
         assert ReceiptDraft.objects.filter(user=user).exists()
 
+    def test_resent_registered_receipt_does_not_reregister(
+        self, logged_client, user, monkeypatch
+    ):
+        """Reenviar a MESMA nota (já registrada) NÃO abre um novo fluxo de recibo
+        — não cria draft para re-commit. Evita a duplicata do incidente PAGUE
+        MENOS (o 'sim' seguinte deixa de ser sequestrado para commit_receipt)."""
+        from decimal import Decimal
+
+        from assistant.agents.extraction import ReceiptExtraction, ReceiptItem
+        from assistant.models import ReceiptDraft, ReceiptDraftStatus
+
+        ReceiptDraft.objects.create(
+            user=user,
+            payload={
+                "store": "EMPREENDIMENTOS PAGUE MENOS S/A",
+                "date": "2026-07-04",
+                "amount_paid": "155.90",
+                "items": [
+                    {"description": "lemont", "line_total": "135.98"},
+                    {"description": "barra", "line_total": "19.92"},
+                ],
+            },
+            status=ReceiptDraftStatus.REGISTERED,
+        )
+        before = ReceiptDraft.objects.filter(user=user).count()
+
+        async def fake_extract(images, categories=None, payment_methods=None, model=None):
+            return ReceiptExtraction(
+                store="EMPREENDIMENTOS PAGUE MENOS S/A",
+                amount_paid=Decimal("155.90"),
+                items=[
+                    ReceiptItem(description="lemont", line_total=Decimal("135.98")),
+                    ReceiptItem(description="barra", line_total=Decimal("19.92")),
+                ],
+            )
+
+        monkeypatch.setattr("assistant.views.extract_receipt", fake_extract)
+
+        png = (
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00"
+            b"\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9c"
+            b"c\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+        image = SimpleUploadedFile("recibo.png", png, content_type="image/png")
+        with assistant_agent.override(model=TestModel()):
+            response = logged_client.post(
+                "/api/assistant/chat/",
+                data={"image": image, "message": "corrige a data"},
+            )
+            consume_streaming(response)
+
+        assert response.status_code == 200
+        # nenhum draft novo criado → não há recibo pendente para re-commit
+        assert ReceiptDraft.objects.filter(user=user).count() == before
+
     def test_multipart_rejects_two_files(self, logged_client, user):
         a = SimpleUploadedFile("n.webm", b"\x00", content_type="audio/webm")
         i = SimpleUploadedFile("r.png", b"\x00", content_type="image/png")
