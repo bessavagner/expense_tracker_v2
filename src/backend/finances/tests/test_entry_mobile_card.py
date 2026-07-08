@@ -82,3 +82,18 @@ def test_delete_removes_both_row_and_card(client, user, entry):
     assert f'id="entry-card-{entry.id}"' in body
     assert not Entry.objects.filter(pk=entry.id).exists()
     assert resp.headers.get("HX-Trigger") and "entries-changed" in resp.headers["HX-Trigger"]
+
+
+def test_entries_page_renders_mobile_card_include(client, user, entry):
+    """Page-level guard: EntryListView GET renders the mobile card via the
+    {% include %}. A broken include would slip past the partial-only tests
+    above, so assert on the card's unique id in the full page body."""
+    client.force_login(user)
+    resp = client.get(f"/entries/{entry.date.year}/{entry.date.month}/")
+    assert resp.status_code == 200
+    body = resp.content.decode()
+    edit_url = reverse("finances:entry_edit_modal", args=[entry.id])
+    # `entry-card-{id}` is unique to the mobile card partial (the desktop row
+    # is `entry-{id}`), so its presence proves the include rendered.
+    assert f'id="entry-card-{entry.id}"' in body
+    assert f'hx-get="{edit_url}"' in body
