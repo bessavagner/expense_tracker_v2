@@ -26,8 +26,7 @@
         {% if entry.entry_type == 'regular' and delete_url %}
         <button class="btn btn-ghost btn-xs text-error"
                 hx-delete="{{ delete_url }}"
-                hx-target="#entry-{{ entry.id }}"
-                hx-swap="outerHTML swap:1s"
+                hx-swap="none"
                 hx-confirm="Excluir esta entrada?"
                 onclick="event.stopPropagation()">🗑️</button>
         {% endif %}

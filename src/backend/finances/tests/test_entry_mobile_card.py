@@ -70,3 +70,15 @@ def test_edit_save_syncs_both_row_and_card(client, user, entry):
     # updated value present in the card representation
     assert "New desc" in body
     assert resp.headers.get("HX-Trigger") and "entry-saved" in resp.headers["HX-Trigger"]
+
+
+def test_delete_removes_both_row_and_card(client, user, entry):
+    client.force_login(user)
+    url = reverse("finances:entry_delete", args=[entry.id])
+    resp = client.delete(url)
+    assert resp.status_code == 200
+    body = resp.content.decode()
+    assert f'id="entry-{entry.id}"' in body and "hx-swap-oob=\"delete\"" in body
+    assert f'id="entry-card-{entry.id}"' in body
+    assert not Entry.objects.filter(pk=entry.id).exists()
+    assert resp.headers.get("HX-Trigger") and "entries-changed" in resp.headers["HX-Trigger"]

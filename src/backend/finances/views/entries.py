@@ -201,8 +201,13 @@ class EntryDeleteView(HtmxLoginRequiredMixin, View):
         entry = Entry.objects.filter(user=request.user, pk=pk).first()
         if not entry:
             raise Http404
+        entry_id = entry.pk
         entry.delete()
-        response = HttpResponse("")
+        html = (
+            f'<tr id="entry-{entry_id}" hx-swap-oob="delete"></tr>'
+            f'<div id="entry-card-{entry_id}" hx-swap-oob="delete"></div>'
+        )
+        response = HttpResponse(html)
         response["HX-Trigger"] = (
             '{"showToast": {"message": "Entrada excluída!", "type": "success"},'
             f" {ENTRIES_CHANGED}}}"
