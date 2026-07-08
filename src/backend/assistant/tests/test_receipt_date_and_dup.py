@@ -159,3 +159,90 @@ def test_duplicate_directive_steers_to_edit_not_register(seeded_user):
     assert "já" in low and "registrad" in low  # avisa que já foi registrado
     assert "list_recent_entries" in out and "update_entry" in out  # caminho de edição
     assert "não registre" in low or "nao registre" in low  # proíbe re-registro cego
+
+
+# ── Evidence-based dedup: a registered receipt whose entries were DELETED must
+#    NOT count as a duplicate (so the user can safely re-send the photo). ──────
+
+def _plan_payload(**over):
+    payload = {
+        "store": "Drogasil",
+        "date": "2026-07-04",
+        "amount_paid": "118.86",
+        "items": [
+            {"description": "a", "line_total": "20.97", "category": "Alimentação"},
+            {"description": "b", "line_total": "97.89", "category": "Saúde"},
+        ],
+        "plan": {
+            "store": "Drogasil",
+            "date": "2026-07-04",
+            "payment_method_id": None,  # set per-test
+            "lines": [
+                {"category_name": "Alimentação", "description": "Drogasil - a", "amount": "20.97"},
+                {"category_name": "Saúde", "description": "Drogasil - b", "amount": "97.89"},
+            ],
+            "total": "118.86",
+        },
+    }
+    payload.update(over)
+    return payload
+
+
+def _incoming():
+    return {
+        "store": "Drogasil",
+        "amount_paid": "118.86",
+        "items": [
+            {"description": "x", "line_total": "20.97"},
+            {"description": "y", "line_total": "97.89"},
+        ],
+    }
+
+
+def test_deleted_entries_not_a_duplicate(seeded_user):
+    """Registered draft WITH a plan but NO live entries → re-send is allowed."""
+    from finances.models import PaymentMethod
+
+    pm = PaymentMethod.objects.filter(user=seeded_user).first()
+    payload = _plan_payload()
+    payload["plan"]["payment_method_id"] = str(pm.id)
+    ReceiptDraft.objects.create(
+        user=seeded_user, payload=payload, status=ReceiptDraftStatus.REGISTERED
+    )
+    # No Entry rows created (they were "deleted").
+    assert find_registered_duplicate(seeded_user, _incoming()) is None
+
+
+def test_live_entries_still_a_duplicate(seeded_user):
+    """Registered draft WITH a plan AND matching live entries → still a dup."""
+    from datetime import date
+
+    from finances.models import Category, PaymentMethod
+
+    pm = PaymentMethod.objects.filter(user=seeded_user).first()
+    cat = Category.objects.filter(user=seeded_user).first()
+    payload = _plan_payload()
+    payload["plan"]["payment_method_id"] = str(pm.id)
+    ReceiptDraft.objects.create(
+        user=seeded_user, payload=payload, status=ReceiptDraftStatus.REGISTERED
+    )
+    # One matching live entry (date + pm + amount) is enough.
+    Entry.objects.create(
+        user=seeded_user, date=date(2026, 7, 4), amount="20.97",
+        description="Drogasil - a", category=cat, payment_method=pm,
+    )
+    assert find_registered_duplicate(seeded_user, _incoming()) is not None
+
+
+def test_legacy_draft_without_plan_still_duplicate(seeded_user):
+    """No 'plan' key (pre-plan drafts) → fallback keeps dup behavior."""
+    _registered(seeded_user)  # helper payload has NO 'plan'
+    incoming = {
+        "store": "EMPREENDIMENTOS PAGUE MENOS S/A",
+        "amount_paid": "155.90",
+        "items": [
+            {"description": "x", "line_total": "135.98"},
+            {"description": "y", "line_total": "19.92"},
+        ],
+    }
+    assert find_registered_duplicate(seeded_user, incoming) is not None

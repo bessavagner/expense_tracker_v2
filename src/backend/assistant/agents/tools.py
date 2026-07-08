@@ -641,12 +641,47 @@ def _items_total(items) -> Decimal:
     )
 
 
+def _plan_entries_alive(user, draft) -> bool:
+    """True if this registered draft's entries still exist (a real duplicate).
+
+    ``commit_receipt`` creates one Entry per plan line with the plan's date,
+    payment method, and the line amount. If the user later deleted those
+    entries, re-sending the photo must NOT be treated as a duplicate. Matching
+    excludes description (the user edits descriptions). Drafts with no usable
+    plan (legacy, pre-plan) fall back to True to preserve the old dedup.
+    """
+    plan = (draft.payload or {}).get("plan") or {}
+    lines = plan.get("lines") or []
+    pm_id = plan.get("payment_method_id")
+    date_str = plan.get("date")
+    if not lines or not pm_id or not date_str:
+        return True
+    try:
+        entry_date = date.fromisoformat(date_str)
+    except (ValueError, TypeError):
+        return True
+    for line in lines:
+        amount = _to_decimal(line.get("amount"))
+        if amount is None:
+            continue
+        if Entry.objects.filter(
+            user=user,
+            date=entry_date,
+            payment_method_id=pm_id,
+            amount=amount,
+        ).exists():
+            return True
+    return False
+
+
 def find_registered_duplicate(user, payload, within_hours: int = _DUP_WINDOW_HOURS):
     """Retorna um ReceiptDraft já REGISTRADO que parece ser o MESMO recibo de
     ``payload`` (loja + valor pago, ou loja + nº de itens e soma das linhas),
     dentro da janela recente. Serve para não re-registrar quando o usuário
     reenvia a nota só para corrigir/identificar (bug real: duplicata PAGUE
-    MENOS). Devolve ``None`` se não houver correspondência.
+    MENOS). Só conta como duplicata se os lançamentos do recibo AINDA existem
+    (ver ``_plan_entries_alive``): se o usuário apagou as entries, o reenvio
+    volta a ser registrável. Devolve ``None`` se não houver correspondência.
     """
     store = (payload.get("store") or "").strip().lower()
     items = payload.get("items") or []
@@ -668,12 +703,13 @@ def find_registered_duplicate(user, payload, within_hours: int = _DUP_WINDOW_HOU
             continue
         cpaid = _to_decimal(p.get("amount_paid"))
         if paid is not None and cpaid is not None:
-            if paid == cpaid:
+            if paid == cpaid and _plan_entries_alive(user, draft):
                 return draft
             continue
         citems = p.get("items") or []
         ctotal = _items_total(citems)
-        if len(citems) == n and items_total > 0 and ctotal == items_total:
+        if len(citems) == n and items_total > 0 and ctotal == items_total \
+                and _plan_entries_alive(user, draft):
             return draft
     return None
 
