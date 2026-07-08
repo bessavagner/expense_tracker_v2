@@ -259,7 +259,7 @@ class EntryEditModalView(HtmxLoginRequiredMixin, View):
         if form.is_valid():
             entry = form.save()
             html = render_to_string(
-                "entries/_entry_row.html", {"entry": entry}, request=request
+                "entries/_entry_saved.html", {"entry": entry}, request=request
             )
             response = HttpResponse(html)
             response["HX-Trigger"] = (

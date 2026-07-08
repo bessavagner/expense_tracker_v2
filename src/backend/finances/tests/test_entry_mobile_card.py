@@ -45,3 +45,28 @@ def test_card_opens_edit_modal_and_has_delete(entry):
 def test_card_oob_flag_adds_swap_oob(entry):
     html = render_to_string("entries/_entry_card.html", {"entry": entry, "oob": True})
     assert 'hx-swap-oob="true"' in html
+
+
+def test_edit_save_syncs_both_row_and_card(client, user, entry):
+    client.force_login(user)
+    url = reverse("finances:entry_edit_modal", args=[entry.id])
+    resp = client.post(
+        url,
+        {
+            "date": "2026-06-02",
+            "amount": "25.50",
+            "description": "New desc",
+            "category": entry.category_id,
+            "payment_method": entry.payment_method_id,
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.content.decode()
+    # desktop row (primary swap target)
+    assert f'id="entry-{entry.id}"' in body
+    # mobile card, delivered out-of-band
+    assert f'id="entry-card-{entry.id}"' in body
+    assert 'hx-swap-oob="true"' in body
+    # updated value present in the card representation
+    assert "New desc" in body
+    assert resp.headers.get("HX-Trigger") and "entry-saved" in resp.headers["HX-Trigger"]
