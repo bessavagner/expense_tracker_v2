@@ -252,6 +252,15 @@ def add_receipt_item(user, description, line_total, category="") -> str:
         }
     )
     payload["items"] = items
+    # Um item ADICIONADO (ex.: frete) é custo EXTRA sobre o recibo; mantém o valor
+    # pago em sincronia para que a reconciliação de desconto (soma−pago) não o
+    # trate como desconto e o descarte no rateio.
+    paid = payload.get("amount_paid")
+    if paid not in (None, ""):
+        try:
+            payload["amount_paid"] = str(Decimal(str(paid)) + Decimal(str(line_total)))
+        except (InvalidOperation, ValueError):
+            pass
     payload.pop("plan", None)
     draft.payload = payload
     draft.save(update_fields=["payload", "updated_at"])
@@ -262,6 +271,34 @@ def add_receipt_item(user, description, line_total, category="") -> str:
 
 
 _CENTS = Decimal("0.01")
+
+
+def _effective_discount(lines_total: Decimal, payload) -> Decimal:
+    """Desconto a ratear para que a soma das linhas bata com o VALOR PAGO.
+
+    Recibos brasileiros variam: às vezes o valor de linha é BRUTO (o desconto
+    precisa ser subtraído) e às vezes já vem LÍQUIDO/"Valor Líquido" (o desconto
+    já está embutido). O campo ``discount`` impresso costuma ser o TOTAL de
+    descontos e, se subtraído de linhas já líquidas, conta em dobro (bug real do
+    cupom DROGASIL: 118,86 virava 91,26).
+
+    Regra robusta: quando o VALOR PAGO é conhecido, o desconto a ratear é
+    ``soma(linhas) − valor_pago`` (0 se as linhas já são líquidas; nunca
+    negativo). Só quando não há valor pago é que caímos no ``discount`` impresso.
+    """
+    paid = payload.get("amount_paid")
+    if paid not in (None, ""):
+        try:
+            paid_val = Decimal(str(paid))
+        except (InvalidOperation, ValueError):
+            paid_val = None
+        if paid_val is not None:
+            derived = lines_total - paid_val
+            return derived if derived > 0 else Decimal("0")
+    try:
+        return Decimal(str(payload.get("discount") or "0"))
+    except (InvalidOperation, ValueError):
+        return Decimal("0")
 
 
 def _prorate_discount(
@@ -431,10 +468,7 @@ def _resolve_receipt_plan(
         resolved[cat_name] = category
         category_sums[cat_name] = subtotal
 
-    try:
-        discount_val = Decimal(str(payload.get("discount") or "0"))
-    except (InvalidOperation, ValueError):
-        discount_val = Decimal("0")
+    discount_val = _effective_discount(sum(category_sums.values(), Decimal("0")), payload)
     discount_by_cat = _prorate_discount(category_sums, discount_val)
 
     store = (store_name or "").strip() or str(payload.get("store") or "Recibo").strip()

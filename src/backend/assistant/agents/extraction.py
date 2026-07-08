@@ -125,15 +125,19 @@ extraction_agent = Agent(
 def receipt_is_consistent(
     extraction: ReceiptExtraction, tolerance: Decimal = Decimal("0.05")
 ) -> bool:
-    """True se a soma das linhas, menos o desconto, bate com o valor pago.
+    """True se a soma das linhas COBRE o valor pago (o excedente é desconto).
 
-    Retorna True imediatamente quando amount_paid é None (nada a reconciliar).
+    Retorna True quando amount_paid é None (nada a reconciliar). O valor de linha
+    pode vir BRUTO (excedente = desconto) ou já LÍQUIDO (excedente = 0); em ambos
+    a soma das linhas deve ser >= valor pago. NÃO subtrai o ``discount`` impresso
+    (fazê-lo dava falso-inconsistente em cupons com "Valor Líquido" — o desconto
+    já estava embutido; bug real do DROGASIL). Só sinaliza quando a soma fica
+    ABAIXO do valor pago — sinal de item não lido (leitura incompleta).
     """
     if extraction.amount_paid is None:
         return True
     items_sum = sum((i.line_total for i in extraction.items), Decimal("0"))
-    discount = extraction.discount or Decimal("0")
-    return abs(items_sum - discount - extraction.amount_paid) <= tolerance
+    return items_sum + tolerance >= extraction.amount_paid
 
 
 def receipt_needs_review(extraction: ReceiptExtraction, min_confidence: float) -> bool:
