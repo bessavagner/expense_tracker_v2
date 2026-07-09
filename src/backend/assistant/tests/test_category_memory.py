@@ -107,3 +107,20 @@ def test_propose_explicit_categories_not_overridden(seeded_user):
     plan = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload["plan"]
     cats = {ln["category_name"] for ln in plan["lines"]}
     assert cats == {"Alimentação"}  # rule NOT applied; explicit assignment won
+
+
+def test_propose_preserves_commas_in_summary(seeded_user):
+    ReceiptDraft.objects.create(
+        user=seeded_user, status=ReceiptDraftStatus.PENDING,
+        payload={
+            "store": "Cosmos", "date": "2026-07-06", "amount_paid": "10.00",
+            "payment_hint": "Pix",
+            "items": [{"description": "X", "line_total": "10.00", "category": "Lanche"}],
+        },
+    )
+    propose_receipt(
+        seeded_user, payment_method_name="Pix",
+        summaries={"Lanche": "bolachas, energéticos e refrigerantes"},
+    )
+    plan = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload["plan"]
+    assert plan["lines"][0]["description"] == "Cosmos - bolachas, energéticos e refrigerantes"

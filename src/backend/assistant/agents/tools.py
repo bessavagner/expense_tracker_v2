@@ -513,7 +513,7 @@ def _resolve_receipt_plan(
                 or category.name
             )
         summary = _strip_store_prefix(summary, store)
-        description = f"{store} - {summary}".replace(",", " -").strip()[:500]
+        description = f"{store} - {summary}".strip()[:500]
         lines.append(
             {
                 "category_id": str(category.id),
