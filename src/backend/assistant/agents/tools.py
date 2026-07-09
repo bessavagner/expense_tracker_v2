@@ -328,6 +328,31 @@ def _prorate_discount(
     return allocated
 
 
+def _apply_category_memory(user, items) -> None:
+    """Override each item's category from the user's learned category rules.
+
+    NF item names are abbreviated (e.g. "ENERG MONSTER"), so a rule's trigger is
+    matched as a case-insensitive substring of the item description. When several
+    rules match one item, the longest (most specific) trigger wins. Mutates
+    ``items`` in place; items with no matching rule keep the vision category.
+    Rules are the user's ``MemoryRule`` rows with ``field="category"``.
+    """
+    rules = list(MemoryRule.objects.filter(user=user, field="category"))
+    if not rules:
+        return
+    # Longest trigger first → most specific match wins.
+    rules.sort(key=lambda r: len(r.trigger or ""), reverse=True)
+    for item in items:
+        desc = str(item.get("description") or "").lower()
+        if not desc:
+            continue
+        for rule in rules:
+            trig = (rule.trigger or "").lower()
+            if trig and trig in desc:
+                item["category"] = rule.value
+                break
+
+
 def _items_by_category_from_items(items):
     """Deriva {categoria: [índices]} a partir do campo category de cada item.
     Retorna string de erro se algum item não tiver categoria."""
@@ -396,6 +421,7 @@ def _resolve_receipt_plan(
         return None, "Erro: o recibo pendente não tem itens."
 
     if items_by_category is None:
+        _apply_category_memory(user, items)
         derived = _items_by_category_from_items(items)
         if isinstance(derived, str):
             return None, derived
