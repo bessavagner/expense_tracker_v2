@@ -1,0 +1,66 @@
+"""Seed starter category memory rules (NF-token → category) for a user.
+
+Receipt item names on fiscal coupons are abbreviated (e.g. ``ENERG MONSTER``,
+``REFRIG LARANJA SJ 350ML``), so a category ``MemoryRule`` trigger must be a
+token that literally appears in the NF name — NOT the colloquial word
+("energético"), which would never substring-match. These starter rules encode
+the user's stated preference "energético e refrigerante são Lanche" in
+NF-matching form, so future receipts categorize them correctly on their own.
+
+Idempotent (reuses ``create_memory_rule`` → ``update_or_create``). Rules whose
+target category does not exist for the user are skipped with a warning.
+"""
+
+from django.contrib.auth import get_user_model
+from django.core.management.base import BaseCommand, CommandError
+
+from assistant.agents.tools import create_memory_rule
+from finances.models import Category
+
+# (NF-token trigger, category name). Triggers are lowercased by create_memory_rule
+# and matched case-insensitively as substrings of the item description.
+DEFAULT_RULES = [
+    ("energ", "Lanche"),    # ENERG MONSTER, ENERGY MONSTER
+    ("refrig", "Lanche"),   # REFRIG LARANJA ...
+    ("monster", "Lanche"),  # energético (marca) — reforça "energ"
+]
+
+
+class Command(BaseCommand):
+    help = "Seed starter category memory rules (NF-token → category) for a user."
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--user", required=True, help="username or email of the target user"
+        )
+
+    def handle(self, *args, **options):
+        user_model = get_user_model()
+        ident = options["user"]
+        user = (
+            user_model.objects.filter(username=ident).first()
+            or user_model.objects.filter(email=ident).first()
+        )
+        if user is None:
+            raise CommandError(f"Usuário '{ident}' não encontrado.")
+
+        seeded = skipped = 0
+        for trigger, category_name in DEFAULT_RULES:
+            if not Category.objects.filter(user=user, name=category_name).exists():
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"pulado '{trigger}': categoria '{category_name}' não existe "
+                        f"para {user}."
+                    )
+                )
+                skipped += 1
+                continue
+            msg = create_memory_rule(user, trigger, "category", category_name)
+            self.stdout.write(f"  {msg}")
+            seeded += 1
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"{seeded} regra(s) processada(s), {skipped} pulada(s) para {user}."
+            )
+        )
