@@ -226,7 +226,10 @@ def extraction_to_prompt(
             "categoria; summaries={categoria: resumo curto}). Os índices são "
             "internos: NUNCA os exiba ao usuário. propose_receipt NÃO grava — ele "
             "mostra a tabela. Aponte o que ficou duvidoso e termine com UMA pergunta "
-            "'Confirma?'. NÃO registre nada até o usuário confirmar."
+            "'Confirma?'. "
+            "Para cada categoria, gere também um resumo curto e legível (summaries={categoria: "
+            "resumo}) agrupando os tipos de produto. "
+            "NÃO registre nada até o usuário confirmar."
         )
     else:
         head = (
@@ -242,7 +245,12 @@ def extraction_to_prompt(
             "foto (frete, embalagem): add_receipt_item(descrição, valor, categoria) e "
             "re-proponha. Se amount_paid for desconhecido ou a forma de pagamento não "
             "estiver resolvida, PERGUNTE ao usuário (no máximo UMA vez) ANTES de "
-            "chamar propose_receipt(). NÃO redigite valores. Termine com UMA única "
+            "chamar propose_receipt(). "
+            "Para CADA categoria, gere um resumo curto e legível em pt-BR agrupando os "
+            "tipos de produto (ex.: 'bolachas, energéticos e refrigerantes'; 'legumes e "
+            "verduras, leite, flocão') e passe em summaries={categoria: resumo}; NUNCA "
+            "inclua o nome da loja no resumo. "
+            "NÃO redigite valores. Termine com UMA única "
             "pergunta 'Confirma?'."
         )
     item_lines = [
