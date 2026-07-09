@@ -228,7 +228,7 @@ def extraction_to_prompt(
             "mostra a tabela. Aponte o que ficou duvidoso e termine com UMA pergunta "
             "'Confirma?'. "
             "Para cada categoria, gere também um resumo curto e legível (summaries={categoria: "
-            "resumo}) agrupando os tipos de produto. "
+            "resumo}) agrupando os tipos de produto. NUNCA inclua o nome da loja no resumo. "
             "NÃO registre nada até o usuário confirmar."
         )
     else:
