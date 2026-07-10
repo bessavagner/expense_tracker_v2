@@ -11,7 +11,7 @@ Built as a real, daily-driven app to manage a family's finances — installed as
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![PydanticAI](https://img.shields.io/badge/PydanticAI-agent-E92063)](https://ai.pydantic.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-v4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
-[![Tests](https://img.shields.io/badge/tests-766%20passing-success)](#-quality--testing)
+[![Tests](https://img.shields.io/badge/tests-817%20passing-success)](#-quality--testing)
 [![Deploy](https://img.shields.io/badge/deploy-Cloud%20Run%20%2B%20Supabase-4285F4?logo=googlecloud&logoColor=white)](#-deployment)
 
 </div>
@@ -165,14 +165,14 @@ uv run python src/backend/manage.py runserver
 This project is built **test-first** — TDD is non-negotiable, and every feature lands with its tests.
 
 ```bash
-uv run pytest src/backend/ -v              # run the full suite (766 tests)
+uv run pytest src/backend/ -v              # run the full suite (818 tests)
 uv run coverage run -m pytest src/backend/ # with coverage
 uv run coverage report --fail-under=80     # enforce ≥80% coverage
 uv run ruff check src/backend/             # lint
 uv run ruff format --check src/backend/    # format check
 ```
 
-- **766 tests** across unit, integration, and BDD scenarios (`pytest-bdd`).
+- **818 tests** across unit, integration, and BDD scenarios (`pytest-bdd`) — 817 passing, 1 skipped.
 - **GitHub Actions CI** runs lint, format check, the full suite with an ≥80% coverage gate, and `manage.py check` on every push and PR.
 - **Ruff** enforces a strict rule set including `flake8-django`, `flake8-bandit` (security), `pyupgrade`, and `isort`.
 - **Pre-commit hooks** keep the working tree clean.
