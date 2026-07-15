@@ -26,6 +26,7 @@ from assistant.agents.extraction import (
 FIXTURES = Path(__file__).parent / "fixtures"
 AMERICANAS_FIXTURE = FIXTURES / "receipt_americanas.jpg"
 HIPERMACIONAL_FIXTURE = FIXTURES / "receipt_hipermacional.jpg"
+MERCADOLIVRE_DESCONTO_FIXTURE = FIXTURES / "receipt_mercadolivre_desconto.png"
 
 # Gabarito Americanas (12/06/2026): (descrição, valor, categoria).
 AMERICANAS_ITEMS = [
@@ -190,7 +191,33 @@ async def test_real_extraction_reads_hipermacional_receipt():
     from assistant.agents.extraction import extract_receipt
 
     data = HIPERMACIONAL_FIXTURE.read_bytes()
-    ext = await extract_receipt(data, "image/jpeg")
+    ext = await extract_receipt([(data, "image/jpeg")])
     assert ext.store is not None and "hiper" in ext.store.lower()
     assert receipt_is_consistent(ext)
     assert ext.amount_paid == Decimal("376.70")
+
+
+@pytest.mark.anyio
+@pytest.mark.skipif(
+    os.environ.get("RUN_LLM_TESTS") != "1",
+    reason="LLM real: requer chave; rode com RUN_LLM_TESTS=1",
+)
+async def test_real_extraction_does_not_double_count_multi_unit_line():
+    """O bug: pedido Mercado Livre com uma linha de 2 unidades registrou
+    R$1.066,18 em vez de R$999,70 — o modelo leu o preço com desconto já
+    mostrado como TOTAL da linha (R$66,48 p/ 2 unidades) e multiplicou de
+    novo pela quantidade, somando R$66,48 a mais. line_total deve ser sempre
+    o valor final exibido, nunca (preço lido) × quantidade calculado de cabeça.
+    """
+    from assistant.agents.extraction import extract_receipt
+
+    data = MERCADOLIVRE_DESCONTO_FIXTURE.read_bytes()
+    ext = await extract_receipt([(data, "image/png")])
+    assert ext.store is not None and "mercado" in ext.store.lower()
+    total = sum((i.line_total for i in ext.items), Decimal("0"))
+    assert total == Decimal("999.70")
+    bermuda_termica = next(
+        i for i in ext.items if "térmica" in i.description.lower()
+    )
+    assert bermuda_termica.quantity == Decimal("2")
+    assert bermuda_termica.line_total == Decimal("66.48")
