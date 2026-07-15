@@ -1,9 +1,13 @@
+import os
+
 import pydantic_ai.models
 import pytest
 from django.test import Client
 from model_bakery import baker
 
-pydantic_ai.models.ALLOW_MODEL_REQUESTS = False
+# Só libera chamadas reais de modelo quando RUN_LLM_TESTS=1 (testes de LLM
+# real, normalmente pulados — ver test_image_extraction_regression.py).
+pydantic_ai.models.ALLOW_MODEL_REQUESTS = os.environ.get("RUN_LLM_TESTS") == "1"
 
 
 @pytest.fixture

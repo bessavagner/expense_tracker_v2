@@ -50,3 +50,35 @@ def test_extraction_needs_review_head_no_store_name():
     low = out.lower()
     assert "summaries" in out
     assert "não inclua o nome da loja" in low or "nome da loja" in low
+
+
+def test_pending_directive_forbids_hand_typed_table(seeded_user):
+    """Bug real (Mercado Livre 2026-07-15): o modelo digitou uma tabela com
+    categorias inventadas ("Vestuário", "Eletrônicos" — nomes que não existem
+    nas categorias do usuário) e sem coluna de valor, em vez de mostrar o texto
+    literal devolvido por propose_receipt(). A diretiva deve proibir isso
+    explicitamente.
+    """
+    ReceiptDraft.objects.create(
+        user=seeded_user, status=ReceiptDraftStatus.PENDING,
+        payload={"store": "Mercado Livre", "amount_paid": None,
+                 "items": [{"description": "Bermuda", "line_total": "66.09"}]},
+    )
+    out = build_pending_receipt_directive(seeded_user)
+    low = out.lower()
+    assert "nunca" in low and ("digite" in low or "monte" in low or "invente a tabela" in low)
+    assert "literal" in low or "exatamente o texto" in low
+
+
+def test_pending_directive_payment_method_is_sticky(seeded_user):
+    """Bug real: o bot perguntou a forma de pagamento 3 vezes no mesmo recibo,
+    mesmo já resolvida (legenda da foto + resposta explícita do usuário)."""
+    ReceiptDraft.objects.create(
+        user=seeded_user, status=ReceiptDraftStatus.PENDING,
+        payload={"store": "Mercado Livre", "amount_paid": None,
+                 "items": [{"description": "Bermuda", "line_total": "66.09"}]},
+    )
+    out = build_pending_receipt_directive(seeded_user)
+    low = out.lower()
+    assert "já foi resolvida" in low or "já resolvida" in low or "já informou" in low
+    assert "nunca pergunte de novo" in low or "não pergunte de novo" in low

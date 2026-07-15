@@ -63,6 +63,17 @@ como store (reconheça pelo layout/cores/logo; ex.: a tela amarela "Detalhe da
 compra" é do Mercado Livre). Capture cada PRODUTO como um item com sua descrição
 real (nome do produto), não um resumo genérico. NUNCA invente total, discount ou
 amount_paid; deixe-os null quando não estiverem visíveis.
+
+``line_total`` é SEMPRE o valor final exibido para aquela linha/produto (o que
+será cobrado por ela, já considerando eventuais múltiplas unidades) — LEIA-O
+diretamente do documento, NUNCA o calcule multiplicando um preço unitário pela
+quantidade de cabeça. Em telas de pedido de marketplace com quantidade > 1
+(ex.: "R$ 97,14 R$ 66,48 | 2 unidades"), o preço com desconto mostrado ao lado
+do produto já costuma ser o TOTAL daquela linha para todas as unidades, não um
+preço por unidade — multiplicar de novo pela quantidade DOBRA o valor
+indevidamente (bug real: uma linha de 2 unidades registrada a mais que o
+dobro do correto). Se precisar preencher ``unit_price``, calcule-o como
+``line_total`` dividido pela quantidade — nunca o caminho inverso.
 """
 
 EXTRACTION_INSTRUCTION = (
