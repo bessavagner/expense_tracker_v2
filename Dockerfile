@@ -76,4 +76,12 @@ EXPOSE ${PORT}
 WORKDIR /app/src/backend
 
 # ASGI (gunicorn + uvicorn worker) so the assistant's SSE streaming works under async.
-CMD ["sh", "-c", "gunicorn config.asgi:application --bind 0.0.0.0:${PORT} --worker-class uvicorn.workers.UvicornWorker --workers 2 --timeout 300 --access-logfile - --error-logfile -"]
+#
+# --workers 1: the container has 1 vCPU and the uvicorn worker is async with
+#   concurrency 80, so a second worker bought no throughput -- it only doubled
+#   the boot-time imports (both racing for the single core) and the memory.
+# --preload: gunicorn loads the app in the master BEFORE creating the listening
+#   socket (arbiter.setup() runs preload; arbiter.start() binds after). Cloud Run
+#   routes the first request the moment the port opens, so binding late is what
+#   stops a request arriving mid-import. Also gives copy-on-write forking.
+CMD ["sh", "-c", "gunicorn config.asgi:application --bind 0.0.0.0:${PORT} --worker-class uvicorn.workers.UvicornWorker --workers 1 --preload --timeout 300 --access-logfile - --error-logfile -"]
