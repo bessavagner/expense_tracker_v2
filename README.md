@@ -110,6 +110,9 @@ Key principle: **the LLM decides intent; deterministic Python does the arithmeti
 
 ## 🚀 Getting Started
 
+> Operating the production deployment (deploys, cold-start keepalive, smoke
+> tests) lives in **[`docs/runbook.md`](docs/runbook.md)**.
+
 ### Prerequisites
 
 - [`uv`](https://docs.astral.sh/uv/) (Python package manager)
