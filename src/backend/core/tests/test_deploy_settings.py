@@ -28,6 +28,54 @@ class TestAsgiConfig:
         assert callable(application)
 
 
+class TestAsgiWarmUp:
+    """Boot must pay the URLconf import cost, not the first request.
+
+    Cloud Run routes the first request as soon as the container's port opens.
+    Django imports the URLconf (and with it every view module, including the
+    LLM SDKs) lazily on that first request, which stranded ~14s of import work
+    *after* the startup probe had already passed.
+    """
+
+    def test_warm_up_populates_urlconf_and_reverse_cache(self):
+        from django.urls import clear_url_caches, get_resolver
+
+        from config.warmup import warm_up
+
+        clear_url_caches()
+        try:
+            resolver = get_resolver()
+            assert "url_patterns" not in resolver.__dict__
+
+            warm_up()
+
+            assert "url_patterns" in resolver.__dict__
+            assert resolver._reverse_dict, "reverse cache should be populated"
+        finally:
+            # Leave a clean resolver behind for the rest of the suite.
+            clear_url_caches()
+
+    def test_importing_asgi_preloads_the_urlconf(self):
+        """Importing config.asgi alone must leave the URLconf already resolved."""
+        code = (
+            "import config.asgi;"
+            "from django.urls import get_resolver;"
+            "print('PRELOADED', 'url_patterns' in get_resolver().__dict__)"
+        )
+        env = dict(os.environ)
+        env["DJANGO_SETTINGS_MODULE"] = "config.settings"
+        result = subprocess.run(  # noqa: S603 — fixed argv, trusted input
+            [sys.executable, "-c", code],
+            cwd=BACKEND_DIR,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert "PRELOADED True" in result.stdout, (
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+
+
 def _run_deploy_check(extra_env):
     """Run ``manage.py check --deploy`` in a subprocess with DEBUG=False."""
     env = dict(os.environ)
