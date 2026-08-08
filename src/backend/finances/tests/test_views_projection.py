@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
@@ -126,10 +126,27 @@ def test_projection_shows_estimated_total_row_above_estimated_balance(logged_cli
 
 @pytest.mark.django_db
 class TestEstimateToggle:
-    def test_teto_param_uses_ceiling(self, logged_client, user):
-        from decimal import Decimal
+    """The estimator toggle, pinned to a fixed "today".
 
-        from model_bakery import baker
+    ``start=2026-07`` has to be a FUTURE month for the ceiling estimator to
+    apply at all — ``build_projection`` uses posted reality for past months and
+    the estimator only for months after the current one
+    (``finances/services/projection.py:163-170``). Reading the real clock made
+    that true until 2026-07-31 and false every day after, so the requirement
+    stopped being tested exactly when it started to matter.
+
+    Frozen at midday UTC so the date is unambiguous whether the runner is on
+    UTC (CI) or America/Sao_Paulo (dev) — ``date.today()`` reads the system
+    timezone, not Django's ``TIME_ZONE``.
+    """
+
+    FROZEN_NOW = datetime(2026, 6, 15, 12, 0, tzinfo=UTC)
+
+    @pytest.fixture(autouse=True)
+    def _frozen_clock(self, time_machine):
+        time_machine.move_to(self.FROZEN_NOW, tick=False)
+
+    def test_teto_param_uses_ceiling(self, logged_client, user):
         baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("9999"))
         resp = logged_client.get("/projection/?estimate=teto&start=2026-07&months=1")
         assert resp.status_code == 200

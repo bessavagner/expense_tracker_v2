@@ -39,6 +39,7 @@ dev = [
     "ruff>=0.15.4",
     "anyio>=4.13.0",
     "pytest-anyio>=0.0.0",
+    "time-machine>=2.16",
 ]
 
 [tool.ruff]
