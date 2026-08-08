@@ -116,3 +116,19 @@ class TestDeploySecurityChecks:
         output = result.stdout + result.stderr
         for code in ("security.W008", "security.W012", "security.W016"):
             assert code not in output, f"{code} present:\n{output}"
+
+
+class TestCookieSameSite:
+    """SameSite must be stated, not inherited.
+
+    Django's current default is ``Lax`` and ``Lax`` is what this app wants — the
+    React widget and the Android TWA are both same-origin. The point of pinning
+    it is that a Django default change, or an ``os.environ`` override applied by
+    mistake, becomes a failing test rather than a silent CSRF weakening.
+    """
+
+    def test_session_cookie_samesite_is_lax(self):
+        assert settings.SESSION_COOKIE_SAMESITE == "Lax"
+
+    def test_csrf_cookie_samesite_is_lax(self):
+        assert settings.CSRF_COOKIE_SAMESITE == "Lax"

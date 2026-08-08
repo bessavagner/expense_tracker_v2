@@ -4,7 +4,6 @@ import logging
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.http import JsonResponse, StreamingHttpResponse
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
 from assistant.agents.assistant import assistant_agent
@@ -132,10 +131,10 @@ def _sse_response(user, agent, prompt, *, message_history, user_text=None, model
     return response
 
 
-# csrf_exempt: o widget React envia o token CSRF via header X-CSRFToken (lido do
-# cookie). credentials: same-origin garante envio do cookie. Testes usam o test
-# client do Django, que ignora CSRF.
-@csrf_exempt
+# CSRF is enforced. The React widget sends the token as the X-CSRFToken header
+# (read from the cookie, with credentials: same-origin), which is exactly what
+# CsrfViewMiddleware checks — the exemption bought nothing. The middleware runs
+# in process_view, before the view, so it never touches the streaming response.
 @require_http_methods(["POST"])
 async def chat_view(request):
     """Chat. Aceita JSON (texto) ou multipart/form-data (áudio/imagem)."""
