@@ -195,6 +195,20 @@ print(list(AssistantUsageEvent.objects.annotate(d=TruncDate('created_at'))
 the Supabase *transaction* pooler (port 6543) against the wrong database. Use the
 session connection on 5432.
 
+### Upload ceilings
+
+| Var | Default | Applies to |
+|---|---|---|
+| `MAX_REQUEST_BODY_BYTES` | 62914560 (60 MB) | every path |
+| `MAX_CSV_UPLOAD_BYTES` | 10485760 (10 MB) | `/import/*` |
+
+Rejected with HTTP 413 from `Content-Length`, before Django parses the body.
+
+**Common failure:** a user reports "arquivo grande demais" on a legitimate
+multi-photo receipt. `MAX_REQUEST_BODY_BYTES` must stay above
+`ASSISTANT_MAX_IMAGES × ASSISTANT_MAX_IMAGE_MB` with room for multipart
+overhead. Raising the image limits without raising this one is the usual cause.
+
 ---
 
 ## Cold starts: the keepalive job

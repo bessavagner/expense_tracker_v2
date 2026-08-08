@@ -48,6 +48,9 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Before anything reads the body: an oversized upload must not reach the
+    # parser, the session store, or Cloud Run's RAM-backed filesystem.
+    "core.middleware.max_request_body_middleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.locale.LocaleMiddleware",
@@ -225,6 +228,18 @@ ASSISTANT_ALLOWED_AUDIO_TYPES = (
     "audio/wav",
     "audio/x-wav",
 )
+
+# Request body ceilings (E01). The container is 1 vCPU / 1Gi with a RAM-backed
+# filesystem, so "written to a temp file" still costs memory.
+# 60MB covers the widest legitimate chat payload — ASSISTANT_MAX_IMAGES (5) at
+# ASSISTANT_MAX_IMAGE_MB (10) each, plus multipart overhead. Raise both together
+# or this becomes the thing that rejects a valid upload.
+MAX_REQUEST_BODY_BYTES = int(os.environ.get("MAX_REQUEST_BODY_BYTES", str(60 * 1024 * 1024)))
+# The CSV importer never legitimately needs more than a few MB.
+MAX_CSV_UPLOAD_BYTES = int(os.environ.get("MAX_CSV_UPLOAD_BYTES", str(10 * 1024 * 1024)))
+# Django's default is 100 files per request; nothing here wants more than the
+# assistant's five images plus slack.
+DATA_UPLOAD_MAX_NUMBER_FILES = 10
 
 # Assistant throttling — a crude per-account ceiling, deliberately blunt (E01).
 # Sized from measured usage: the single production account peaked at 5 turns/day

@@ -177,8 +177,11 @@ async def chat_view(request):
     content_type = request.content_type or ""
     is_multipart = content_type.startswith("multipart/form-data")
     # The kind is decided here, before any model work, because the image budget
-    # is tighter. request.FILES parsing is currently unbounded on the denied
-    # path — it will be bounded once the request-body ceiling lands (E01 Task 6).
+    # is tighter. request.FILES parsing on the denied path is bounded by
+    # core.middleware.max_request_body_middleware (E01 Task 6), which rejects
+    # an oversized Content-Length before this view — or Django's parser — ever
+    # runs, so an over-limit caller no longer forces the server to ingest the
+    # whole multipart body before getting its 429.
     kind = (
         AssistantUsageKind.IMAGE
         if is_multipart and request.FILES.getlist("image")
