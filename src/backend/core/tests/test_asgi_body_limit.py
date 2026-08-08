@@ -14,6 +14,7 @@ call it.
 """
 
 import asyncio
+import tracemalloc
 
 import pytest
 
@@ -21,18 +22,30 @@ from core.asgi_body_limit import request_body_ceiling_asgi
 
 
 class FakeASGIApp:
-    """Records what it was called with; stands in for Django's ASGIHandler."""
+    """Records what it was called with; stands in for Django's ASGIHandler.
+
+    Mirrors the real ``ASGIHandler.read_body`` / ``handle`` contract: a
+    disconnect message aborts the whole request with no response sent at all
+    -- exactly like Django's own ``read_body`` raising ``RequestAborted``,
+    which ``ASGIHandler.handle`` catches and returns from without ever
+    reaching ``send_response``. Only a normal ``more_body: False`` completes
+    the body and gets a response.
+    """
 
     def __init__(self):
         self.called_with_scope = None
         self.received_messages = []
+        self.aborted = False
 
     async def __call__(self, scope, receive, send):
         self.called_with_scope = scope
         while True:
             message = await receive()
             self.received_messages.append(message)
-            if message["type"] == "http.disconnect" or not message.get("more_body", False):
+            if message["type"] == "http.disconnect":
+                self.aborted = True
+                return
+            if not message.get("more_body", False):
                 break
         await send({"type": "http.response.start", "status": 200, "headers": []})
         await send({"type": "http.response.body", "body": b"ok"})
@@ -51,15 +64,19 @@ def _scope(path="/api/assistant/chat/", content_length=None):
 
 
 def _chunks_receive(chunks):
-    """A fake ``receive`` that yields ``chunks`` as ``http.request`` messages."""
+    """A fake ``receive`` that yields ``chunks``, then a final ``more_body:
+    False`` message -- a normal, successfully completed body. (Not a
+    disconnect: a disconnect signals premature termination, not completion,
+    and ``FakeASGIApp`` treats the two very differently.)
+    """
     it = iter(chunks)
 
     async def receive():
         try:
             body = next(it)
+            return {"type": "http.request", "body": body, "more_body": True}
         except StopIteration:
-            return {"type": "http.disconnect"}
-        return {"type": "http.request", "body": body, "more_body": True}
+            return {"type": "http.request", "body": b"", "more_body": False}
 
     return receive
 
@@ -161,9 +178,22 @@ class TestChunkedBodyPath:
         asyncio.run(middleware(scope, receive, send))
 
         assert calls == 2, "must abort as soon as the running total crosses the ceiling"
-        assert app.called_with_scope is None, "the wrapped app must never see an oversized body"
+        # Pass-through, not pre-buffering: the wrapped app *is* invoked from
+        # the start (no way to know a length-less body is oversized without
+        # reading some of it) -- but it must never see the chunk that tipped
+        # the total over the ceiling. That chunk is replaced with a synthetic
+        # disconnect, which the app's own read loop (mirroring Django's
+        # read_body) treats as an abort with no response of its own.
+        assert app.called_with_scope is scope
+        assert app.aborted, "the app's read loop must see the synthetic disconnect, not a 3rd chunk"
+        assert app.received_messages == [
+            {"type": "http.request", "body": b"x" * 6, "more_body": True},
+            {"type": "http.disconnect"},
+        ]
         assert sent[0]["status"] == 413
         assert "grande demais" in sent[1]["body"].decode()
+        # Exactly one response -- the app must not respond again after the abort.
+        assert len(sent) == 2
 
     def test_chunked_body_under_ceiling_passes_through_untouched(self, settings):
         settings.MAX_REQUEST_BODY_BYTES = 1024
@@ -224,13 +254,64 @@ class TestChunkedBodyPath:
         assert app.called_with_scope is scope
         assert app.received_messages == messages
 
-    def test_replay_receive_falls_through_after_buffer_is_exhausted(self, settings):
+    def test_counting_receive_stays_defensive_if_called_again_after_abort(self, settings):
+        """Regression test for counting_receive's defensive early-return: if
+        some consumer calls it again after the wrapper has already sent the
+        413 and reported one synthetic disconnect, it must keep reporting
+        disconnect -- never resume reading, never call the real receive()
+        again, never raise. (Real Django never does this: ASGIHandler.handle
+        returns immediately once read_body raises RequestAborted. This
+        exercises the guard directly rather than leaving it unverified.)
+        """
+        settings.MAX_REQUEST_BODY_BYTES = 5
+
+        class CallsReceiveTwiceRegardless:
+            def __init__(self):
+                self.messages = []
+
+            async def __call__(self, scope, receive, send):
+                self.messages.append(await receive())  # over the ceiling -> abort
+                self.messages.append(await receive())  # calls again anyway
+
+            async def send_response(self, response, send):
+                await send(
+                    {"type": "http.response.start", "status": response.status_code, "headers": []}
+                )
+                await send({"type": "http.response.body", "body": response.content})
+
+        app = CallsReceiveTwiceRegardless()
+        middleware = request_body_ceiling_asgi(app)
+
+        real_receive_calls = 0
+
+        async def receive():
+            nonlocal real_receive_calls
+            real_receive_calls += 1
+            return {"type": "http.request", "body": b"x" * 10, "more_body": True}
+
+        sent = []
+
+        async def send(message):
+            sent.append(message)
+
+        scope = _scope(content_length=None)
+        asyncio.run(middleware(scope, receive, send))
+
+        assert real_receive_calls == 1, "must not call the real receive() again once aborted"
+        assert app.messages == [
+            {"type": "http.disconnect"},
+            {"type": "http.disconnect"},
+        ]
+        assert sent[0]["status"] == 413
+        assert len(sent) == 2, "the wrapper itself must still send exactly one response"
+
+    def test_counting_receive_is_reentrant_after_the_body_completes(self, settings):
         """Mirrors ASGIHandler.handle's own usage: it passes the *same*
         receive to read_body and to the later, independent
         listen_for_disconnect task (django/core/handlers/asgi.py:175,205) --
-        so a second call to our wrapped receive, after the buffered chunked
-        body has been fully replayed, must reach the real underlying receive
-        rather than looping or raising StopIteration."""
+        so a second, later call to our wrapped receive, after the body has
+        already completed normally, must reach the real underlying receive
+        rather than replaying something stale or raising."""
         settings.MAX_REQUEST_BODY_BYTES = 1024
 
         class TwoPhaseApp:
@@ -298,6 +379,86 @@ class TestChunkedBodyPath:
 
         assert app.called_with_scope is scope
         assert sent[0]["status"] == 200
+
+
+class DrainingApp:
+    """Reads every message to completion without retaining any of them.
+
+    Deliberately does *not* keep a ``received_messages`` list like
+    ``FakeASGIApp`` -- for the memory-amplification test below, the fake app
+    itself must not be the thing allocating memory per message, or the
+    measurement would say nothing about ``request_body_ceiling_asgi``.
+    """
+
+    def __init__(self):
+        self.message_count = 0
+        self.called = False
+
+    async def __call__(self, scope, receive, send):
+        self.called = True
+        while True:
+            message = await receive()
+            self.message_count += 1
+            if message["type"] == "http.disconnect" or not message.get("more_body", False):
+                break
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+
+class TestChunkedBodyMemory:
+    """Reproduces the amplification the fix-round-1 buffering caused.
+
+    A client trickling a body in many tiny ASGI messages must not cost the
+    server memory proportional to the *message count* -- only to the body it
+    actually declared/received. A byte-sum assertion alone can't catch this
+    (the old code summed bytes correctly; it just also kept every message
+    dict alive in a list), so this measures actual traced memory.
+    """
+
+    def test_many_tiny_chunks_do_not_amplify_memory(self, settings):
+        # Ceiling large enough that 100k tiny chunks stay well under it --
+        # this must never trip the abort path; it's purely a memory bound on
+        # the *legitimate*, still-streaming case.
+        settings.MAX_REQUEST_BODY_BYTES = 10_000_000
+        app = DrainingApp()
+        middleware = request_body_ceiling_asgi(app)
+
+        num_messages = 100_000
+        chunk = b"xy"  # 2 bytes/message => ~200 KB of real payload total
+        sent_count = 0
+
+        async def receive():
+            nonlocal sent_count
+            sent_count += 1
+            if sent_count > num_messages:
+                return {"type": "http.request", "body": b"", "more_body": False}
+            return {"type": "http.request", "body": chunk, "more_body": True}
+
+        sent = []
+
+        async def send(message):
+            sent.append(message)
+
+        scope = _scope(content_length=None)
+
+        tracemalloc.start()
+        asyncio.run(middleware(scope, receive, send))
+        _current, peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+
+        assert app.called
+        assert app.message_count == num_messages + 1
+        assert sent[0]["status"] == 200
+        # A per-message buffering implementation costs roughly 150-250 bytes
+        # of Python object overhead *per message*, independent of chunk size
+        # -- tens of MB for 100k messages (measured on the fix-round-1 code:
+        # ~73 MiB for a comparable 400 KB body split into small chunks). A
+        # true pass-through wrapper holds at most the one in-flight message,
+        # so peak traced memory should stay a low single-digit MB at most.
+        assert peak < 5 * 1024 * 1024, (
+            f"peak traced memory {peak} bytes ({peak / 1024 / 1024:.1f} MiB) -- "
+            "looks like the body is being buffered instead of streamed"
+        )
 
 
 class TestNonHttpScope:

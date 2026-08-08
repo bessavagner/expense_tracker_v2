@@ -38,14 +38,24 @@ def request_body_ceiling_asgi(app: ASGIHandler):
     - A declared ``Content-Length`` already over the ceiling: rejected with a
       413 without ever calling ``receive()`` -- nothing is read from the
       client at all.
-    - No declared length (chunked transfer encoding): the body is read and
-      buffered here, one ASGI message at a time, until either it completes
-      under the ceiling (and is replayed to Django exactly as received, so
-      Django's own ``read_body`` behaves identically to today) or the
-      running total crosses the ceiling, at which point a 413 is sent and no
-      further body is read. Buffering here is bounded by the ceiling itself
-      -- the guarantee this module exists to provide -- unlike Django's own
-      ``read_body``, which buffers without any such limit.
+    - No declared length (chunked transfer encoding): no buffering. Each
+      message is forwarded to Django as it arrives; only a running byte
+      total is kept. Once that total crosses the ceiling, a 413 is sent and
+      Django is handed a synthetic ``http.disconnect`` instead of the real
+      message -- Django's own ``read_body`` treats that exactly like a real
+      client disconnect (closes its temp file and raises ``RequestAborted``),
+      which ``ASGIHandler.handle`` catches and returns from without sending
+      anything else. Memory cost is O(1) in body size and message count: at
+      most one in-flight message plus a running integer, never a full copy
+      of the body. (An earlier version of this wrapper buffered every
+      message into a list before replaying it to Django -- correct in the
+      bytes it counted, but each buffered message dict costs real memory
+      independent of its payload size, so a client trickling the body in
+      many tiny messages could grow that buffer far faster than the byte
+      ceiling would suggest. Measured on that version: 100k 2-byte chunks
+      totalling ~200 KB of real payload cost ~18 MiB of peak traced memory
+      before this rewrite -- see ``core/tests/test_asgi_body_limit.py``'s
+      ``TestChunkedBodyMemory``.)
     """
 
     async def middleware(scope, receive, send):
@@ -63,30 +73,32 @@ def request_body_ceiling_asgi(app: ASGIHandler):
             await app(scope, receive, send)
             return
 
-        # Chunked: no declared length. Pre-read ourselves, bounded by the
-        # ceiling, then replay the buffered messages to Django.
-        buffered = []
+        # Chunked: no declared length. Pass every message straight through,
+        # counting bytes as they go -- see the docstring above for why this
+        # replaced an earlier buffer-and-replay design.
         total = 0
-        while True:
+        aborted = False
+
+        async def counting_receive():
+            nonlocal total, aborted
+            if aborted:
+                # Defensive: ASGIHandler.handle() never calls receive() again
+                # once read_body has raised RequestAborted (it returns
+                # immediately from the except clause), so this branch is not
+                # expected to run in practice -- but if some other consumer
+                # ever reuses this receive after an abort, keep reporting the
+                # disconnect rather than resuming a request we already killed.
+                return {"type": "http.disconnect"}
             message = await receive()
-            buffered.append(message)
             if message["type"] == "http.disconnect":
-                break
+                return message
             total += len(message.get("body", b""))
             if total > limit:
+                aborted = True
                 await app.send_response(oversized_response(limit), send)
-                return
-            if not message.get("more_body", False):
-                break
+                return {"type": "http.disconnect"}
+            return message
 
-        buffered_iter = iter(buffered)
-
-        async def replay_receive():
-            try:
-                return next(buffered_iter)
-            except StopIteration:
-                return await receive()
-
-        await app(scope, replay_receive, send)
+        await app(scope, counting_receive, send)
 
     return middleware
