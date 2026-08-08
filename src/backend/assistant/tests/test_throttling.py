@@ -119,3 +119,138 @@ class TestExceededRule:
         settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
         _burn(user, AssistantUsageKind.TEXT, 1, age=timedelta(hours=1, seconds=1))
         assert async_to_sync(exceeded_rule)(user, AssistantUsageKind.TEXT) is None
+
+
+@pytest.mark.django_db
+class TestChatEndpointThrottle:
+    """The endpoint must refuse an over-limit turn before spending anything."""
+
+    def _post_text(self, client, monkeypatch):
+        """POST a text turn with ``_sse_response`` replaced by a call recorder.
+
+        Replacing ``_sse_response`` is the cheapest place to prove "zero model
+        calls": every path that reaches the model goes through it, and nothing
+        else does. The stub must return a real ``HttpResponse`` — ``_handle_json``
+        returns its result straight to Django, which raises on ``None``.
+        """
+        import json
+
+        from django.http import HttpResponse
+
+        calls = []
+
+        def _stub_sse(*args, **kwargs):
+            calls.append("call")
+            return HttpResponse("stubbed", content_type="text/event-stream")
+
+        monkeypatch.setattr("assistant.views._sse_response", _stub_sse)
+        response = client.post(
+            "/api/assistant/chat/",
+            data=json.dumps({"message": "oi"}),
+            content_type="application/json",
+        )
+        return response, calls
+
+    def test_under_the_limit_reaches_the_model(self, logged_client, user, monkeypatch, settings):
+        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 3
+        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
+        _burn(user, AssistantUsageKind.TEXT, 2)
+        response, calls = self._post_text(logged_client, monkeypatch)
+        assert response.status_code == 200
+        assert len(calls) == 1
+
+    def test_over_the_limit_makes_zero_model_calls(
+        self, logged_client, user, monkeypatch, settings
+    ):
+        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 3
+        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
+        _burn(user, AssistantUsageKind.TEXT, 3)
+        response, calls = self._post_text(logged_client, monkeypatch)
+        assert response.status_code == 429
+        assert calls == []
+
+    def test_rejection_message_is_pt_br_and_names_the_window(
+        self, logged_client, user, monkeypatch, settings
+    ):
+        import json as _json
+
+        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 3
+        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
+        _burn(user, AssistantUsageKind.TEXT, 3)
+        response, _ = self._post_text(logged_client, monkeypatch)
+        body = _json.loads(response.content)
+        assert "Limite" in body["error"]
+        assert "hora" in body["error"]
+
+    def test_rejected_turn_writes_no_chat_message(self, logged_client, user, monkeypatch, settings):
+        from assistant.models import ChatMessage
+
+        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 3
+        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
+        _burn(user, AssistantUsageKind.TEXT, 3)
+        self._post_text(logged_client, monkeypatch)
+        assert not ChatMessage.objects.filter(user=user).exists()
+
+    def test_admitted_turn_records_one_usage_event(
+        self, logged_client, user, monkeypatch, settings
+    ):
+        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 10
+        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
+        self._post_text(logged_client, monkeypatch)
+        assert (
+            AssistantUsageEvent.objects.filter(user=user, kind=AssistantUsageKind.TEXT).count() == 1
+        )
+
+    def test_rejected_turn_records_no_usage_event(self, logged_client, user, monkeypatch, settings):
+        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 3
+        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
+        _burn(user, AssistantUsageKind.TEXT, 3)
+        self._post_text(logged_client, monkeypatch)
+        assert (
+            AssistantUsageEvent.objects.filter(user=user, kind=AssistantUsageKind.TEXT).count() == 3
+        )
+
+    def test_image_turn_spends_the_image_budget_not_the_text_one(
+        self, logged_client, user, monkeypatch, settings
+    ):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        settings.ASSISTANT_THROTTLE_IMAGE_PER_HOUR = 1
+        settings.ASSISTANT_THROTTLE_IMAGE_PER_DAY = 100
+        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 100
+        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
+        _burn(user, AssistantUsageKind.IMAGE, 1)
+
+        calls = []
+
+        async def _stub_multipart(*args, **kwargs):
+            # async, because chat_view awaits it — a plain lambda would raise a
+            # confusing TypeError instead of failing this test cleanly.
+            from django.http import HttpResponse
+
+            calls.append("call")
+            return HttpResponse("stubbed", content_type="text/event-stream")
+
+        monkeypatch.setattr("assistant.views._handle_multipart", _stub_multipart)
+        png = (
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00"
+            b"\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9c"
+            b"c\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+        image = SimpleUploadedFile("recibo.png", png, content_type="image/png")
+        response = logged_client.post("/api/assistant/chat/", data={"image": image})
+        assert response.status_code == 429
+        assert calls == []
+        assert "fotos" in response.content.decode()
+
+    def test_audio_turn_spends_the_text_budget(self, logged_client, user, settings):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 1
+        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
+        settings.ASSISTANT_THROTTLE_IMAGE_PER_HOUR = 100
+        settings.ASSISTANT_THROTTLE_IMAGE_PER_DAY = 100
+        _burn(user, AssistantUsageKind.TEXT, 1)
+        audio = SimpleUploadedFile("nota.webm", b"\x00\x01\x02", content_type="audio/webm")
+        response = logged_client.post("/api/assistant/chat/", data={"audio": audio})
+        assert response.status_code == 429

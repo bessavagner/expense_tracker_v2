@@ -154,6 +154,45 @@ gunicorn worker with an async uvicorn worker at concurrency 80 (see *Why the
 container starts the way it does*). Three instances is ~240 concurrent requests —
 far above real demand, and the point is the ceiling, not the headroom.
 
+### The application-layer throttle
+
+Below the three infrastructure ceilings sits a per-account rolling-window limit.
+An over-limit turn is refused with HTTP 429 **before any model call**, so it costs
+nothing. Limits are env vars — change them without a code change:
+
+```bash
+gcloud run services update expense-tracker \
+  --project expense-tracker-482807 --region southamerica-east1 \
+  --update-env-vars ASSISTANT_THROTTLE_IMAGE_PER_HOUR=25
+```
+
+| Var | Default | Bucket |
+|---|---|---|
+| `ASSISTANT_THROTTLE_TEXT_PER_HOUR` | 60 | text + audio turns |
+| `ASSISTANT_THROTTLE_TEXT_PER_DAY` | 300 | text + audio turns |
+| `ASSISTANT_THROTTLE_IMAGE_PER_HOUR` | 15 | receipt photo turns |
+| `ASSISTANT_THROTTLE_IMAGE_PER_DAY` | 50 | receipt photo turns |
+
+Use `--update-env-vars` (merge), never `--set-env-vars` — the latter replaces the
+whole env list and wipes `DATABASE_URL`.
+
+### Who is hitting the limit
+
+```bash
+DATABASE_URL="<supabase session URL, port 5432>" \
+  uv run python src/backend/manage.py shell -c "
+from django.db.models import Count
+from django.db.models.functions import TruncDate
+from assistant.models import AssistantUsageEvent
+print(list(AssistantUsageEvent.objects.annotate(d=TruncDate('created_at'))
+      .values('d','kind','user__username').annotate(n=Count('id')).order_by('-n')[:20]))
+"
+```
+
+**Common failure:** the numbers look impossibly low because you connected through
+the Supabase *transaction* pooler (port 6543) against the wrong database. Use the
+session connection on 5432.
+
 ---
 
 ## Cold starts: the keepalive job

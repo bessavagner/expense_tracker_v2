@@ -12,9 +12,16 @@ from assistant.agents.extraction import (
     extraction_to_prompt,
     receipt_needs_review,
 )
-from assistant.models import ChatMessage, MessageRole, ReceiptDraft
+from assistant.models import (
+    AssistantUsageEvent,
+    AssistantUsageKind,
+    ChatMessage,
+    MessageRole,
+    ReceiptDraft,
+)
 from assistant.services.image_prep import prepare_receipt_image
 from assistant.services.transcription import transcribe_audio
+from assistant.throttling import exceeded_rule
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +138,29 @@ def _sse_response(user, agent, prompt, *, message_history, user_text=None, model
     return response
 
 
+async def throttle_denial(user, kind: str):
+    """Refuse an over-budget turn, or admit it and record the spend.
+
+    Returns a 429 ``JsonResponse`` when blocked and ``None`` when admitted. The
+    usage event is written on admission — before any model call — so a request
+    that dies mid-stream still counts against the budget it was going to spend.
+    """
+    rule = await exceeded_rule(user, kind)
+    if rule is None:
+        await AssistantUsageEvent.objects.acreate(user=user, kind=kind)
+        return None
+    noun = "fotos" if kind == AssistantUsageKind.IMAGE else "mensagens"
+    return JsonResponse(
+        {
+            "error": (
+                f"Limite de {noun} do assistente atingido "
+                f"({rule.limit} por {rule.label}). Tente de novo mais tarde."
+            )
+        },
+        status=429,
+    )
+
+
 # CSRF is enforced. The React widget sends the token as the X-CSRFToken header
 # (read from the cookie, with credentials: same-origin), which is exactly what
 # CsrfViewMiddleware checks — the exemption bought nothing. The middleware runs
@@ -145,7 +175,20 @@ async def chat_view(request):
         return JsonResponse({"error": "Authentication required"}, status=403)
 
     content_type = request.content_type or ""
-    if content_type.startswith("multipart/form-data"):
+    is_multipart = content_type.startswith("multipart/form-data")
+    # The kind is decided here, before any model work, because the image budget
+    # is tighter. request.FILES parsing is bounded by MAX_REQUEST_BODY_BYTES,
+    # enforced upstream in core.middleware.
+    kind = (
+        AssistantUsageKind.IMAGE
+        if is_multipart and request.FILES.getlist("image")
+        else AssistantUsageKind.TEXT
+    )
+    denial = await throttle_denial(user, kind)
+    if denial is not None:
+        return denial
+
+    if is_multipart:
         return await _handle_multipart(request, user)
     return await _handle_json(request, user)
 
