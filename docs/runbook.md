@@ -49,6 +49,100 @@ starts showing a Chrome address bar.
 
 ---
 
+## Spend ceilings
+
+Three independent caps. Each is set to hold if the other two fail, and the app
+layer (E01's throttle) sits below all of them.
+
+| Ceiling | Value | Status | Effect when hit |
+|---|---|---|---|
+| Cloud Run `--max-instances` | 3 | **Pending** — still `20`, see below | New requests queue rather than starting a 4th billable instance |
+| GCP budget alert | BRL 250/month (target was USD 50, see below) | **Live** | **Notifies only.** Email at 50%, 80%, 100% |
+| OpenAI org monthly limit | USD 30/month hard, USD 20 soft | **Pending** — console-only, owner action | API returns errors — the actual stop |
+
+### Cloud Run max-instances is still pending
+
+Lowering `--max-instances` on a live production service is a real availability
+change (it can start queuing requests under a real spike), so an unattended
+agent session is blocked from applying it — this needs a human running the
+command below with eyes on it:
+
+```bash
+gcloud run services update expense-tracker \
+  --project expense-tracker-482807 --region southamerica-east1 \
+  --max-instances 3
+```
+
+Expected: `Service [expense-tracker] revision [expense-tracker-000NN-xxx] has
+been deployed and is serving 100 percent of traffic.` Verify with the read
+command below — expect `3`. It was `20` before this change (not absent, as an
+earlier finding assumed — that finding was stale).
+
+### The GCP budget alert is billed in BRL, not USD
+
+`gcloud billing projects describe expense-tracker-482807` shows the linked
+billing account bills in **BRL**, not USD. `gcloud billing budgets create`
+requires `--budget-amount`'s currency to match the billing account's currency
+and fails with a bare `INVALID_ARGUMENT` (no mention of currency) if it
+doesn't. The budget was created at **BRL 250/month** — the nearest round
+number to the USD 50 target at the exchange rate on the day it was created
+(~5.09 BRL/USD). This is a fixed BRL amount; it will not track future FX
+moves, so revisit it periodically or the day USD/BRL moves meaningfully.
+
+### Read the current values
+
+```bash
+gcloud run services describe expense-tracker \
+  --project expense-tracker-482807 --region southamerica-east1 \
+  --format="value(spec.template.metadata.annotations['autoscaling.knative.dev/maxScale'])"
+
+BILLING=$(gcloud billing projects describe expense-tracker-482807 \
+  --format="value(billingAccountName)"); BILLING=${BILLING#billingAccounts/}
+gcloud billing budgets list --project expense-tracker-482807 \
+  --billing-account="$BILLING" \
+  --format="table(displayName,amount.specifiedAmount.currencyCode,amount.specifiedAmount.units)"
+```
+
+**Common failure:** `gcloud billing budgets *` silently uses `gcloud`'s
+*default* project as the API quota project, which on this machine is not
+`expense-tracker-482807`. Always pass `--project expense-tracker-482807`
+explicitly on every `gcloud billing budgets` call, or it fails with a
+`billingbudgets.googleapis.com` "not enabled" error against the wrong
+project — even though the API is enabled on the right one.
+
+The OpenAI limit has no CLI — read it at
+<https://platform.openai.com/settings/organization/limits>.
+
+### Change them
+
+```bash
+# Instance ceiling
+gcloud run services update expense-tracker \
+  --project expense-tracker-482807 --region southamerica-east1 \
+  --max-instances <N>
+
+# Budget amount (BRL — see currency note above). Look up the budget's full
+# resource name first; its UUID is deliberately not hardcoded here.
+BILLING=$(gcloud billing projects describe expense-tracker-482807 \
+  --format="value(billingAccountName)"); BILLING=${BILLING#billingAccounts/}
+gcloud billing budgets list --project expense-tracker-482807 \
+  --billing-account="$BILLING" --format="value(name)"
+
+gcloud billing budgets update --project expense-tracker-482807 "<name from above>" \
+  --budget-amount=<N>BRL
+```
+
+**Common failure:** raising `--max-instances` without also raising the OpenAI cap
+moves the bottleneck to the expensive layer. Raise the OpenAI limit *first*, or
+not at all.
+
+**Why max-instances is this low:** the container is 1 vCPU / 1Gi running a single
+gunicorn worker with an async uvicorn worker at concurrency 80 (see *Why the
+container starts the way it does*). Three instances is ~240 concurrent requests —
+far above real demand, and the point is the ceiling, not the headroom.
+
+---
+
 ## Cold starts: the keepalive job
 
 `min-instances` is **0**, so an idle service scales to zero and the next request
