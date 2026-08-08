@@ -56,16 +56,13 @@ layer (E01's throttle) sits below all of them.
 
 | Ceiling | Value | Status | Effect when hit |
 |---|---|---|---|
-| Cloud Run `--max-instances` | 3 | **Pending** — still `20`, see below | New requests queue rather than starting a 4th billable instance |
-| GCP budget alert | BRL 250/month (target was USD 50, see below) | **Live** | **Notifies only.** Email at 50%, 80%, 100% |
+| Cloud Run `--max-instances` | 3 (was `20`) | **Live** — revision `expense-tracker-00039-rg6` | New requests queue rather than starting a 4th billable instance |
+| GCP budget alert | BRL 275/month (target was USD 50, see below) | **Live**, alert-path test in progress — see below | **Notifies only.** Email at 50%, 80%, 100% |
 | OpenAI org monthly limit | USD 30/month hard, USD 20 soft | **Pending** — console-only, owner action | API returns errors — the actual stop |
 
-### Cloud Run max-instances is still pending
+### Cloud Run max-instances
 
-Lowering `--max-instances` on a live production service is a real availability
-change (it can start queuing requests under a real spike), so an unattended
-agent session is blocked from applying it — this needs a human running the
-command below with eyes on it:
+Applied. Reversal (pre-task value): `--max-instances 20`.
 
 ```bash
 gcloud run services update expense-tracker \
@@ -73,21 +70,35 @@ gcloud run services update expense-tracker \
   --max-instances 3
 ```
 
-Expected: `Service [expense-tracker] revision [expense-tracker-000NN-xxx] has
-been deployed and is serving 100 percent of traffic.` Verify with the read
-command below — expect `3`. It was `20` before this change (not absent, as an
-earlier finding assumed — that finding was stale).
+Lowering `--max-instances` on a live production service is a real availability
+change (it can start queuing requests under a real spike) — run it with a
+human watching, not from an unattended session. Confirmed live via the read
+command below, which returns `3`.
 
 ### The GCP budget alert is billed in BRL, not USD
 
 `gcloud billing projects describe expense-tracker-482807` shows the linked
-billing account bills in **BRL**, not USD. `gcloud billing budgets create`
+billing account ("pessoal") bills in **BRL**, not USD, so a USD-denominated
+budget cannot be created via this API at all — take the plan's "USD 50/month"
+as a target to convert, not a literal value. `gcloud billing budgets create`
 requires `--budget-amount`'s currency to match the billing account's currency
 and fails with a bare `INVALID_ARGUMENT` (no mention of currency) if it
-doesn't. The budget was created at **BRL 250/month** — the nearest round
-number to the USD 50 target at the exchange rate on the day it was created
-(~5.09 BRL/USD). This is a fixed BRL amount; it will not track future FX
-moves, so revisit it periodically or the day USD/BRL moves meaningfully.
+doesn't. The owner set the live budget at **BRL 275/month** — the round
+number they picked as the closer BRL equivalent of the USD 50 target. This is
+a fixed BRL amount; it will not track future FX moves, so revisit it
+periodically or the day USD/BRL moves meaningfully.
+
+**Alert-path test in progress:** to prove the notification actually fires,
+the budget was temporarily dropped to `1BRL` at `2026-08-08T16:07:54Z`. It has
+**not** been restored yet. Once the alert email (subject like `Budget alert:
+expense-tracker monthly ceiling`) is confirmed in the billing account admin's
+inbox, restore it:
+
+```bash
+gcloud billing budgets update <name from the read command below> \
+  --billing-project=expense-tracker-482807 \
+  --budget-amount=275BRL
+```
 
 ### Read the current values
 
@@ -98,17 +109,18 @@ gcloud run services describe expense-tracker \
 
 BILLING=$(gcloud billing projects describe expense-tracker-482807 \
   --format="value(billingAccountName)"); BILLING=${BILLING#billingAccounts/}
-gcloud billing budgets list --project expense-tracker-482807 \
+gcloud billing budgets list --billing-project=expense-tracker-482807 \
   --billing-account="$BILLING" \
-  --format="table(displayName,amount.specifiedAmount.currencyCode,amount.specifiedAmount.units)"
+  --format="table(displayName,amount.specifiedAmount.currencyCode,amount.specifiedAmount.units,name)"
 ```
 
-**Common failure:** `gcloud billing budgets *` silently uses `gcloud`'s
-*default* project as the API quota project, which on this machine is not
-`expense-tracker-482807`. Always pass `--project expense-tracker-482807`
-explicitly on every `gcloud billing budgets` call, or it fails with a
-`billingbudgets.googleapis.com` "not enabled" error against the wrong
-project — even though the API is enabled on the right one.
+**Common failure (operator trap):** every `gcloud billing budgets` command
+needs `--billing-project=expense-tracker-482807`. Without it, gcloud bills the
+quota to the machine's default project (not `expense-tracker-482807`) and
+fails with a `SERVICE_DISABLED` / "does not have permission to access
+billingAccounts instance" error that reads like a permissions problem but
+isn't — it's the missing flag. `--project` also works for this, but
+`--billing-project` is the flag documented for this command family.
 
 The OpenAI limit has no CLI — read it at
 <https://platform.openai.com/settings/organization/limits>.
@@ -125,10 +137,11 @@ gcloud run services update expense-tracker \
 # resource name first; its UUID is deliberately not hardcoded here.
 BILLING=$(gcloud billing projects describe expense-tracker-482807 \
   --format="value(billingAccountName)"); BILLING=${BILLING#billingAccounts/}
-gcloud billing budgets list --project expense-tracker-482807 \
+gcloud billing budgets list --billing-project=expense-tracker-482807 \
   --billing-account="$BILLING" --format="value(name)"
 
-gcloud billing budgets update --project expense-tracker-482807 "<name from above>" \
+gcloud billing budgets update <name from above> \
+  --billing-project=expense-tracker-482807 \
   --budget-amount=<N>BRL
 ```
 
