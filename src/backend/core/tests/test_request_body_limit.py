@@ -114,12 +114,47 @@ class TestUploadDefaults:
 # unit-test the factory and the Content-Length parsing directly so both
 # branches, and the lying/malformed header case, have real coverage.
 class TestMiddlewareFactoryBranches:
-    def test_malformed_content_length_is_not_treated_as_oversized(self, rf, settings):
+    def test_malformed_content_length_is_treated_as_oversized(self, rf, settings):
+        # Fix round 1: a garbled header must fail closed, not read as absent.
+        # See core.middleware.declared_content_length's docstring.
         from core.middleware import _too_large
 
         settings.MAX_REQUEST_BODY_BYTES = 1024
         request = rf.post("/x")
         request.META["CONTENT_LENGTH"] = "not-a-number"
+        blocked = _too_large(request)
+        assert blocked is not None
+        assert blocked.status_code == 413
+
+    def test_negative_content_length_is_treated_as_oversized(self, rf, settings):
+        from core.middleware import _too_large
+
+        settings.MAX_REQUEST_BODY_BYTES = 1024
+        request = rf.post("/x")
+        request.META["CONTENT_LENGTH"] = "-1"
+        blocked = _too_large(request)
+        assert blocked is not None
+        assert blocked.status_code == 413
+
+    def test_duplicate_content_length_headers_use_the_larger_value(self, rf, settings):
+        # ASGI folds repeated headers into one comma-joined META value (see
+        # ASGIRequest.__init__ in django/core/handlers/asgi.py) — a request
+        # declaring conflicting lengths is read as the larger of them.
+        from core.middleware import _too_large
+
+        settings.MAX_REQUEST_BODY_BYTES = 150
+        request = rf.post("/x")
+        request.META["CONTENT_LENGTH"] = "100,200"
+        blocked = _too_large(request)
+        assert blocked is not None
+        assert blocked.status_code == 413
+
+    def test_duplicate_content_length_headers_both_under_limit_pass(self, rf, settings):
+        from core.middleware import _too_large
+
+        settings.MAX_REQUEST_BODY_BYTES = 250
+        request = rf.post("/x")
+        request.META["CONTENT_LENGTH"] = "100,200"
         assert _too_large(request) is None
 
     def test_missing_content_length_is_not_treated_as_oversized(self, rf, settings):
@@ -129,6 +164,24 @@ class TestMiddlewareFactoryBranches:
         request = rf.get("/x")
         request.META.pop("CONTENT_LENGTH", None)
         assert _too_large(request) is None
+
+    def test_content_length_exactly_at_limit_passes(self, rf, settings):
+        from core.middleware import _too_large
+
+        settings.MAX_REQUEST_BODY_BYTES = 1024
+        request = rf.post("/x")
+        request.META["CONTENT_LENGTH"] = "1024"
+        assert _too_large(request) is None
+
+    def test_content_length_one_over_limit_is_rejected(self, rf, settings):
+        from core.middleware import _too_large
+
+        settings.MAX_REQUEST_BODY_BYTES = 1024
+        request = rf.post("/x")
+        request.META["CONTENT_LENGTH"] = "1025"
+        blocked = _too_large(request)
+        assert blocked is not None
+        assert blocked.status_code == 413
 
     def test_sync_get_response_stays_sync(self, rf, settings):
         from django.http import HttpResponse

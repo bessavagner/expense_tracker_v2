@@ -202,7 +202,21 @@ session connection on 5432.
 | `MAX_REQUEST_BODY_BYTES` | 62914560 (60 MB) | every path |
 | `MAX_CSV_UPLOAD_BYTES` | 10485760 (10 MB) | `/import/*` |
 
-Rejected with HTTP 413 from `Content-Length`, before Django parses the body.
+Enforced in two layers, both from `Content-Length`, both before Django parses
+the body:
+
+- `core.asgi_body_limit` wraps the ASGI application itself, ahead of Django's
+  own request handling. A declared `Content-Length` over the ceiling is
+  rejected with HTTP 413 without reading anything from the client; a chunked
+  request with no declared length is read and counted as it streams in, and
+  aborted with a 413 the moment the running total crosses the ceiling. This
+  layer exists because Django's `ASGIHandler` buffers the *entire* body before
+  any Django middleware runs, and its own size check never fires for a request
+  with no `Content-Length` — that combination left chunked, unauthenticated
+  POSTs completely unbounded before this layer was added.
+- `core.middleware.max_request_body_middleware` (Django middleware, directly
+  after `SecurityMiddleware`) rejects the same declared-oversized case again,
+  before Django's multipart parser or the CSV importer's temp-file copy run.
 
 **Common failure:** a user reports "arquivo grande demais" on a legitimate
 multi-photo receipt. `MAX_REQUEST_BODY_BYTES` must stay above
