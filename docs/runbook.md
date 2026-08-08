@@ -59,8 +59,8 @@ layer (E01's throttle) sits below all of them.
 | Ceiling | Value | Status | Effect when hit |
 |---|---|---|---|
 | Cloud Run `--max-instances` | 3 (was `20`) | **Live** — revision `expense-tracker-00039-rg6` | New requests queue rather than starting a 4th billable instance |
-| GCP budget alert | BRL 275/month (target was USD 50, see below) | **Live**, alert-path test in progress — see below | **Notifies only.** Email at 50%, 80%, 100% |
-| OpenAI org monthly limit | USD 30/month hard, USD 20 soft | **Pending** — console-only, owner action | API returns errors — the actual stop |
+| GCP budget alert | BRL 50/month (target was USD 50, see below) | **Live**, alert path **proven** — see below | **Notifies only.** Email at 50%, 80%, 100% |
+| OpenAI org monthly limit | USD 30/month hard, USD 20 soft | **Live** — set by the owner in the console (no CLI) | API returns errors — the actual stop |
 
 ### Cloud Run max-instances
 
@@ -85,21 +85,27 @@ budget cannot be created via this API at all — take the plan's "USD 50/month"
 as a target to convert, not a literal value. `gcloud billing budgets create`
 requires `--budget-amount`'s currency to match the billing account's currency
 and fails with a bare `INVALID_ARGUMENT` (no mention of currency) if it
-doesn't. The owner set the live budget at **BRL 275/month** — the round
-number they picked as the closer BRL equivalent of the USD 50 target. This is
-a fixed BRL amount; it will not track future FX moves, so revisit it
-periodically or the day USD/BRL moves meaningfully.
+doesn't. The owner set the live budget at **BRL 50/month**. This is a
+deliberate development-phase figure — tight on purpose while the app is in
+single-user dogfooding — not the final ceiling; the owner intends to raise it
+once self-use ends. Do not "fix" it back up to a closer USD 50 equivalent
+without checking with the owner first. It is also a fixed BRL amount that
+will not track future FX moves, so revisit it periodically or the day
+USD/BRL moves meaningfully.
 
-**Alert-path test in progress:** to prove the notification actually fires,
-the budget was temporarily dropped to `1BRL` at `2026-08-08T16:07:54Z`. It has
-**not** been restored yet. Once the alert email (subject like `Budget alert:
-expense-tracker monthly ceiling`) is confirmed in the billing account admin's
-inbox, restore it:
+**Alert path proven:** to confirm the notification actually fires, the
+budget was temporarily dropped to `1BRL` at `2026-08-08T16:07:54Z`. The owner
+received the alert email (subject `Budget alert: expense-tracker monthly
+ceiling`) at the 50% threshold on **2026-08-08 09:27**, naming the budget,
+billing account `01EAA6-4C3E7C-8FE819`, and project `expense-tracker-482807`.
+The budget has since been restored to BRL 50 — no further action needed. The
+restore command, for reference if the budget is ever dropped again to
+re-test:
 
 ```bash
 gcloud billing budgets update <name from the read command below> \
   --billing-project=expense-tracker-482807 \
-  --budget-amount=275BRL
+  --budget-amount=50BRL
 ```
 
 ### Read the current values
@@ -222,6 +228,33 @@ the body:
 multi-photo receipt. `MAX_REQUEST_BODY_BYTES` must stay above
 `ASSISTANT_MAX_IMAGES × ASSISTANT_MAX_IMAGE_MB` with room for multipart
 overhead. Raising the image limits without raising this one is the usual cause.
+
+### `gcloud run deploy` is blocked in Claude Code agent sessions
+
+The Claude Code auto-mode permission classifier denies `gcloud run deploy`
+for agent sessions — this held true both for a regular implementer session
+and for a controller session with the owner's authorization already given;
+the controller session was also blocked from adding a permission rule for
+itself. There is no agent-side workaround, and none should be attempted —
+an agent granting itself deploy rights is exactly what the guard is for.
+**The owner must run the deploy directly**, from a human-driven terminal:
+
+```bash
+gcloud run deploy expense-tracker --source . \
+  --project expense-tracker-482807 \
+  --region southamerica-east1 \
+  --quiet
+```
+
+A bare deploy like this preserves existing env vars and secrets. If the
+post-deploy smoke test (see the top of this document) fails, roll back to
+the last known-good revision:
+
+```bash
+gcloud run services update-traffic expense-tracker \
+  --project expense-tracker-482807 --region southamerica-east1 \
+  --to-revisions expense-tracker-00039-rg6=100
+```
 
 ---
 
