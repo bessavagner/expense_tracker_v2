@@ -58,7 +58,7 @@ graph LR
 
 | ID | Epic | Rel | W | Depends on | Status |
 |---|---|---|---|---|---|
-| [E01](E01-spend-and-abuse-containment.md) | Spend & abuse containment | R0 | | — | ready |
+| [E01](E01-spend-and-abuse-containment.md) | Spend & abuse containment | R0 | | — | review |
 | [E02](E02-suite-integrity-and-ci-gates.md) | Suite integrity & CI gates | R0 | | — | ready |
 | [E03](E03-query-performance-floor.md) | Query performance floor | R0 | | — | ready |
 | [E04](E04-household-tenancy.md) | Household tenancy | R1 | | E02 | blocked |

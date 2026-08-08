@@ -2,7 +2,7 @@
 id: E01
 title: Spend & abuse containment
 release: R0
-status: ready
+status: review
 depends_on: []
 blocks: [E06]
 wedge_critical: false
@@ -93,11 +93,15 @@ DEBUG=False SECRET_KEY=$(python -c "from django.core.management.utils import get
 
 # No throttle bypass: the string must now appear
 grep -rniE 'throttle|ratelimit' src/backend --include='*.py' | grep -v tests
+
+# csrf_exempt is gone from application code (scoped past the regression-guard test,
+# which necessarily contains the string it asserts against)
+grep -rn 'csrf_exempt' src/backend/assistant/ --include='*.py' | grep -v '/tests/'
 ```
 
 Observable assertions:
 
-- [ ] `grep -rn 'csrf_exempt' src/backend/assistant/` returns nothing
+- [ ] `grep -rn 'csrf_exempt' src/backend/assistant/ --include='*.py' | grep -v '/tests/'` returns nothing (the unscoped form necessarily matches the regression-guard test in `assistant/tests/test_chat_csrf.py`, which asserts this same property)
 - [ ] A test proves an over-limit assistant request makes **zero** model calls
 - [ ] A test asserts `SESSION_COOKIE_SAMESITE` and `CSRF_COOKIE_SAMESITE` values
 - [ ] `gcloud run services describe` shows an explicit `maxScale`
