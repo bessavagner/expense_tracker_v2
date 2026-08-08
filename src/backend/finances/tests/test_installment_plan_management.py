@@ -11,14 +11,25 @@ from finances.models.installment_plan import InstallmentPlan
 
 @pytest.fixture
 def plan_factory(db):
-    def _make(num=3, total=Decimal("600.00"), parcela=Decimal("200.00"), start=date(2026, 6, 12),
-              pm_type="pix", closing_day=None):
+    def _make(
+        num=3,
+        total=Decimal("600.00"),
+        parcela=Decimal("200.00"),
+        start=date(2026, 6, 12),
+        pm_type="pix",
+        closing_day=None,
+    ):
         user = baker.make(CustomUser)
         cat = baker.make(Category, user=user)
         pm = baker.make(PaymentMethod, user=user, type=pm_type, closing_day=closing_day)
         plan = InstallmentPlan.objects.create(
-            user=user, date=start, description="Notebook", category=cat,
-            payment_method=pm, total_amount=total, num_installments=num,
+            user=user,
+            date=start,
+            description="Notebook",
+            category=cat,
+            payment_method=pm,
+            total_amount=total,
+            num_installments=num,
             installment_amount=parcela,
         )
         plan.generate_entries()

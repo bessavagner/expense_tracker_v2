@@ -8,7 +8,10 @@ pytestmark = pytest.mark.django_db
 
 def _rule(user, trigger, value):
     return MemoryRule.objects.create(
-        user=user, trigger=trigger, field="category", value=value,
+        user=user,
+        trigger=trigger,
+        field="category",
+        value=value,
         source=MemorySource.USER_CORRECTION,
     )
 
@@ -30,7 +33,10 @@ def test_apply_overrides_category_from_rule(seeded_user):
 def test_apply_case_insensitive_and_uppercase_trigger(seeded_user):
     # even if a trigger were stored uppercase, matching is case-insensitive
     MemoryRule.objects.create(
-        user=seeded_user, trigger="MONSTER", field="category", value="Lanche",
+        user=seeded_user,
+        trigger="MONSTER",
+        field="category",
+        value="Lanche",
         source=MemorySource.USER_CORRECTION,
     )
     items = [{"description": "energ monster 473ml", "category": "Alimentação"}]
@@ -55,9 +61,12 @@ def test_apply_no_rules_is_noop(seeded_user):
 def test_propose_auto_path_applies_rules(seeded_user):
     _rule(seeded_user, "energ", "Lanche")
     ReceiptDraft.objects.create(
-        user=seeded_user, status=ReceiptDraftStatus.PENDING,
+        user=seeded_user,
+        status=ReceiptDraftStatus.PENDING,
         payload={
-            "store": "Cosmos", "date": "2026-07-06", "amount_paid": "13.00",
+            "store": "Cosmos",
+            "date": "2026-07-06",
+            "amount_paid": "13.00",
             "payment_hint": "Pix",
             "items": [
                 {
@@ -82,9 +91,12 @@ def test_propose_auto_path_applies_rules(seeded_user):
 def test_propose_explicit_categories_not_overridden(seeded_user):
     _rule(seeded_user, "energ", "Lanche")  # would move item 0 to Lanche in auto path
     ReceiptDraft.objects.create(
-        user=seeded_user, status=ReceiptDraftStatus.PENDING,
+        user=seeded_user,
+        status=ReceiptDraftStatus.PENDING,
         payload={
-            "store": "Cosmos", "date": "2026-07-06", "amount_paid": "13.00",
+            "store": "Cosmos",
+            "date": "2026-07-06",
+            "amount_paid": "13.00",
             "payment_hint": "Pix",
             "items": [
                 {
@@ -111,15 +123,19 @@ def test_propose_explicit_categories_not_overridden(seeded_user):
 
 def test_propose_preserves_commas_in_summary(seeded_user):
     ReceiptDraft.objects.create(
-        user=seeded_user, status=ReceiptDraftStatus.PENDING,
+        user=seeded_user,
+        status=ReceiptDraftStatus.PENDING,
         payload={
-            "store": "Cosmos", "date": "2026-07-06", "amount_paid": "10.00",
+            "store": "Cosmos",
+            "date": "2026-07-06",
+            "amount_paid": "10.00",
             "payment_hint": "Pix",
             "items": [{"description": "X", "line_total": "10.00", "category": "Lanche"}],
         },
     )
     propose_receipt(
-        seeded_user, payment_method_name="Pix",
+        seeded_user,
+        payment_method_name="Pix",
         summaries={"Lanche": "bolachas, energéticos e refrigerantes"},
     )
     plan = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload["plan"]

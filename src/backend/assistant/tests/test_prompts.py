@@ -105,6 +105,7 @@ class TestPhotoPolicySplitAndTable:
 
 def test_assistant_prompt_covers_all_capabilities():
     from assistant.agents.prompts import ASSISTANT_PROMPT
+
     p = ASSISTANT_PROMPT.lower()
     for needle in ["registr", "analis", "planej", "recibo", "memó", "confirm"]:
         assert needle in p, needle

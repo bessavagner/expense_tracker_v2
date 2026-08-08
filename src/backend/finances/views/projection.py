@@ -142,9 +142,7 @@ def build_projection_context(request):
 
 def _render_projection(request):
     ctx = build_projection_context(request)
-    return HttpResponse(
-        render_to_string("projection/_projection_body.html", ctx, request=request)
-    )
+    return HttpResponse(render_to_string("projection/_projection_body.html", ctx, request=request))
 
 
 class ProjectionView(HtmxLoginRequiredMixin, TemplateView):
@@ -168,12 +166,19 @@ class ProjectionWhatifAddView(HtmxLoginRequiredMixin, View):
             label=request.POST.get("label", ""),
             amount=request.POST["amount"],
             month=_parse_month_field(request.POST["month"]),
-            end_month=(_parse_month_field(request.POST["end_month"])
-                       if request.POST.get("end_month") else None),
-            n_installments=(int(request.POST["n_installments"])
-                            if request.POST.get("n_installments") else None),
-            installment_amount=(request.POST["installment_amount"]
-                                if request.POST.get("installment_amount") else None),
+            end_month=(
+                _parse_month_field(request.POST["end_month"])
+                if request.POST.get("end_month")
+                else None
+            ),
+            n_installments=(
+                int(request.POST["n_installments"]) if request.POST.get("n_installments") else None
+            ),
+            installment_amount=(
+                request.POST["installment_amount"]
+                if request.POST.get("installment_amount")
+                else None
+            ),
         )
         items.append(item.model_dump(mode="json"))
         request.session[SESSION_KEY] = items

@@ -21,9 +21,9 @@ from django.db import migrations
 
 def freeze_credit_entries(apps, schema_editor):
     Entry = apps.get_model("finances", "Entry")
-    Entry.objects.filter(
-        payment_method__type="credit_card", billing_month_override=False
-    ).update(billing_month_override=True)
+    Entry.objects.filter(payment_method__type="credit_card", billing_month_override=False).update(
+        billing_month_override=True
+    )
 
 
 def noop_reverse(apps, schema_editor):

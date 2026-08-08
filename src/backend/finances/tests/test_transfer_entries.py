@@ -14,8 +14,13 @@ def _setup(user):
     cat = baker.make("finances.Category", user=user, name="Saúde")
     pix = baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")
     baker.make(
-        "finances.Entry", user=user, date=date(2026, 6, 23), amount=Decimal("31.99"),
-        description="Amazon - coletor", category=cat, payment_method=pix,
+        "finances.Entry",
+        user=user,
+        date=date(2026, 6, 23),
+        amount=Decimal("31.99"),
+        description="Amazon - coletor",
+        category=cat,
+        payment_method=pix,
     )
     return cat, pix
 
@@ -24,14 +29,20 @@ def _setup(user):
 def test_export_then_import_roundtrip_idempotent(user, tmp_path):
     _setup(user)
     path = tmp_path / "entries.json"
-    call_command("transfer_entries", "export", "--user", user.username,
-                 "--file", str(path), stderr=StringIO())
+    call_command(
+        "transfer_entries",
+        "export",
+        "--user",
+        user.username,
+        "--file",
+        str(path),
+        stderr=StringIO(),
+    )
     # simulate transferring to another DB: remove the entry, then import it back
     Entry.objects.all().delete()
     assert Entry.objects.count() == 0
 
-    call_command("transfer_entries", "import", "--apply", "--file", str(path),
-                 stdout=StringIO())
+    call_command("transfer_entries", "import", "--apply", "--file", str(path), stdout=StringIO())
     e = Entry.objects.get()
     assert e.amount == Decimal("31.99")
     assert e.category.name == "Saúde"  # resolved by NAME, not id
@@ -62,10 +73,18 @@ def test_import_reports_missing_category(user, tmp_path):
     baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")
     path = tmp_path / "entries.json"
     path.write_text(
-        json.dumps([{
-            "user": user.username, "date": "2026-06-23", "amount": "10.00",
-            "category": "CategoriaInexistente", "payment": "Pix", "description": "x",
-        }]),
+        json.dumps(
+            [
+                {
+                    "user": user.username,
+                    "date": "2026-06-23",
+                    "amount": "10.00",
+                    "category": "CategoriaInexistente",
+                    "payment": "Pix",
+                    "description": "x",
+                }
+            ]
+        ),
         encoding="utf-8",
     )
     out = StringIO()

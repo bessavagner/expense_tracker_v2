@@ -79,9 +79,7 @@ class TestImporterCeiling:
         settings.MAX_CSV_UPLOAD_BYTES = 1024
         settings.MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024
         big = SimpleUploadedFile("big.csv", b"a,b,c\n" * 2000, content_type="text/csv")
-        response = logged_client.post(
-            "/import/", {"file": big, "import_type": "regular"}
-        )
+        response = logged_client.post("/import/", {"file": big, "import_type": "regular"})
         assert response.status_code == 413
 
     def test_small_csv_still_uploads(self, logged_client, settings):
@@ -93,9 +91,7 @@ class TestImporterCeiling:
             b"date,description,amount,category,payment_method\n",
             content_type="text/csv",
         )
-        response = logged_client.post(
-            "/import/", {"file": small, "import_type": "regular"}
-        )
+        response = logged_client.post("/import/", {"file": small, "import_type": "regular"})
         # ImportUploadView is POST-redirect-GET: success is a redirect to the
         # mapping step, not a 200 — the point here is "not 413".
         assert response.status_code == 302

@@ -42,6 +42,7 @@ class TestRunMutatedData:
 
     def test_mutating_tools_are_real_writes(self):
         from assistant.views import MUTATING_TOOLS
+
         assert "register_entry" in MUTATING_TOOLS
         assert "commit_receipt" in MUTATING_TOOLS
         assert "update_entry" in MUTATING_TOOLS

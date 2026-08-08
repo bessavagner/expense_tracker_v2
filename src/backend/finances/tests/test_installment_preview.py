@@ -5,9 +5,7 @@ from model_bakery import baker
 @pytest.mark.django_db
 class TestInstallmentPreview:
     def test_preview_credit_card_pushes_first_month(self, logged_client, user):
-        pm = baker.make(
-            "finances.PaymentMethod", user=user, type="credit_card", closing_day=5
-        )
+        pm = baker.make("finances.PaymentMethod", user=user, type="credit_card", closing_day=5)
         response = logged_client.get(
             "/entries/installment-preview/",
             {

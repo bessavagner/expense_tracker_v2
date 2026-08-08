@@ -220,9 +220,7 @@ class Command(BaseCommand):
                 plan.generate_entries()
 
     def _import_regular_entries(self):
-        monthly = sorted(
-            p for p in self.base.glob("*.csv") if p.name not in SPECIAL_FILES
-        )
+        monthly = sorted(p for p in self.base.glob("*.csv") if p.name not in SPECIAL_FILES)
         for path in monthly:
             self.stdout.write(f"Importando entradas de {path.name}...")
             with path.open(encoding="utf-8") as f:

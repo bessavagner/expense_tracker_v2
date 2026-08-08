@@ -65,17 +65,14 @@ def diverse_savings_for_month(user, billing_month, window=6) -> dict:
     habitual).
     """
     baseline = monthly_diverse_total_median(user, window=window, as_of=billing_month)
-    actual = (
-        Entry.objects.filter(
-            user=user,
-            amount__gt=0,
-            entry_type=EntryType.REGULAR,
-            billing_month=billing_month,
-        )
-        .exclude(category__name__icontains=ADJUSTMENT_CATEGORY_PATTERN)
-        .aggregate(total=Sum("amount"))["total"]
-        or Decimal("0")
-    )
+    actual = Entry.objects.filter(
+        user=user,
+        amount__gt=0,
+        entry_type=EntryType.REGULAR,
+        billing_month=billing_month,
+    ).exclude(category__name__icontains=ADJUSTMENT_CATEGORY_PATTERN).aggregate(total=Sum("amount"))[
+        "total"
+    ] or Decimal("0")
     return {
         "baseline": baseline,
         "actual": actual,
@@ -91,15 +88,16 @@ def monthly_diverse_total_ceiling(user) -> Decimal:
     Imported lazily to keep this module free of a budget_stats import cycle.
     """
     from finances.services.budget_stats import total_diverse_ceiling
+
     return total_diverse_ceiling(user)
 
 
 def category_moving_averages(user, window=3, as_of=None, entry_type=None) -> dict:
     as_of = as_of or date.today()
     months = _window_months(as_of, window)
-    qs = Entry.objects.filter(
-        user=user, amount__gt=0, billing_month__in=months
-    ).exclude(category__name__icontains=ADJUSTMENT_CATEGORY_PATTERN)
+    qs = Entry.objects.filter(user=user, amount__gt=0, billing_month__in=months).exclude(
+        category__name__icontains=ADJUSTMENT_CATEGORY_PATTERN
+    )
     if entry_type is not None:
         qs = qs.filter(entry_type=entry_type)
     rows = qs.values("category_id", "billing_month").annotate(total=Sum("amount"))
@@ -112,8 +110,7 @@ def category_moving_averages(user, window=3, as_of=None, entry_type=None) -> dic
         counts[cid] = counts.get(cid, 0) + 1
 
     return {
-        cid: (totals[cid] / counts[cid]).quantize(_CENTS, rounding=ROUND_HALF_UP)
-        for cid in totals
+        cid: (totals[cid] / counts[cid]).quantize(_CENTS, rounding=ROUND_HALF_UP) for cid in totals
     }
 
 

@@ -14,20 +14,28 @@ class TestCategoryDetailEntryTypeFilter(TestCase):
         self.client.force_login(self.user)
         self.cat = baker.make(Category, user=self.user, name="Casa")
         self.regular = baker.make(
-            Entry, user=self.user, category=self.cat, amount="10.00",
-            description="Alcir - estorno do vizinho", date=date(2026, 2, 20),
-            billing_month=date(2026, 2, 1), entry_type=EntryType.REGULAR,
+            Entry,
+            user=self.user,
+            category=self.cat,
+            amount="10.00",
+            description="Alcir - estorno do vizinho",
+            date=date(2026, 2, 20),
+            billing_month=date(2026, 2, 1),
+            entry_type=EntryType.REGULAR,
         )
         self.systemic = baker.make(
-            Entry, user=self.user, category=self.cat, amount="50.00",
-            description="Aluguel", date=date(2026, 2, 1),
-            billing_month=date(2026, 2, 1), entry_type=EntryType.SYSTEMIC,
+            Entry,
+            user=self.user,
+            category=self.cat,
+            amount="50.00",
+            description="Aluguel",
+            date=date(2026, 2, 1),
+            billing_month=date(2026, 2, 1),
+            entry_type=EntryType.SYSTEMIC,
         )
 
     def test_systemic_detail_excludes_diverse(self):
-        resp = self.client.get(
-            f"/consolidated/detail/{self.cat.id}/2026/2/?type=systemic"
-        )
+        resp = self.client.get(f"/consolidated/detail/{self.cat.id}/2026/2/?type=systemic")
         body = resp.content.decode()
         self.assertIn("Aluguel", body)
         self.assertNotIn("estorno do vizinho", body)

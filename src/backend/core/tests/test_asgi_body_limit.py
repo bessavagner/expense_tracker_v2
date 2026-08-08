@@ -321,9 +321,7 @@ class TestChunkedBodyPath:
             async def __call__(self, scope, receive, send):
                 while True:
                     message = await receive()
-                    if message["type"] == "http.disconnect" or not message.get(
-                        "more_body", False
-                    ):
+                    if message["type"] == "http.disconnect" or not message.get("more_body", False):
                         break
                 # A second, independent call -- as listen_for_disconnect makes.
                 self.extra_message = await receive()

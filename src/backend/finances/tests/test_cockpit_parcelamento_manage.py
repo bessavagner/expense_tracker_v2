@@ -60,9 +60,7 @@ class TestCockpitParcelamentoManage(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.plan.refresh_from_db()
         self.assertEqual(self.plan.description, "Notebook PRO")
-        self.assertEqual(
-            Entry.objects.filter(installment_plan=self.plan).count(), 4
-        )
+        self.assertEqual(Entry.objects.filter(installment_plan=self.plan).count(), 4)
         self.assertIn("entry-saved", resp.headers.get("HX-Trigger", ""))
 
     def test_shift_months_forward(self):
@@ -81,9 +79,7 @@ class TestCockpitParcelamentoManage(TestCase):
         resp = self.client.post(self._url(), {"action": "delete"})
         self.assertEqual(resp.status_code, 200)
         self.assertFalse(InstallmentPlan.objects.filter(id=self.plan.id).exists())
-        self.assertEqual(
-            Entry.objects.filter(installment_plan_id=self.plan.id).count(), 0
-        )
+        self.assertEqual(Entry.objects.filter(installment_plan_id=self.plan.id).count(), 0)
         self.assertIn("entry-saved", resp.headers.get("HX-Trigger", ""))
 
     def test_cross_user_404(self):

@@ -19,8 +19,12 @@ class TestCockpitIncomeForm(TestCase):
         from finances.forms import CockpitIncomeForm
 
         form = CockpitIncomeForm(
-            data={"name": "Salário", "amount": "5000.00", "month": "2026-10-01",
-                  "repeat_until_december": True}
+            data={
+                "name": "Salário",
+                "amount": "5000.00",
+                "month": "2026-10-01",
+                "repeat_until_december": True,
+            }
         )
         self.assertTrue(form.is_valid(), form.errors)
         created = form.save_for_user(self.user)
@@ -28,16 +32,25 @@ class TestCockpitIncomeForm(TestCase):
         self.assertEqual(len(created), 3)
         months = sorted(i.month for i in created)
         self.assertEqual(months, [date(2026, 10, 1), date(2026, 11, 1), date(2026, 12, 1)])
-        self.assertTrue(all(i.amount.quantize(__import__("decimal").Decimal("0.01"))
-                            == __import__("decimal").Decimal("5000.00") for i in created))
+        self.assertTrue(
+            all(
+                i.amount.quantize(__import__("decimal").Decimal("0.01"))
+                == __import__("decimal").Decimal("5000.00")
+                for i in created
+            )
+        )
         self.assertTrue(all(i.user_id == self.user.id for i in created))
 
     def test_without_repeat_creates_single_row(self):
         from finances.forms import CockpitIncomeForm
 
         form = CockpitIncomeForm(
-            data={"name": "Freela", "amount": "800.00", "month": "2026-10-01",
-                  "repeat_until_december": False}
+            data={
+                "name": "Freela",
+                "amount": "800.00",
+                "month": "2026-10-01",
+                "repeat_until_december": False,
+            }
         )
         self.assertTrue(form.is_valid(), form.errors)
         created = form.save_for_user(self.user)

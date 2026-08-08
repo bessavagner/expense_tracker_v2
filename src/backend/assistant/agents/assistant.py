@@ -84,6 +84,7 @@ async def pending_receipt_instructions(ctx: RunContext[User]) -> str:
 
 # ── Ferramentas de ESCRITA ──────────────────────────────────────────────────
 
+
 @assistant_agent.tool
 async def get_categories(ctx: RunContext[User]) -> list[str]:
     """Lista as categorias de despesa disponíveis do usuário."""
@@ -176,9 +177,13 @@ async def list_recent_entries(ctx: RunContext[User], limit: int = 10) -> str:
 
 @assistant_agent.tool
 async def update_entry(
-    ctx: RunContext[User], entry_id: str, date: str | None = None,
-    amount: str | None = None, description: str | None = None,
-    category_name: str | None = None, payment_method_name: str | None = None,
+    ctx: RunContext[User],
+    entry_id: str,
+    date: str | None = None,
+    amount: str | None = None,
+    description: str | None = None,
+    category_name: str | None = None,
+    payment_method_name: str | None = None,
 ) -> str:
     """Edita um lançamento existente (ache o id com list_recent_entries)."""
     return await sync_to_async(_update_entry)(
@@ -193,6 +198,7 @@ async def delete_entry(ctx: RunContext[User], entry_id: str) -> str:
 
 
 # ── Ferramentas de RECIBO ───────────────────────────────────────────────────
+
 
 @assistant_agent.tool
 async def propose_receipt(
@@ -228,6 +234,7 @@ async def add_receipt_item(
 
 
 # ── Ferramentas de LEITURA / ANÁLISE ───────────────────────────────────────
+
 
 @assistant_agent.tool
 async def get_expenses(
@@ -280,13 +287,15 @@ async def find_anomalies(ctx: RunContext[User], year: int, month: int) -> str:
 
 
 @assistant_agent.tool
-async def get_category_averages(ctx: RunContext[User], year: int | None = None,
-                                month: int | None = None) -> str:
+async def get_category_averages(
+    ctx: RunContext[User], year: int | None = None, month: int | None = None
+) -> str:
     """Média móvel (3 meses) de gasto por categoria."""
     return await sync_to_async(analytics.category_averages)(ctx.deps, year, month)
 
 
 # ── Ferramentas de PLANEJAMENTO ─────────────────────────────────────────────
+
 
 @assistant_agent.tool
 async def project_month_end(ctx: RunContext[User], year: int, month: int) -> str:
@@ -307,8 +316,13 @@ async def get_upcoming_obligations(ctx: RunContext[User], year: int, month: int)
 
 
 @assistant_agent.tool
-async def simulate_projection(ctx: RunContext[User], items: list[HypotheticalItem],
-                              start_year: int, start_month: int, months: int = 12) -> str:
+async def simulate_projection(
+    ctx: RunContext[User],
+    items: list[HypotheticalItem],
+    start_year: int,
+    start_month: int,
+    months: int = 12,
+) -> str:
     """Simula o efeito de lançamentos hipotéticos na projeção (what-if).
 
     items: lista de hipóteses (despesa avulsa/recorrente, renda, parcelamento,
@@ -322,6 +336,7 @@ async def simulate_projection(ctx: RunContext[User], items: list[HypotheticalIte
 
 
 # ── Ferramentas de MEMÓRIA ──────────────────────────────────────────────────
+
 
 @assistant_agent.tool
 async def check_memory(ctx: RunContext[User], message: str) -> str:

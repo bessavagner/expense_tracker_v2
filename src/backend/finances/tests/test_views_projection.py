@@ -81,9 +81,16 @@ def test_start_control_is_year_and_month_selects(logged_client):
 def test_year_options_span_data_history(logged_client, user):
     cat = baker.make("finances.Category", user=user)
     pm = baker.make("finances.PaymentMethod", user=user, type="pix")
-    baker.make("finances.Entry", user=user, category=cat, payment_method=pm,
-               amount=Decimal("10"), date=date(2024, 3, 1), billing_month=date(2024, 3, 1),
-               billing_month_override=True)
+    baker.make(
+        "finances.Entry",
+        user=user,
+        category=cat,
+        payment_method=pm,
+        amount=Decimal("10"),
+        date=date(2024, 3, 1),
+        billing_month=date(2024, 3, 1),
+        billing_month_override=True,
+    )
     html = logged_client.get(reverse("finances:projection")).content.decode()
     assert '<option value="2024"' in html
 
@@ -98,17 +105,25 @@ def test_start_year_month_params_drive_window(logged_client):
 
 @pytest.mark.django_db
 def test_whatif_add_then_table_shows_simulado(logged_client):
-    r = logged_client.post("/projection/whatif/add/", {
-        "type": "income", "label": "bônus", "amount": "5000", "month": "2026-08",
-    })
+    r = logged_client.post(
+        "/projection/whatif/add/",
+        {
+            "type": "income",
+            "label": "bônus",
+            "amount": "5000",
+            "month": "2026-08",
+        },
+    )
     assert r.status_code == 200
     assert b"Simula" in r.content  # simulated row label rendered
 
 
 @pytest.mark.django_db
 def test_whatif_clear_empties_session(logged_client):
-    logged_client.post("/projection/whatif/add/", {
-        "type": "expense_oneoff", "label": "x", "amount": "100", "month": "2026-08"})
+    logged_client.post(
+        "/projection/whatif/add/",
+        {"type": "expense_oneoff", "label": "x", "amount": "100", "month": "2026-08"},
+    )
     logged_client.post("/projection/whatif/clear/")
     sess = logged_client.session
     assert sess.get("projection_whatif", []) == []
@@ -171,10 +186,16 @@ def test_overlay_simulation_builds_on_estimated():
     from finances.views.projection import _overlay_simulation
 
     rows = [
-        {"month": _d(2026, 7, 1), "saldo_projetado_estimado": Decimal("100"),
-         "acumulado_estimado": Decimal("1000")},
-        {"month": _d(2026, 8, 1), "saldo_projetado_estimado": Decimal("100"),
-         "acumulado_estimado": Decimal("1100")},
+        {
+            "month": _d(2026, 7, 1),
+            "saldo_projetado_estimado": Decimal("100"),
+            "acumulado_estimado": Decimal("1000"),
+        },
+        {
+            "month": _d(2026, 8, 1),
+            "saldo_projetado_estimado": Decimal("100"),
+            "acumulado_estimado": Decimal("1100"),
+        },
     ]
     overlay = {
         (_d(2026, 7, 1), "income"): Decimal("500"),

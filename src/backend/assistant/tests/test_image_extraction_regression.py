@@ -112,8 +112,11 @@ def test_fixtures_exist_and_are_images():
 
 def test_americanas_gabarito_is_internally_consistent():
     ext = _extraction(
-        AMERICANAS_ITEMS, store="americanas sa - 1063", date="2026-06-12",
-        discount="3.99", amount_paid="42.16",
+        AMERICANAS_ITEMS,
+        store="americanas sa - 1063",
+        date="2026-06-12",
+        discount="3.99",
+        amount_paid="42.16",
     )
     assert receipt_is_consistent(ext) is True
 
@@ -128,8 +131,12 @@ def test_americanas_split_sums_to_amount_paid(seeded_user):
 
     baker.make("finances.Category", user=seeded_user, name="Roupa")
     _make_draft(
-        seeded_user, AMERICANAS_ITEMS, store="americanas sa - 1063",
-        date="2026-06-12", discount="3.99", amount_paid="42.16",
+        seeded_user,
+        AMERICANAS_ITEMS,
+        store="americanas sa - 1063",
+        date="2026-06-12",
+        discount="3.99",
+        amount_paid="42.16",
     )
     propose_receipt(
         user=seeded_user,
@@ -156,8 +163,12 @@ def test_hipermacional_no_double_count_and_correct_total(seeded_user):
     for cat in ("Pets", "Casa", "Limpeza", "Perfumaria"):
         baker.make("finances.Category", user=seeded_user, name=cat)
     _, mapping = _make_draft(
-        seeded_user, HIPERMACIONAL_ITEMS, store="HIPERMACIONAL LTDA",
-        date="2026-06-15", discount="0", amount_paid="376.70",
+        seeded_user,
+        HIPERMACIONAL_ITEMS,
+        store="HIPERMACIONAL LTDA",
+        date="2026-06-15",
+        discount="0",
+        amount_paid="376.70",
     )
     propose_receipt(
         user=seeded_user,
@@ -177,9 +188,7 @@ def test_hipermacional_no_double_count_and_correct_total(seeded_user):
     # Lanche existe como sua própria linha (não fundido em Alimentação)
     assert entries.get(category__name="Lanche").amount == Decimal("14.50")
     # descrição começa pelo estabelecimento + resumo
-    assert entries.get(category__name="Alimentação").description.startswith(
-        "HIPERMACIONAL LTDA - "
-    )
+    assert entries.get(category__name="Alimentação").description.startswith("HIPERMACIONAL LTDA - ")
 
 
 @pytest.mark.anyio
@@ -216,8 +225,6 @@ async def test_real_extraction_does_not_double_count_multi_unit_line():
     assert ext.store is not None and "mercado" in ext.store.lower()
     total = sum((i.line_total for i in ext.items), Decimal("0"))
     assert total == Decimal("999.70")
-    bermuda_termica = next(
-        i for i in ext.items if "térmica" in i.description.lower()
-    )
+    bermuda_termica = next(i for i in ext.items if "térmica" in i.description.lower())
     assert bermuda_termica.quantity == Decimal("2")
     assert bermuda_termica.line_total == Decimal("66.48")

@@ -113,13 +113,23 @@ class TestSummaryEndpoint:
         pm = baker.make("finances.PaymentMethod", user=user, type="pix")
         # Previous month (2026-02): expenses 200
         baker.make(
-            "finances.Entry", user=user, date=date(2026, 2, 5), amount=Decimal("200"),
-            category=cat, payment_method=pm, billing_month=date(2026, 2, 1),
+            "finances.Entry",
+            user=user,
+            date=date(2026, 2, 5),
+            amount=Decimal("200"),
+            category=cat,
+            payment_method=pm,
+            billing_month=date(2026, 2, 1),
         )
         # Current month (2026-03): expenses 300
         baker.make(
-            "finances.Entry", user=user, date=date(2026, 3, 5), amount=Decimal("300"),
-            category=cat, payment_method=pm, billing_month=date(2026, 3, 1),
+            "finances.Entry",
+            user=user,
+            date=date(2026, 3, 5),
+            amount=Decimal("300"),
+            category=cat,
+            payment_method=pm,
+            billing_month=date(2026, 3, 1),
         )
         data = logged_client.get("/api/dashboard/summary/?year=2026&month=3").json()
         assert data["prev"]["expenses"] == "200.00"
@@ -130,8 +140,13 @@ class TestSummaryEndpoint:
         cat = baker.make("finances.Category", user=user)
         pm = baker.make("finances.PaymentMethod", user=user, type="pix")
         baker.make(
-            "finances.Entry", user=user, date=date(2026, 3, 5), amount=Decimal("300"),
-            category=cat, payment_method=pm, billing_month=date(2026, 3, 1),
+            "finances.Entry",
+            user=user,
+            date=date(2026, 3, 5),
+            amount=Decimal("300"),
+            category=cat,
+            payment_method=pm,
+            billing_month=date(2026, 3, 1),
         )
         data = logged_client.get("/api/dashboard/summary/?year=2026&month=3").json()
         assert data["prev"]["expenses"] == "0.00"
@@ -170,8 +185,13 @@ class TestTopCategoriesEndpoint:
         for i in range(6):
             c = baker.make("finances.Category", user=user, name=f"C{i}")
             baker.make(
-                "finances.Entry", user=user, date=date(2026, 3, 5), amount=Decimal("100"),
-                category=c, payment_method=pm, billing_month=date(2026, 3, 1),
+                "finances.Entry",
+                user=user,
+                date=date(2026, 3, 5),
+                amount=Decimal("100"),
+                category=c,
+                payment_method=pm,
+                billing_month=date(2026, 3, 1),
             )
         data = logged_client.get("/api/dashboard/top-categories/?year=2026&month=3").json()
         outros = [d for d in data if d["name"] == "Outros"]
@@ -184,8 +204,13 @@ class TestTopCategoriesEndpoint:
         for i in range(3):
             c = baker.make("finances.Category", user=user, name=f"C{i}")
             baker.make(
-                "finances.Entry", user=user, date=date(2026, 3, 5), amount=Decimal("100"),
-                category=c, payment_method=pm, billing_month=date(2026, 3, 1),
+                "finances.Entry",
+                user=user,
+                date=date(2026, 3, 5),
+                amount=Decimal("100"),
+                category=c,
+                payment_method=pm,
+                billing_month=date(2026, 3, 1),
             )
         data = logged_client.get("/api/dashboard/top-categories/?year=2026&month=3").json()
         assert all(d["name"] != "Outros" for d in data)
@@ -221,8 +246,13 @@ class TestEvolutionEndpoint:
         cat = baker.make("finances.Category", user=user)
         pm = baker.make("finances.PaymentMethod", user=user, type="pix")
         baker.make(
-            "finances.Entry", user=user, date=date(2026, 3, 5), amount=Decimal("-150"),
-            category=cat, payment_method=pm, billing_month=date(2026, 3, 1),
+            "finances.Entry",
+            user=user,
+            date=date(2026, 3, 5),
+            amount=Decimal("-150"),
+            category=cat,
+            payment_method=pm,
+            billing_month=date(2026, 3, 1),
         )
         series = logged_client.get("/api/dashboard/evolution/?year=2026&month=3").json()
         march = next(p for p in series if p["month"] == "2026-03")
@@ -442,9 +472,17 @@ class TestDailyTrendEndpoint:
 
 
 def _e(user, cat, pm, amount, bm):
-    return baker.make("finances.Entry", user=user, date=bm, amount=Decimal(amount),
-                      category=cat, payment_method=pm, entry_type="regular",
-                      billing_month=bm, billing_month_override=True)
+    return baker.make(
+        "finances.Entry",
+        user=user,
+        date=bm,
+        amount=Decimal(amount),
+        category=cat,
+        payment_method=pm,
+        entry_type="regular",
+        billing_month=bm,
+        billing_month_override=True,
+    )
 
 
 @pytest.mark.django_db
@@ -459,8 +497,15 @@ class TestProjectionEndpoint:
         d = r.json()
         assert len(d["series"]) == 6
         assert d["series"][0]["month"] == "2026-06"
-        for k in ("saldo_mes", "acumulado", "acumulado_estimado",
-                  "end_acumulado_estimado", "delta", "end_label", "month_label"):
+        for k in (
+            "saldo_mes",
+            "acumulado",
+            "acumulado_estimado",
+            "end_acumulado_estimado",
+            "delta",
+            "end_label",
+            "month_label",
+        ):
             assert k in d
         # saldo do mês = renda 8000 - total 2000 (sem sistêmicos/parcelas)
         assert d["saldo_mes"] == "6000.00"
@@ -473,9 +518,15 @@ class TestProjectionEndpoint:
 class TestAlertsByBudget:
     def _entry(self, user, cat, amount, bm):
         from finances.models.entry import EntryType
+
         return baker.make(
-            "finances.Entry", user=user, date=bm, amount=Decimal(amount),
-            category=cat, entry_type=EntryType.REGULAR, billing_month=bm,
+            "finances.Entry",
+            user=user,
+            date=bm,
+            amount=Decimal(amount),
+            category=cat,
+            entry_type=EntryType.REGULAR,
+            billing_month=bm,
             billing_month_override=True,
         )
 
@@ -488,8 +539,9 @@ class TestAlertsByBudget:
         assert any("Casa ultrapassou teto" in m for m in msgs)
 
     def test_orphan_category_still_alerts(self, logged_client, user):
-        orphan = baker.make("finances.Category", user=user, name="Lazer",
-                            budget=None, budget_ceiling=Decimal("100"))
+        orphan = baker.make(
+            "finances.Category", user=user, name="Lazer", budget=None, budget_ceiling=Decimal("100")
+        )
         self._entry(user, orphan, "150", date(2026, 6, 1))
         resp = logged_client.get("/api/dashboard/alerts/?year=2026&month=6")
         msgs = [a["message"] for a in resp.json()]

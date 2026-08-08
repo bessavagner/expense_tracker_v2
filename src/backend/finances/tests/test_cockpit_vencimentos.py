@@ -34,9 +34,7 @@ class TestCockpitVencimentos(TestCase):
             f"/cockpit/2026/10/vencimentos/{self.pm.pk}/", {"closing_day": "12"}
         )
         self.assertEqual(resp.status_code, 200)
-        ov = PaymentMethodClosingDay.objects.get(
-            payment_method=self.pm, month=date(2026, 10, 1)
-        )
+        ov = PaymentMethodClosingDay.objects.get(payment_method=self.pm, month=date(2026, 10, 1))
         self.assertEqual(ov.closing_day, 12)
 
     def test_update_override(self):
@@ -46,12 +44,8 @@ class TestCockpitVencimentos(TestCase):
             month=date(2026, 10, 1),
             closing_day=12,
         )
-        self.client.post(
-            f"/cockpit/2026/10/vencimentos/{self.pm.pk}/", {"closing_day": "15"}
-        )
-        ov = PaymentMethodClosingDay.objects.get(
-            payment_method=self.pm, month=date(2026, 10, 1)
-        )
+        self.client.post(f"/cockpit/2026/10/vencimentos/{self.pm.pk}/", {"closing_day": "15"})
+        ov = PaymentMethodClosingDay.objects.get(payment_method=self.pm, month=date(2026, 10, 1))
         self.assertEqual(ov.closing_day, 15)
 
     def test_clear_override_reverts_to_default(self):
@@ -61,9 +55,7 @@ class TestCockpitVencimentos(TestCase):
             month=date(2026, 10, 1),
             closing_day=12,
         )
-        self.client.post(
-            f"/cockpit/2026/10/vencimentos/{self.pm.pk}/", {"closing_day": ""}
-        )
+        self.client.post(f"/cockpit/2026/10/vencimentos/{self.pm.pk}/", {"closing_day": ""})
         self.assertFalse(
             PaymentMethodClosingDay.objects.filter(
                 payment_method=self.pm, month=date(2026, 10, 1)
@@ -84,9 +76,7 @@ class TestCockpitVencimentos(TestCase):
             f"/cockpit/2026/10/vencimentos/{other_pm.pk}/", {"closing_day": "12"}
         )
         self.assertEqual(resp.status_code, 404)
-        self.assertFalse(
-            PaymentMethodClosingDay.objects.filter(payment_method=other_pm).exists()
-        )
+        self.assertFalse(PaymentMethodClosingDay.objects.filter(payment_method=other_pm).exists())
 
     def test_non_numeric_closing_day_does_not_error(self):
         resp = self.client.post(

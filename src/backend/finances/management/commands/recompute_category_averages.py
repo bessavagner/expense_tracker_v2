@@ -15,8 +15,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **opts):
         as_of = (
-            datetime.strptime(opts["as_of"], "%Y-%m-%d").date()
-            if opts["as_of"] else date.today()
+            datetime.strptime(opts["as_of"], "%Y-%m-%d").date() if opts["as_of"] else date.today()
         )
         changed = 0
         for cat in Category.objects.all():

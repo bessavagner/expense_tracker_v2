@@ -27,9 +27,7 @@ class _FakeClient:
 @pytest.mark.anyio
 async def test_transcribe_returns_stripped_text():
     client = _FakeClient()
-    text = await transcribe_audio(
-        b"\x00\x01", "nota.webm", "audio/webm", client=client
-    )
+    text = await transcribe_audio(b"\x00\x01", "nota.webm", "audio/webm", client=client)
     assert text == "mercado 80 no pix"
 
 
@@ -86,8 +84,6 @@ class _AlwaysFailTranscriptions:
 async def test_transcribe_raises_when_all_models_fail(settings):
     settings.LLM_TRANSCRIBE_MODEL = "gpt-4o-mini-transcribe"
     settings.LLM_TRANSCRIBE_FALLBACK_MODEL = "whisper-1"
-    client = SimpleNamespace(
-        audio=SimpleNamespace(transcriptions=_AlwaysFailTranscriptions())
-    )
+    client = SimpleNamespace(audio=SimpleNamespace(transcriptions=_AlwaysFailTranscriptions()))
     with pytest.raises(RuntimeError):
         await transcribe_audio(b"\x00", "nota.webm", "audio/webm", client=client)

@@ -21,8 +21,12 @@ def template(user):
     cat = baker.make("finances.Category", user=user)
     pm = baker.make("finances.PaymentMethod", user=user, name="C6", type="credit_card")
     return baker.make(
-        "finances.SystemicExpense", user=user, name="Spotify - Amanda",
-        category=cat, payment_method=pm, default_amount=Decimal("11.90"),
+        "finances.SystemicExpense",
+        user=user,
+        name="Spotify - Amanda",
+        category=cat,
+        payment_method=pm,
+        default_amount=Decimal("11.90"),
     )
 
 
@@ -56,10 +60,13 @@ class TestSystemicTemplateEditForm:
 
         form = SystemicTemplateEditForm(
             _data(
-                template, is_recurring="on",
-                recurrence_start="2026-06-01", recurrence_end="2026-08-01",
+                template,
+                is_recurring="on",
+                recurrence_start="2026-06-01",
+                recurrence_end="2026-08-01",
             ),
-            instance=template, user=user,
+            instance=template,
+            user=user,
         )
         assert form.is_valid(), form.errors
         form.save()
@@ -89,8 +96,10 @@ class TestSystemicSettingsEditViews:
         r = logged_client.post(
             f"/settings/systemics/{template.id}/edit/",
             _data(
-                template, is_recurring="on",
-                recurrence_start="2026-06-01", recurrence_end="2026-07-01",
+                template,
+                is_recurring="on",
+                recurrence_start="2026-06-01",
+                recurrence_end="2026-07-01",
             ),
             HTTP_HX_REQUEST="true",
         )

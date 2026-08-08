@@ -54,8 +54,14 @@ def projection_origin() -> date:
     return _projection_origin()
 
 
-def build_projection(user, start_month: date, num_months: int, today: date | None = None,
-                     overlay: dict | None = None, diverse_estimator: str = "median"):
+def build_projection(
+    user,
+    start_month: date,
+    num_months: int,
+    today: date | None = None,
+    overlay: dict | None = None,
+    diverse_estimator: str = "median",
+):
     """Return a list of ``num_months`` dicts, one per month from ``start_month``.
 
     Each dict holds: ``month``, ``systemic``, ``installments``, ``programmed``,
@@ -106,9 +112,7 @@ def build_projection(user, start_month: date, num_months: int, today: date | Non
 
     income_totals: dict[date, Decimal] = {}
     for r in (
-        Income.objects.filter(
-            user=user, month__gte=agg_start, month__lt=end_exclusive
-        )
+        Income.objects.filter(user=user, month__gte=agg_start, month__lt=end_exclusive)
         .values("month")
         .annotate(total=Sum("amount"))
     ):

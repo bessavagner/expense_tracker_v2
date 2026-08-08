@@ -20,8 +20,8 @@ from finances.models import Category
 # (NF-token trigger, category name). Triggers are lowercased by create_memory_rule
 # and matched case-insensitively as substrings of the item description.
 DEFAULT_RULES = [
-    ("energ", "Lanche"),    # ENERG MONSTER, ENERGY MONSTER
-    ("refrig", "Lanche"),   # REFRIG LARANJA ...
+    ("energ", "Lanche"),  # ENERG MONSTER, ENERGY MONSTER
+    ("refrig", "Lanche"),  # REFRIG LARANJA ...
     ("monster", "Lanche"),  # energético (marca) — reforça "energ"
 ]
 
@@ -30,9 +30,7 @@ class Command(BaseCommand):
     help = "Seed starter category memory rules (NF-token → category) for a user."
 
     def add_arguments(self, parser):
-        parser.add_argument(
-            "--user", required=True, help="username or email of the target user"
-        )
+        parser.add_argument("--user", required=True, help="username or email of the target user")
 
     def handle(self, *args, **options):
         user_model = get_user_model()
@@ -49,8 +47,7 @@ class Command(BaseCommand):
             if not Category.objects.filter(user=user, name=category_name).exists():
                 self.stdout.write(
                     self.style.WARNING(
-                        f"pulado '{trigger}': categoria '{category_name}' não existe "
-                        f"para {user}."
+                        f"pulado '{trigger}': categoria '{category_name}' não existe para {user}."
                     )
                 )
                 skipped += 1
@@ -60,7 +57,5 @@ class Command(BaseCommand):
             seeded += 1
 
         self.stdout.write(
-            self.style.SUCCESS(
-                f"{seeded} regra(s) processada(s), {skipped} pulada(s) para {user}."
-            )
+            self.style.SUCCESS(f"{seeded} regra(s) processada(s), {skipped} pulada(s) para {user}.")
         )

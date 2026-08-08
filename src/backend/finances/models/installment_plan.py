@@ -40,9 +40,7 @@ class InstallmentPlan(models.Model):
         if self.entries.exists():
             raise ValueError("Entries already generated for this installment plan.")
 
-        months = installment_billing_months(
-            self.date, self.payment_method, self.num_installments
-        )
+        months = installment_billing_months(self.date, self.payment_method, self.num_installments)
         entries = []
         for i, billing_month in enumerate(months):
             if i == self.num_installments - 1:

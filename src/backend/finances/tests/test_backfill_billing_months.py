@@ -99,9 +99,7 @@ class TestBackfillBillingMonths:
         inst = _entry(
             user, pm, date(2025, 12, 6), date(2025, 12, 1), entry_type=EntryType.INSTALLMENT
         )
-        sysx = _entry(
-            user, pm, date(2025, 12, 6), date(2025, 12, 1), entry_type=EntryType.SYSTEMIC
-        )
+        sysx = _entry(user, pm, date(2025, 12, 6), date(2025, 12, 1), entry_type=EntryType.SYSTEMIC)
 
         _run("--apply")
 

@@ -146,9 +146,7 @@ def _resolve_entry_by_prefix(user, entry_id: str):
     if not raw:
         return []
     return [
-        e
-        for e in Entry.objects.filter(user=user)
-        if str(e.id).replace("-", "").startswith(raw)
+        e for e in Entry.objects.filter(user=user) if str(e.id).replace("-", "").startswith(raw)
     ]
 
 
@@ -172,8 +170,13 @@ def list_recent_entries(user, limit: int = 10) -> str:
 
 
 def update_entry(
-    user, entry_id, date_str=None, amount_str=None, description=None,
-    category_name=None, payment_method_name=None,
+    user,
+    entry_id,
+    date_str=None,
+    amount_str=None,
+    description=None,
+    category_name=None,
+    payment_method_name=None,
 ) -> str:
     matches = _resolve_entry_by_prefix(user, entry_id)
     if not matches:
@@ -301,9 +304,7 @@ def _effective_discount(lines_total: Decimal, payload) -> Decimal:
         return Decimal("0")
 
 
-def _prorate_discount(
-    category_sums: dict[str, Decimal], discount: Decimal
-) -> dict[str, Decimal]:
+def _prorate_discount(category_sums: dict[str, Decimal], discount: Decimal) -> dict[str, Decimal]:
     """Rateia ``discount`` entre categorias na proporção de seus subtotais.
 
     Arredonda cada parcela a 2 casas; o resíduo de centavos vai para a MAIOR
@@ -319,9 +320,7 @@ def _prorate_discount(
     allocated: dict[str, Decimal] = {}
     acc = Decimal("0.00")
     for cat in rest:
-        share = (discount * category_sums[cat] / total).quantize(
-            _CENTS, rounding=ROUND_HALF_UP
-        )
+        share = (discount * category_sums[cat] / total).quantize(_CENTS, rounding=ROUND_HALF_UP)
         allocated[cat] = share
         acc += share
     allocated[largest] = (discount - acc).quantize(_CENTS, rounding=ROUND_HALF_UP)
@@ -400,14 +399,18 @@ def _strip_store_prefix(summary: str, store: str) -> str:
     s = (summary or "").strip()
     st = (store or "").strip()
     if st and s.lower().startswith(st.lower()):
-        stripped = s[len(st):].lstrip().lstrip("-").strip()
+        stripped = s[len(st) :].lstrip().lstrip("-").strip()
         if stripped:
             return stripped
     return s
 
 
 def _resolve_receipt_plan(
-    user, draft, items_by_category=None, payment_method_name="", summaries=None,
+    user,
+    draft,
+    items_by_category=None,
+    payment_method_name="",
+    summaries=None,
     store_name="",
 ):
     """Validate + resolve a committable plan from a pending receipt draft.
@@ -445,9 +448,7 @@ def _resolve_receipt_plan(
             f"categoria ({'; '.join(problems)})."
         )
 
-    pm_name = (payment_method_name or "").strip() or str(
-        payload.get("payment_hint") or ""
-    ).strip()
+    pm_name = (payment_method_name or "").strip() or str(payload.get("payment_hint") or "").strip()
     payment_method, pm_matches = _resolve_by_name(
         PaymentMethod.objects.filter(user=user, is_active=True), pm_name
     )
@@ -455,8 +456,7 @@ def _resolve_receipt_plan(
         available = ", ".join(list_payment_methods(user))
         if len(pm_matches) > 1:
             return None, (
-                f"Forma de pagamento '{pm_name}' é ambígua. Qual? "
-                f"{', '.join(pm_matches)}"
+                f"Forma de pagamento '{pm_name}' é ambígua. Qual? {', '.join(pm_matches)}"
             )
         hint = str(payload.get("payment_hint") or "").strip()
         last4 = str(payload.get("card_last4") or "").strip()
@@ -471,9 +471,7 @@ def _resolve_receipt_plan(
     resolved: dict[str, object] = {}
     category_sums: dict[str, Decimal] = {}
     for cat_name, idxs in items_by_category.items():
-        category, cat_matches = _resolve_by_name(
-            Category.objects.filter(user=user), cat_name
-        )
+        category, cat_matches = _resolve_by_name(Category.objects.filter(user=user), cat_name)
         if category is None:
             if len(cat_matches) > 1:
                 return None, (
@@ -481,9 +479,7 @@ def _resolve_receipt_plan(
                     f"Você quis dizer: {', '.join(cat_matches)}?"
                 )
             available = ", ".join(list_categories(user))
-            return None, (
-                f"Erro: categoria '{cat_name}' não encontrada. Disponíveis: {available}"
-            )
+            return None, (f"Erro: categoria '{cat_name}' não encontrada. Disponíveis: {available}")
         try:
             subtotal = sum(
                 (Decimal(str(items[i].get("line_total", "0"))) for i in idxs),
@@ -528,8 +524,7 @@ def _resolve_receipt_plan(
 
     total = sum((Decimal(ln["amount"]) for ln in lines), Decimal("0"))
     table_rows = "\n".join(
-        f"| {ln['category_name']} | {ln['summary_short']} | R$ {ln['amount']} |"
-        for ln in lines
+        f"| {ln['category_name']} | {ln['summary_short']} | R$ {ln['amount']} |" for ln in lines
     )
     table = (
         f"**{store}** — {entry_date:%d/%m/%Y} · {payment_method.name}\n\n"
@@ -613,9 +608,9 @@ def commit_receipt(user) -> str:
         # Higiene: descarta quaisquer OUTROS drafts pendentes órfãos do usuário
         # (de tentativas abandonadas) para que não sejam ressuscitados depois —
         # bug real do frete pós-commit, que regravou em massa um draft antigo.
-        ReceiptDraft.objects.filter(
-            user=user, status=ReceiptDraftStatus.PENDING
-        ).exclude(pk=draft.pk).update(status=ReceiptDraftStatus.DISCARDED)
+        ReceiptDraft.objects.filter(user=user, status=ReceiptDraftStatus.PENDING).exclude(
+            pk=draft.pk
+        ).update(status=ReceiptDraftStatus.DISCARDED)
 
     total = sum((amt for _, amt in created), Decimal("0"))
     parts = "; ".join(f"{name} R$ {amt:.2f}" for name, amt in created)
@@ -646,9 +641,9 @@ def discard_pending_receipts(user) -> int:
     nova foto (abandona tentativas anteriores) para que drafts órfãos não sejam
     ressuscitados depois. Retorna quantos foram descartados.
     """
-    return ReceiptDraft.objects.filter(
-        user=user, status=ReceiptDraftStatus.PENDING
-    ).update(status=ReceiptDraftStatus.DISCARDED)
+    return ReceiptDraft.objects.filter(user=user, status=ReceiptDraftStatus.PENDING).update(
+        status=ReceiptDraftStatus.DISCARDED
+    )
 
 
 _DUP_WINDOW_HOURS = 48
@@ -662,9 +657,7 @@ def _to_decimal(value):
 
 
 def _items_total(items) -> Decimal:
-    return sum(
-        (_to_decimal(i.get("line_total")) or Decimal("0") for i in items), Decimal("0")
-    )
+    return sum((_to_decimal(i.get("line_total")) or Decimal("0") for i in items), Decimal("0"))
 
 
 def _plan_entries_alive(user, draft) -> bool:
@@ -717,12 +710,9 @@ def find_registered_duplicate(user, payload, within_hours: int = _DUP_WINDOW_HOU
     paid = _to_decimal(payload.get("amount_paid"))
     items_total = _items_total(items)
     cutoff = timezone.now() - timedelta(hours=within_hours)
-    candidates = (
-        ReceiptDraft.objects.filter(
-            user=user, status=ReceiptDraftStatus.REGISTERED, created_at__gte=cutoff
-        )
-        .order_by("-created_at")[:20]
-    )
+    candidates = ReceiptDraft.objects.filter(
+        user=user, status=ReceiptDraftStatus.REGISTERED, created_at__gte=cutoff
+    ).order_by("-created_at")[:20]
     for draft in candidates:
         p = draft.payload or {}
         if (p.get("store") or "").strip().lower() != store:
@@ -734,8 +724,12 @@ def find_registered_duplicate(user, payload, within_hours: int = _DUP_WINDOW_HOU
             continue
         citems = p.get("items") or []
         ctotal = _items_total(citems)
-        if len(citems) == n and items_total > 0 and ctotal == items_total \
-                and _plan_entries_alive(user, draft):
+        if (
+            len(citems) == n
+            and items_total > 0
+            and ctotal == items_total
+            and _plan_entries_alive(user, draft)
+        ):
             return draft
     return None
 
@@ -798,7 +792,7 @@ def build_receipt_context(user) -> str:
         "(cada índice em UMA só categoria) e summaries {categoria: resumo do "
         "conteúdo}; mostre ao usuário só uma tabela limpa (Categoria | Itens). "
         "Forma de pagamento: bandeira de cartão é genérica — resolva pelo final "
-        f'do cartão ({card_last4}) via check_memory; sem regra, pergunte qual '
+        f"do cartão ({card_last4}) via check_memory; sem regra, pergunte qual "
         "cartão e salve com save_memory_rule. Confirme UMA única vez."
     )
 

@@ -13,9 +13,17 @@ from finances.services.category_stats import (
 
 
 def _e(user, cat, pm, amount, bm, et=EntryType.REGULAR):
-    return baker.make("finances.Entry", user=user, date=bm, amount=Decimal(amount),
-                      category=cat, payment_method=pm, entry_type=et,
-                      billing_month=bm, billing_month_override=True)
+    return baker.make(
+        "finances.Entry",
+        user=user,
+        date=bm,
+        amount=Decimal(amount),
+        category=cat,
+        payment_method=pm,
+        entry_type=et,
+        billing_month=bm,
+        billing_month_override=True,
+    )
 
 
 @pytest.fixture
@@ -85,12 +93,16 @@ class TestMonthlyDiverseTotalMedian:
 
     def test_median_ignores_single_spike(self, user, cat, pix):
         for bm, amt in [
-            (date(2025, 12, 1), "500"), (date(2026, 1, 1), "500"),
-            (date(2026, 2, 1), "500"), (date(2026, 3, 1), "500"),
-            (date(2026, 4, 1), "500"), (date(2026, 5, 1), "4000"),  # spike
+            (date(2025, 12, 1), "500"),
+            (date(2026, 1, 1), "500"),
+            (date(2026, 2, 1), "500"),
+            (date(2026, 3, 1), "500"),
+            (date(2026, 4, 1), "500"),
+            (date(2026, 5, 1), "4000"),  # spike
         ]:
             _e(user, cat, pix, amt, bm)
         from finances.services.category_stats import monthly_diverse_total_median
+
         m = monthly_diverse_total_median(user, window=6, as_of=self.AS_OF)
         assert m == Decimal("500.00")  # not the mean (1083)
 
@@ -100,11 +112,13 @@ class TestMonthlyDiverseTotalMedian:
             _e(user, cat, pix, "800", bm)
             _e(user, ajuste, pix, "5000", bm)  # reconciliation noise — excluded
         from finances.services.category_stats import monthly_diverse_total_median
+
         m = monthly_diverse_total_median(user, window=6, as_of=self.AS_OF)
         assert m == Decimal("800.00")
 
     def test_empty_returns_zero(self, user):
         from finances.services.category_stats import monthly_diverse_total_median
+
         assert monthly_diverse_total_median(user, window=6, as_of=self.AS_OF) == Decimal("0")
 
 
@@ -135,8 +149,8 @@ class TestCategoryAveragesExcludesAdjustment:
 @pytest.mark.django_db
 def test_monthly_diverse_total_ceiling(user):
     b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("1000"))
-    baker.make("finances.Category", user=user, name="Luz", budget=b,
-               budget_ceiling=Decimal("400"))
-    baker.make("finances.Category", user=user, name="Lazer", budget=None,
-               budget_ceiling=Decimal("250"))
+    baker.make("finances.Category", user=user, name="Luz", budget=b, budget_ceiling=Decimal("400"))
+    baker.make(
+        "finances.Category", user=user, name="Lazer", budget=None, budget_ceiling=Decimal("250")
+    )
     assert monthly_diverse_total_ceiling(user) == Decimal("1250")

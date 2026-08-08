@@ -190,8 +190,11 @@ def test_long_description_full_in_entry_truncated_only_in_table(seeded_user):
     """Os nomes dos produtos ficam COMPLETOS na descrição gravada; só a tabela
     exibida é truncada (não perde produtos como o 3º item do recibo Amazon)."""
     items = [
-        {"description": f"produto bem grande numero {i} de teste", "line_total": "10.00",
-         "category": "Alimentação"}
+        {
+            "description": f"produto bem grande numero {i} de teste",
+            "line_total": "10.00",
+            "category": "Alimentação",
+        }
         for i in range(4)
     ]
     ReceiptDraft.objects.create(
@@ -272,9 +275,7 @@ def test_commit_discards_other_pending_drafts(seeded_user):
     # só as 2 linhas do recibo real foram gravadas (o item do stale NÃO)
     assert Entry.objects.filter(user=seeded_user).count() == 2
     assert (
-        ReceiptDraft.objects.filter(
-            user=seeded_user, status=ReceiptDraftStatus.PENDING
-        ).count()
+        ReceiptDraft.objects.filter(user=seeded_user, status=ReceiptDraftStatus.PENDING).count()
         == 0
     )
 
@@ -291,9 +292,7 @@ def test_discard_pending_receipts_helper(seeded_user):
     n = discard_pending_receipts(seeded_user)
     assert n == 2
     assert (
-        ReceiptDraft.objects.filter(
-            user=seeded_user, status=ReceiptDraftStatus.PENDING
-        ).count()
+        ReceiptDraft.objects.filter(user=seeded_user, status=ReceiptDraftStatus.PENDING).count()
         == 0
     )
 

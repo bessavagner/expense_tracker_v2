@@ -27,11 +27,19 @@ logger = logging.getLogger(__name__)
 
 # Ferramentas que ESCREVEM dados financeiros. Detectar qualquer uma sinaliza ao
 # front que a tela deve recarregar (item #5).
-MUTATING_TOOLS = frozenset({
-    "register_entry", "commit_receipt", "add_category", "set_category_budget",
-    "add_payment_method", "set_income", "set_systemic_amount",
-    "update_entry", "delete_entry",
-})
+MUTATING_TOOLS = frozenset(
+    {
+        "register_entry",
+        "commit_receipt",
+        "add_category",
+        "set_category_budget",
+        "add_payment_method",
+        "set_income",
+        "set_systemic_amount",
+        "update_entry",
+        "delete_entry",
+    }
+)
 
 
 def _run_mutated_data(messages) -> bool:
@@ -310,14 +318,10 @@ async def _dispatch_extraction(user, chat_msg, extraction, caption, user_label):
             user_text=user_label,
         )
 
-    await ReceiptDraft.objects.acreate(
-        user=user, chat_message=chat_msg, payload=payload
-    )
+    await ReceiptDraft.objects.acreate(user=user, chat_message=chat_msg, payload=payload)
     needs_review = receipt_needs_review(extraction, settings.ASSISTANT_RECEIPT_MIN_CONFIDENCE)
     prompt = extraction_to_prompt(extraction, caption, needs_review=needs_review)
-    return _sse_response(
-        user, assistant_agent, prompt, message_history=None, user_text=user_label
-    )
+    return _sse_response(user, assistant_agent, prompt, message_history=None, user_text=user_label)
 
 
 async def _handle_images(request, user, images, caption):

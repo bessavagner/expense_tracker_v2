@@ -11,8 +11,13 @@ from finances.services import budget_stats
 
 def _entry(user, cat, amount, billing_month):
     return baker.make(
-        "finances.Entry", user=user, date=billing_month, amount=Decimal(amount),
-        category=cat, entry_type=EntryType.REGULAR, billing_month=billing_month,
+        "finances.Entry",
+        user=user,
+        date=billing_month,
+        amount=Decimal(amount),
+        category=cat,
+        entry_type=EntryType.REGULAR,
+        billing_month=billing_month,
         billing_month_override=True,
     )
 
@@ -55,8 +60,11 @@ class TestBudgetStats:
 
     def test_orphan_categories(self, user):
         orphan = baker.make(
-            "finances.Category", user=user, name="Lazer",
-            budget=None, budget_ceiling=Decimal("200"),
+            "finances.Category",
+            user=user,
+            name="Lazer",
+            budget=None,
+            budget_ceiling=Decimal("200"),
         )
         _entry(user, orphan, "250", date(2026, 6, 1))
         [row] = budget_stats.orphan_category_spend_for_month(user, date(2026, 6, 1))
@@ -65,24 +73,31 @@ class TestBudgetStats:
 
     def test_orphan_ignores_zero_ceiling(self, user):
         orphan = baker.make(
-            "finances.Category", user=user, name="SemTeto",
-            budget=None, budget_ceiling=Decimal("0"),
+            "finances.Category",
+            user=user,
+            name="SemTeto",
+            budget=None,
+            budget_ceiling=Decimal("0"),
         )
         _entry(user, orphan, "100", date(2026, 6, 1))
         assert budget_stats.orphan_category_spend_for_month(user, date(2026, 6, 1)) == []
 
     def test_total_diverse_ceiling(self, user):
         b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("1000"))
-        baker.make("finances.Category", user=user, name="Luz", budget=b,
-                   budget_ceiling=Decimal("400"))  # ceiling ignored; budget.amount used
-        baker.make("finances.Category", user=user, name="Lazer", budget=None,
-                   budget_ceiling=Decimal("200"))
+        baker.make(
+            "finances.Category", user=user, name="Luz", budget=b, budget_ceiling=Decimal("400")
+        )  # ceiling ignored; budget.amount used
+        baker.make(
+            "finances.Category", user=user, name="Lazer", budget=None, budget_ceiling=Decimal("200")
+        )
         assert budget_stats.total_diverse_ceiling(user) == Decimal("1200")
 
     def test_seed_amount_from_ceilings(self, user):
         b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("0"))
-        baker.make("finances.Category", user=user, name="Luz", budget=b,
-                   budget_ceiling=Decimal("400"))
-        baker.make("finances.Category", user=user, name="Água", budget=b,
-                   budget_ceiling=Decimal("150"))
+        baker.make(
+            "finances.Category", user=user, name="Luz", budget=b, budget_ceiling=Decimal("400")
+        )
+        baker.make(
+            "finances.Category", user=user, name="Água", budget=b, budget_ceiling=Decimal("150")
+        )
         assert budget_stats.seed_amount_from_ceilings(b) == Decimal("550")

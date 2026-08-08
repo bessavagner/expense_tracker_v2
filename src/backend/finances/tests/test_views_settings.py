@@ -170,9 +170,17 @@ def test_categories_tab_shows_moving_average(logged_client, user):
     cat = baker.make("finances.Category", user=user, name="Alimentação")
     pix = baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")
     for bm in (date(2026, 3, 1), date(2026, 4, 1), date(2026, 5, 1)):
-        baker.make("finances.Entry", user=user, date=bm, amount=Decimal("1000"),
-                   category=cat, payment_method=pix, entry_type=EntryType.REGULAR,
-                   billing_month=bm, billing_month_override=True)
+        baker.make(
+            "finances.Entry",
+            user=user,
+            date=bm,
+            amount=Decimal("1000"),
+            category=cat,
+            payment_method=pix,
+            entry_type=EntryType.REGULAR,
+            billing_month=bm,
+            billing_month_override=True,
+        )
     resp = logged_client.get("/settings/categories/")
     assert resp.status_code == 200
     # "Média (3m)" header is date-robust to assert (averages depend on today()).
@@ -194,6 +202,7 @@ def test_categories_tab_shows_total_row(logged_client, user):
 class TestBudgetSettings:
     def test_create_budget(self, logged_client, user):
         from django.urls import reverse
+
         url = reverse("finances:settings_budget_create")
         resp = logged_client.post(url, {"name": "Casa", "amount": "1000"})
         assert resp.status_code == 200
@@ -201,9 +210,11 @@ class TestBudgetSettings:
 
     def test_recalc_sets_amount_to_ceiling_sum(self, logged_client, user):
         from django.urls import reverse
+
         b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("0"))
-        baker.make("finances.Category", user=user, name="Luz", budget=b,
-                   budget_ceiling=Decimal("400"))
+        baker.make(
+            "finances.Category", user=user, name="Luz", budget=b, budget_ceiling=Decimal("400")
+        )
         url = reverse("finances:settings_budget_recalc", args=[b.id])
         resp = logged_client.post(url)
         assert resp.status_code == 200
@@ -212,6 +223,7 @@ class TestBudgetSettings:
 
     def test_delete_budget(self, logged_client, user):
         from django.urls import reverse
+
         b = baker.make("finances.Budget", user=user, name="Casa")
         url = reverse("finances:settings_budget_delete", args=[b.id])
         resp = logged_client.delete(url)
@@ -220,6 +232,7 @@ class TestBudgetSettings:
 
     def test_duplicate_name_does_not_500(self, logged_client, user):
         from django.urls import reverse
+
         url = reverse("finances:settings_budget_create")
         first = logged_client.post(url, {"name": "Casa", "amount": "1000"})
         assert first.status_code == 200
@@ -229,6 +242,7 @@ class TestBudgetSettings:
 
     def test_assign_category_to_budget(self, logged_client, user):
         from django.urls import reverse
+
         b = baker.make("finances.Budget", user=user, name="Casa")
         cat = baker.make("finances.Category", user=user, name="Luz", budget=None)
         url = reverse("finances:settings_cat_assign", args=[cat.id])
@@ -239,6 +253,7 @@ class TestBudgetSettings:
 
     def test_unassign_category(self, logged_client, user):
         from django.urls import reverse
+
         b = baker.make("finances.Budget", user=user, name="Casa")
         cat = baker.make("finances.Category", user=user, name="Luz", budget=b)
         url = reverse("finances:settings_cat_assign", args=[cat.id])
@@ -250,6 +265,7 @@ class TestBudgetSettings:
     def test_assign_foreign_budget_is_ignored(self, logged_client, user):
         from django.contrib.auth import get_user_model
         from django.urls import reverse
+
         other = baker.make(get_user_model())
         foreign_b = baker.make("finances.Budget", user=other, name="Outro")
         cat = baker.make("finances.Category", user=user, name="Luz", budget=None)
@@ -261,6 +277,7 @@ class TestBudgetSettings:
 
     def test_edit_modal_renders_form_and_category_checkboxes(self, logged_client, user):
         from django.urls import reverse
+
         b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("1000"))
         inside = baker.make("finances.Category", user=user, name="Luz", budget=b)
         outside = baker.make("finances.Category", user=user, name="Lazer", budget=None)
@@ -274,17 +291,20 @@ class TestBudgetSettings:
         assert str(inside.id) in body and str(outside.id) in body
         # the assigned category must be pre-checked
         import re
+
         m = re.search(rf'value="{re.escape(str(inside.id))}"[^>]*', body)
         assert m and "checked" in m.group(0)
 
     def test_modal_save_updates_name_amount_and_assigns_categories(self, logged_client, user):
         from django.urls import reverse
+
         b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("1000"))
         c1 = baker.make("finances.Category", user=user, name="Luz", budget=None)
         c2 = baker.make("finances.Category", user=user, name="Água", budget=None)
         url = reverse("finances:settings_budget_edit", args=[b.id])
-        resp = logged_client.post(url, {"name": "Moradia", "amount": "1500",
-                                        "categories": [str(c1.id), str(c2.id)]})
+        resp = logged_client.post(
+            url, {"name": "Moradia", "amount": "1500", "categories": [str(c1.id), str(c2.id)]}
+        )
         assert resp.status_code == 200
         assert "entry-saved" in resp.headers.get("HX-Trigger", "")  # closes the modal
         b.refresh_from_db()
@@ -295,6 +315,7 @@ class TestBudgetSettings:
 
     def test_modal_save_unassigns_unchecked_category(self, logged_client, user):
         from django.urls import reverse
+
         b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("1000"))
         c1 = baker.make("finances.Category", user=user, name="Luz", budget=b)
         url = reverse("finances:settings_budget_edit", args=[b.id])
@@ -306,6 +327,7 @@ class TestBudgetSettings:
 
     def test_modal_save_does_not_touch_other_budgets(self, logged_client, user):
         from django.urls import reverse
+
         b1 = baker.make("finances.Budget", user=user, name="Casa")
         b2 = baker.make("finances.Budget", user=user, name="Lazer")
         c2 = baker.make("finances.Category", user=user, name="Cinema", budget=b2)

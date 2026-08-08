@@ -58,7 +58,5 @@ class TestHtmxCsrfWiring:
         inc = baker.make(
             "finances.Income", user=user, month=date(2026, 3, 1), amount=Decimal("100")
         )
-        response = client.delete(
-            f"/cockpit/2026/3/income/{inc.id}/delete/", HTTP_HX_REQUEST="true"
-        )
+        response = client.delete(f"/cockpit/2026/3/income/{inc.id}/delete/", HTTP_HX_REQUEST="true")
         assert response.status_code == 403

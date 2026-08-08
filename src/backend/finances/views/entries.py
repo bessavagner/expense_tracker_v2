@@ -249,9 +249,7 @@ class EntryEditModalView(HtmxLoginRequiredMixin, View):
         from finances.models import Category, PaymentMethod
 
         cat_qs = form.fields["category"].queryset
-        form.fields["category"].queryset = cat_qs | Category.objects.filter(
-            pk=entry.category_id
-        )
+        form.fields["category"].queryset = cat_qs | Category.objects.filter(pk=entry.category_id)
         pm_qs = form.fields["payment_method"].queryset
         form.fields["payment_method"].queryset = pm_qs | PaymentMethod.objects.filter(
             pk=entry.payment_method_id
@@ -263,9 +261,7 @@ class EntryEditModalView(HtmxLoginRequiredMixin, View):
         self._patch_form_querysets(form, entry)
         if form.is_valid():
             entry = form.save()
-            html = render_to_string(
-                "entries/_entry_saved.html", {"entry": entry}, request=request
-            )
+            html = render_to_string("entries/_entry_saved.html", {"entry": entry}, request=request)
             response = HttpResponse(html)
             response["HX-Trigger"] = (
                 '{"showToast": {"message": "Entrada atualizada!", "type": "success"},'
@@ -392,9 +388,7 @@ class EntryModalView(HtmxLoginRequiredMixin, View):
                 return response
 
         context = {
-            "entry_form": (
-                form if entry_mode == "regular" else EntryForm(user=request.user)
-            ),
+            "entry_form": (form if entry_mode == "regular" else EntryForm(user=request.user)),
             "installment_form": (
                 form if entry_mode == "installment" else InstallmentForm(user=request.user)
             ),

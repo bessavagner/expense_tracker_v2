@@ -42,10 +42,7 @@ class TestParseWideCsv:
         }
 
     def test_supports_multiple_key_fields(self):
-        content = (
-            "nome,categoria,nov./2025,dez./2025\n"
-            'Enel,Custeio,"R$ 460,00","R$ 579,25"\n'
-        )
+        content = 'nome,categoria,nov./2025,dez./2025\nEnel,Custeio,"R$ 460,00","R$ 579,25"\n'
         rows = parse_wide_csv(io.StringIO(content), key_fields=["nome", "categoria"])
 
         assert rows[0]["nome"] == "Enel"
@@ -56,7 +53,7 @@ class TestParseWideCsv:
         }
 
     def test_skips_rows_with_empty_key(self):
-        content = "nome,nov./2025\n,\"R$ 10,00\"\nReal,\"R$ 20,00\"\n"
+        content = 'nome,nov./2025\n,"R$ 10,00"\nReal,"R$ 20,00"\n'
         rows = parse_wide_csv(io.StringIO(content), key_fields=["nome"])
         assert len(rows) == 1
         assert rows[0]["nome"] == "Real"
@@ -64,6 +61,6 @@ class TestParseWideCsv:
     def test_raises_when_key_field_missing_from_headers(self):
         import pytest
 
-        content = "nome,nov./2025\nEnel,\"R$ 10,00\"\n"
+        content = 'nome,nov./2025\nEnel,"R$ 10,00"\n'
         with pytest.raises(ValueError):
             parse_wide_csv(io.StringIO(content), key_fields=["nome", "categoria"])

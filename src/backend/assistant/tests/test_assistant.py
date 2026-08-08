@@ -18,20 +18,42 @@ def test_agent_exposes_full_toolset():
     t = _tools(assistant_agent)
     expected = {
         # write
-        "register_entry", "add_category", "set_category_budget", "add_payment_method",
-        "set_income", "set_systemic_amount", "update_entry", "delete_entry",
+        "register_entry",
+        "add_category",
+        "set_category_budget",
+        "add_payment_method",
+        "set_income",
+        "set_systemic_amount",
+        "update_entry",
+        "delete_entry",
         # receipt
-        "propose_receipt", "commit_receipt", "discard_receipt", "add_receipt_item",
+        "propose_receipt",
+        "commit_receipt",
+        "discard_receipt",
+        "add_receipt_item",
         # read
-        "get_categories", "get_payment_methods", "get_systemic_expenses", "get_expenses",
-        "get_balance", "get_budget_status", "get_installments", "get_category_breakdown",
-        "compare_with_previous_month", "export_monthly_report", "find_anomalies",
-        "get_category_averages", "list_recent_entries",
+        "get_categories",
+        "get_payment_methods",
+        "get_systemic_expenses",
+        "get_expenses",
+        "get_balance",
+        "get_budget_status",
+        "get_installments",
+        "get_category_breakdown",
+        "compare_with_previous_month",
+        "export_monthly_report",
+        "find_anomalies",
+        "get_category_averages",
+        "list_recent_entries",
         # plan
-        "project_month_end", "get_proactive_alerts", "get_upcoming_obligations",
+        "project_month_end",
+        "get_proactive_alerts",
+        "get_upcoming_obligations",
         "simulate_projection",
         # memory
-        "check_memory", "save_memory_rule", "get_memory_rules",
+        "check_memory",
+        "save_memory_rule",
+        "get_memory_rules",
     }
     missing = expected - t
     assert not missing, f"missing tools: {missing}"

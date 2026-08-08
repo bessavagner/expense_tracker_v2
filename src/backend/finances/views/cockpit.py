@@ -27,9 +27,9 @@ from finances.views.mixins import HtmxLoginRequiredMixin
 
 def _income_context(request, year, month):
     incomes = list(
-        Income.objects.filter(
-            user=request.user, month__year=year, month__month=month
-        ).order_by("name")
+        Income.objects.filter(user=request.user, month__year=year, month__month=month).order_by(
+            "name"
+        )
     )
     income_month_total = sum((i.amount for i in incomes), Decimal("0"))
     return {
@@ -89,9 +89,7 @@ class CockpitIncomeEditModalView(HtmxLoginRequiredMixin, View):
         return {
             "form": form,
             "title": "Editar Renda",
-            "post_url": reverse(
-                "finances:cockpit_income_edit_modal", args=[year, month, inc.id]
-            ),
+            "post_url": reverse("finances:cockpit_income_edit_modal", args=[year, month, inc.id]),
             "swap_target": "#cockpit-income",
             "swap_mode": "outerHTML",
         }
@@ -256,9 +254,7 @@ class CockpitSystemicEditModalView(HtmxLoginRequiredMixin, View):
         return {
             "form": form,
             "title": "Editar Sistemático",
-            "post_url": reverse(
-                "finances:cockpit_systemic_edit_modal", args=[year, month, pk]
-            ),
+            "post_url": reverse("finances:cockpit_systemic_edit_modal", args=[year, month, pk]),
             "swap_target": "#cockpit-systemic",
             "swap_mode": "outerHTML",
         }
@@ -348,9 +344,7 @@ class CockpitVencimentoSetView(HtmxLoginRequiredMixin, View):
         billing_month = date(y, m, 1)
         raw = (request.POST.get("closing_day") or "").strip()
         if raw == "":
-            PaymentMethodClosingDay.objects.filter(
-                payment_method=pm, month=billing_month
-            ).delete()
+            PaymentMethodClosingDay.objects.filter(payment_method=pm, month=billing_month).delete()
             toast = f"{pm.name}: vencimento padrão"
         else:
             try:
@@ -378,9 +372,7 @@ class CockpitParcelamentosSectionView(HtmxLoginRequiredMixin, View):
             "current_month": m,
             "parcelamento_rows": installment_rows_for_month(request.user, y, m),
         }
-        html = render_to_string(
-            "cockpit/_parcelamentos_section.html", ctx, request=request
-        )
+        html = render_to_string("cockpit/_parcelamentos_section.html", ctx, request=request)
         return HttpResponse(html)
 
 
@@ -436,9 +428,7 @@ class CockpitParcelamentoEditModalView(HtmxLoginRequiredMixin, View):
         _patch_entry_querysets(form, entry)
         if form.is_valid():
             form.save()
-            response = HttpResponse(
-                _render_parcelamentos_section(request, int(year), int(month))
-            )
+            response = HttpResponse(_render_parcelamentos_section(request, int(year), int(month)))
             response["HX-Trigger"] = (
                 '{"showToast": {"message": "Parcelamento atualizado!", "type": "success"},'
                 ' "entry-saved": true}'
@@ -462,9 +452,7 @@ class CockpitParcelamentoManageView(HtmxLoginRequiredMixin, View):
 
     def _entry(self, request, entry_pk):
         entry = (
-            Entry.objects.filter(
-                user=request.user, pk=entry_pk, entry_type=EntryType.INSTALLMENT
-            )
+            Entry.objects.filter(user=request.user, pk=entry_pk, entry_type=EntryType.INSTALLMENT)
             .select_related("installment_plan")
             .first()
         )
@@ -499,14 +487,10 @@ class CockpitParcelamentoManageView(HtmxLoginRequiredMixin, View):
                 "finances:cockpit_parcelamento_edit_modal", args=[year, month, entry.id]
             ),
         }
-        return render_to_string(
-            "cockpit/_modal_parcelamento_manage.html", ctx, request=request
-        )
+        return render_to_string("cockpit/_modal_parcelamento_manage.html", ctx, request=request)
 
     def _section_response(self, request, year, month, message):
-        response = HttpResponse(
-            _render_parcelamentos_section(request, int(year), int(month))
-        )
+        response = HttpResponse(_render_parcelamentos_section(request, int(year), int(month)))
         response["HX-Trigger"] = json.dumps(
             {"showToast": {"message": message, "type": "success"}, "entry-saved": True}
         )
@@ -540,11 +524,7 @@ class CockpitParcelamentoManageView(HtmxLoginRequiredMixin, View):
             if form.is_valid():
                 form.save()
                 plan.regenerate_entries()
-                return self._section_response(
-                    request, year, month, "Parcelamento atualizado!"
-                )
-            return HttpResponse(
-                self._modal(request, year, month, entry, plan_form=form)
-            )
+                return self._section_response(request, year, month, "Parcelamento atualizado!")
+            return HttpResponse(self._modal(request, year, month, entry, plan_form=form))
 
         raise Http404

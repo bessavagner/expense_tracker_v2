@@ -6,9 +6,7 @@ import pytest
 from django.apps import apps as global_apps
 from model_bakery import baker
 
-_migration = importlib.import_module(
-    "finances.migrations.0008_freeze_credit_card_billing_month"
-)
+_migration = importlib.import_module("finances.migrations.0008_freeze_credit_card_billing_month")
 freeze_credit_entries = _migration.freeze_credit_entries
 
 
@@ -30,9 +28,7 @@ class TestFreezeCreditEntries:
         )
 
     def test_credit_entries_frozen_without_changing_month(self, user):
-        credit = baker.make(
-            "finances.PaymentMethod", user=user, type="credit_card", closing_day=25
-        )
+        credit = baker.make("finances.PaymentMethod", user=user, type="credit_card", closing_day=25)
         cash = baker.make("finances.PaymentMethod", user=user, type="cash")
 
         # Simulate historical rows that were NOT yet frozen.
@@ -57,13 +53,9 @@ class TestFreezeCreditEntries:
         assert cash_entry.billing_month_override is False
 
     def test_already_frozen_entries_left_as_is(self, user):
-        credit = baker.make(
-            "finances.PaymentMethod", user=user, type="credit_card", closing_day=25
-        )
+        credit = baker.make("finances.PaymentMethod", user=user, type="credit_card", closing_day=25)
         # An installment-style entry already frozen with a hand-picked month.
-        entry = self._entry(
-            user, credit, date(2026, 5, 1), entry_type="installment", override=True
-        )
+        entry = self._entry(user, credit, date(2026, 5, 1), entry_type="installment", override=True)
 
         freeze_credit_entries(global_apps, None)
 

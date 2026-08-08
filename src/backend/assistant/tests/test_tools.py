@@ -519,9 +519,7 @@ class TestReceiptContext:
         from assistant.agents.tools import build_receipt_context
         from assistant.models import ReceiptDraft
 
-        ReceiptDraft.objects.create(
-            user=user, status="registered", payload={"store": "Já gravado"}
-        )
+        ReceiptDraft.objects.create(user=user, status="registered", payload={"store": "Já gravado"})
         assert build_receipt_context(user) == ""
 
 
@@ -569,9 +567,7 @@ class TestRegisterReceipt:
         from finances.models import Entry
 
         self._add(seeded_user, "Pets")
-        draft = self._draft(
-            seeded_user, [("MASSA", "9.95"), ("ENERG", "14.50"), ("RACAO", "9.45")]
-        )
+        draft = self._draft(seeded_user, [("MASSA", "9.95"), ("ENERG", "14.50"), ("RACAO", "9.45")])
         propose_receipt(
             user=seeded_user,
             items_by_category={"Alimentação": [0], "Lanche": [1], "Pets": [2]},
@@ -596,9 +592,7 @@ class TestRegisterReceipt:
         from finances.models import Entry
 
         self._add(seeded_user, "Pets")
-        draft = self._draft(
-            seeded_user, [("MASSA", "9.95"), ("ENERG", "14.50"), ("RACAO", "9.45")]
-        )
+        draft = self._draft(seeded_user, [("MASSA", "9.95"), ("ENERG", "14.50"), ("RACAO", "9.45")])
         # idx 2 em duas categorias; idx 1 faltando
         msg = propose_receipt(
             user=seeded_user,
@@ -689,11 +683,13 @@ class TestRegisterReceipt:
 @pytest.mark.django_db
 def test_list_recent_entries_scoped_and_formatted(seeded_user):
     from assistant.agents.tools import create_entry, list_recent_entries
+
     create_entry(seeded_user, "2026-06-20", "50.00", "feira", "Alimentação", "Pix")
     out = list_recent_entries(seeded_user)
     assert "feira" in out and "50.00" in out
     # short id present (8 hex chars in brackets)
     import re
+
     assert re.search(r"\[[0-9a-f]{8}\]", out)
 
 
@@ -701,6 +697,7 @@ def test_list_recent_entries_scoped_and_formatted(seeded_user):
 def test_update_entry_changes_fields_by_id_prefix(seeded_user):
     from assistant.agents.tools import create_entry, update_entry
     from finances.models import Entry
+
     create_entry(seeded_user, "2026-06-20", "50.00", "feira", "Alimentação", "Pix")
     e = Entry.objects.filter(user=seeded_user).latest("created_at")
     prefix = str(e.id)[:8]
@@ -714,6 +711,7 @@ def test_update_entry_changes_fields_by_id_prefix(seeded_user):
 @pytest.mark.django_db
 def test_update_entry_unknown_id(seeded_user):
     from assistant.agents.tools import update_entry
+
     assert "não encontrado" in update_entry(seeded_user, "deadbeef", amount_str="1.00").lower()
 
 
@@ -721,6 +719,7 @@ def test_update_entry_unknown_id(seeded_user):
 def test_delete_entry_removes(seeded_user):
     from assistant.agents.tools import create_entry, delete_entry
     from finances.models import Entry
+
     create_entry(seeded_user, "2026-06-20", "50.00", "feira", "Alimentação", "Pix")
     e = Entry.objects.filter(user=seeded_user).latest("created_at")
     out = delete_entry(seeded_user, str(e.id)[:8])
@@ -732,6 +731,7 @@ def test_delete_entry_removes(seeded_user):
 def test_add_receipt_item_appends_and_clears_plan(seeded_user):
     from assistant.agents.tools import add_receipt_item
     from assistant.models import ReceiptDraft, ReceiptDraftStatus
+
     d = ReceiptDraft.objects.create(
         user=seeded_user,
         payload={
@@ -752,4 +752,5 @@ def test_add_receipt_item_appends_and_clears_plan(seeded_user):
 @pytest.mark.django_db
 def test_add_receipt_item_no_draft(seeded_user):
     from assistant.agents.tools import add_receipt_item
+
     assert "pendente" in add_receipt_item(seeded_user, "x", "1.00", "Alimentação").lower()

@@ -50,8 +50,9 @@ def test_recurring_launches_n_months(ctx):
     systemic, launched = form.save_for_user(user)
     assert launched == 3
     months = sorted(
-        Entry.objects.filter(systemic_expense=systemic, entry_type=EntryType.SYSTEMIC)
-        .values_list("billing_month", flat=True)
+        Entry.objects.filter(systemic_expense=systemic, entry_type=EntryType.SYSTEMIC).values_list(
+            "billing_month", flat=True
+        )
     )
     assert months == [date(2026, 6, 1), date(2026, 7, 1), date(2026, 8, 1)]
     assert Entry.objects.get(billing_month=date(2026, 6, 1)).amount == Decimal("39.90")

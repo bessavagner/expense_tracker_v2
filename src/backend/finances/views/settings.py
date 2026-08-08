@@ -434,9 +434,7 @@ class CategoryAssignBudgetView(HtmxLoginRequiredMixin, View):
         if not cat:
             raise Http404
         raw = request.POST.get("budget") or None
-        cat.budget = (
-            Budget.objects.filter(user=request.user, pk=raw).first() if raw else None
-        )
+        cat.budget = Budget.objects.filter(user=request.user, pk=raw).first() if raw else None
         cat.save(update_fields=["budget", "updated_at"])
         context = categories_tab_context(request.user)
         html = render_to_string("settings/_categories_tab.html", context, request=request)
@@ -449,12 +447,19 @@ class CategoryAssignBudgetView(HtmxLoginRequiredMixin, View):
 
 # --- Budgets ---
 
+
 def _budgets_tab_context(user):
     from finances.services.budget_stats import seed_amount_from_ceilings
+
     budgets = []
     for b in Budget.objects.filter(user=user).prefetch_related("categories"):
-        budgets.append({"obj": b, "ceiling_sum": seed_amount_from_ceilings(b),
-                        "n_categories": b.categories.count()})
+        budgets.append(
+            {
+                "obj": b,
+                "ceiling_sum": seed_amount_from_ceilings(b),
+                "n_categories": b.categories.count(),
+            }
+        )
     return {
         "budgets": budgets,
         "form": BudgetForm(),
@@ -470,9 +475,7 @@ def _render_budgets_tab(request, message=None, toast_type="success"):
     )
     response = HttpResponse(html)
     if message:
-        response["HX-Trigger"] = json.dumps(
-            {"showToast": {"message": message, "type": toast_type}}
-        )
+        response["HX-Trigger"] = json.dumps({"showToast": {"message": message, "type": toast_type}})
     return response
 
 
@@ -564,8 +567,10 @@ class BudgetEditView(HtmxLoginRequiredMixin, View):
         )
         response = HttpResponse(html)
         response["HX-Trigger"] = json.dumps(
-            {"showToast": {"message": "Orçamento atualizado!", "type": "success"},
-             "entry-saved": True}
+            {
+                "showToast": {"message": "Orçamento atualizado!", "type": "success"},
+                "entry-saved": True,
+            }
         )
         return response
 
@@ -587,6 +592,7 @@ class BudgetEditView(HtmxLoginRequiredMixin, View):
 class BudgetRecalcView(HtmxLoginRequiredMixin, View):
     def post(self, request, pk):
         from finances.services.budget_stats import seed_amount_from_ceilings
+
         b = Budget.objects.filter(user=request.user, pk=pk).first()
         if not b:
             raise Http404

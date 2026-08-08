@@ -21,24 +21,25 @@ def installment_rows_for_month(user, year, month):
     billing_month = date(year, month, 1)
 
     # Plans that have at least one INSTALLMENT entry for this billing_month and user
-    plans_this_month = InstallmentPlan.objects.filter(
-        user=user,
-        entries__entry_type=EntryType.INSTALLMENT,
-        entries__billing_month=billing_month,
-    ).order_by("description").distinct()
+    plans_this_month = (
+        InstallmentPlan.objects.filter(
+            user=user,
+            entries__entry_type=EntryType.INSTALLMENT,
+            entries__billing_month=billing_month,
+        )
+        .order_by("description")
+        .distinct()
+    )
 
     rows = []
     for plan in plans_this_month:
         # This month's entry
-        this_entry = (
-            Entry.objects.filter(
-                user=user,
-                installment_plan=plan,
-                entry_type=EntryType.INSTALLMENT,
-                billing_month=billing_month,
-            )
-            .first()
-        )
+        this_entry = Entry.objects.filter(
+            user=user,
+            installment_plan=plan,
+            entry_type=EntryType.INSTALLMENT,
+            billing_month=billing_month,
+        ).first()
         if this_entry is None:
             continue
 

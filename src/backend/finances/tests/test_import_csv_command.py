@@ -75,8 +75,7 @@ class TestImportIncome:
         write(
             importdir,
             "renda.csv",
-            'nome,nov./2025,dez./2025\nSalário,"R$ 5.815,91",\n'
-            '13°,,"R$ 3.998,74"\n',
+            'nome,nov./2025,dez./2025\nSalário,"R$ 5.815,91",\n13°,,"R$ 3.998,74"\n',
         )
         call_command("import_csv", "--user", user.username, "--dir", str(importdir))
 
@@ -131,8 +130,7 @@ class TestImportRegularEntries:
         write(
             importdir,
             "outubro_2025.csv",
-            'data,valor,descrição,categoria,forma\n'
-            '03/10/2025,"R$ 32,91",Zé Delivery,Álcool,Pix\n',
+            'data,valor,descrição,categoria,forma\n03/10/2025,"R$ 32,91",Zé Delivery,Álcool,Pix\n',
         )
         call_command("import_csv", "--user", user.username, "--dir", str(importdir))
 

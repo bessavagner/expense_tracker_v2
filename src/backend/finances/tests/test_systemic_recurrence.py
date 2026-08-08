@@ -79,8 +79,11 @@ class TestApplySystemicRecurrence:
 
     def test_isolated_to_template(self, user, template):
         other = baker.make(
-            "finances.SystemicExpense", user=user, name="Claude",
-            category=template.category, payment_method=template.payment_method,
+            "finances.SystemicExpense",
+            user=user,
+            name="Claude",
+            category=template.category,
+            payment_method=template.payment_method,
             default_amount=Decimal("100"),
         )
         oe = other.create_monthly_entry(date(2026, 7, 1), amount=Decimal("100"))
@@ -123,10 +126,14 @@ class TestSystemicEditFormRecurrence:
 
         form = SystemicEntryEditForm(
             self._data(
-                template, june, is_recurring="on",
-                recurrence_start="2026-06-01", recurrence_end="2026-08-01",
+                template,
+                june,
+                is_recurring="on",
+                recurrence_start="2026-06-01",
+                recurrence_end="2026-08-01",
             ),
-            entry=june, user=user,
+            entry=june,
+            user=user,
         )
         assert form.is_valid(), form.errors
         form.save()

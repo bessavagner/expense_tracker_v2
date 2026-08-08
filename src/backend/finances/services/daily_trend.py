@@ -48,9 +48,7 @@ def daily_spend_trend(user, period=30, as_of=None) -> list[dict]:
     start_fetch = start_display - timedelta(days=rolling - 1)
 
     rows = (
-        Entry.objects.filter(
-            user=user, amount__gt=0, date__gte=start_fetch, date__lte=as_of
-        )
+        Entry.objects.filter(user=user, amount__gt=0, date__gte=start_fetch, date__lte=as_of)
         .exclude(category__name__icontains=ADJUSTMENT_CATEGORY_PATTERN)
         .values("date")
         .annotate(total=Sum("amount"))
@@ -60,9 +58,7 @@ def daily_spend_trend(user, period=30, as_of=None) -> list[dict]:
     out = []
     for i in range(period):
         day = start_display + timedelta(days=i)
-        window = [
-            by_day.get(day - timedelta(days=k), Decimal("0")) for k in range(rolling)
-        ]
+        window = [by_day.get(day - timedelta(days=k), Decimal("0")) for k in range(rolling)]
         out.append(
             {
                 "date": day,

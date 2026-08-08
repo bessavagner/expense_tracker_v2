@@ -78,9 +78,7 @@ class SummaryView(APIView):
                 "balance": f"{cur['balance']:.2f}",
                 "budget_pct": budget_pct,
                 "prev": {k: f"{v:.2f}" for k, v in prev.items()},
-                "delta_pct": {
-                    k: self._delta_pct(cur[k], prev[k]) for k in cur
-                },
+                "delta_pct": {k: self._delta_pct(cur[k], prev[k]) for k in cur},
             }
         )
 
@@ -105,11 +103,9 @@ class TopCategoriesView(APIView):
 
         # All percentages are relative to the month's GRAND total (every positive
         # entry), so the top-N slices plus "Outros" sum to 100% in the donut legend.
-        grand_total = (
-            Entry.objects.filter(user=user, billing_month=billing_month, amount__gt=0)
-            .aggregate(total=Sum("amount"))["total"]
-            or Decimal("0")
-        )
+        grand_total = Entry.objects.filter(
+            user=user, billing_month=billing_month, amount__gt=0
+        ).aggregate(total=Sum("amount"))["total"] or Decimal("0")
         pct_base = grand_total or Decimal("1")
         result = [
             {
@@ -210,15 +206,19 @@ class AlertsView(APIView):
             nonlocal ok_count
             if status == "error":
                 over = spent - cap
-                alerts.append({
-                    "severity": "danger",
-                    "message": f"{label} ultrapassou teto em R$ {over:.2f}",
-                })
+                alerts.append(
+                    {
+                        "severity": "danger",
+                        "message": f"{label} ultrapassou teto em R$ {over:.2f}",
+                    }
+                )
             elif status == "warning":
-                alerts.append({
-                    "severity": "warning",
-                    "message": f"{label} em {pct}% do teto (R$ {spent:.0f} / R$ {cap:.0f})",
-                })
+                alerts.append(
+                    {
+                        "severity": "warning",
+                        "message": f"{label} em {pct}% do teto (R$ {spent:.0f} / R$ {cap:.0f})",
+                    }
+                )
             else:
                 ok_count += 1
 

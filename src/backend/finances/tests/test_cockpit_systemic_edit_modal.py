@@ -50,7 +50,7 @@ class TestCockpitSystemicEditModal(TestCase):
         self.assertEqual(self.s.name, "Aluguel novo")
         self.assertEqual(self.entry.amount, Decimal("1700.00"))
         html = resp.content.decode()
-        self.assertIn("Aluguel novo", html)            # row reflects new name
+        self.assertIn("Aluguel novo", html)  # row reflects new name
         self.assertIn("cockpit-systemic", html)
         self.assertIn("entry-saved", resp.headers.get("HX-Trigger", ""))
 

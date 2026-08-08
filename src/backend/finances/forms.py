@@ -307,6 +307,7 @@ class SystemicEntryEditForm(forms.Form):
         systemic.name = cd["name"]
         systemic.save(update_fields=["name", "updated_at"])
         from finances.models import Entry
+
         Entry.objects.filter(systemic_expense=systemic).update(description=cd["name"])
         self.entry.date = cd["date"]
         self.entry.amount = cd["amount"]

@@ -9,9 +9,17 @@ from finances.services.projection import build_projection
 
 
 def _e(user, cat, pm, amount, bm, et=EntryType.REGULAR):
-    return baker.make("finances.Entry", user=user, date=bm, amount=Decimal(amount),
-                      category=cat, payment_method=pm, entry_type=et,
-                      billing_month=bm, billing_month_override=True)
+    return baker.make(
+        "finances.Entry",
+        user=user,
+        date=bm,
+        amount=Decimal(amount),
+        category=cat,
+        payment_method=pm,
+        entry_type=et,
+        billing_month=bm,
+        billing_month_override=True,
+    )
 
 
 @pytest.fixture
@@ -36,7 +44,7 @@ class TestEstimatedTrack:
         self._seed_avg_1000(user, cat, pix)
         rows = build_projection(user, date(2026, 6, 1), 2, today=self.TODAY)
         july = next(r for r in rows if r["month"] == date(2026, 7, 1))
-        assert july["diverse"] == Decimal("0")          # nothing posted
+        assert july["diverse"] == Decimal("0")  # nothing posted
         assert july["diverse_estimated"] == Decimal("1000.00")
 
     def test_past_month_estimated_equals_real(self, user, cat, pix):
@@ -72,9 +80,12 @@ class TestEstimatedTrackRobust:
 
     def test_future_uses_median_not_mean(self, user, cat, pix):
         for bm, amt in [
-            (date(2025, 12, 1), "500"), (date(2026, 1, 1), "500"),
-            (date(2026, 2, 1), "500"), (date(2026, 3, 1), "500"),
-            (date(2026, 4, 1), "500"), (date(2026, 5, 1), "4000"),
+            (date(2025, 12, 1), "500"),
+            (date(2026, 1, 1), "500"),
+            (date(2026, 2, 1), "500"),
+            (date(2026, 3, 1), "500"),
+            (date(2026, 4, 1), "500"),
+            (date(2026, 5, 1), "4000"),
         ]:
             _e(user, cat, pix, amt, bm)
         rows = build_projection(user, date(2026, 7, 1), 1, today=self.TODAY)

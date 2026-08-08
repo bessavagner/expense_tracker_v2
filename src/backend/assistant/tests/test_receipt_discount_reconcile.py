@@ -44,16 +44,31 @@ def _drogasil_draft(user):
             "amount_paid": "118.86",
             "payment_hint": "Pix",
             "items": [
-                {"description": "PIRACANJ WH CACAU250ML", "line_total": "6.99",
-                 "category": "Alimentação"},
-                {"description": "PROFU PURIANC CONT 150", "line_total": "57.99",
-                 "category": "Farmácia"},
-                {"description": "PIRACANJ WH CACAU250ML", "line_total": "6.99",
-                 "category": "Alimentação"},
-                {"description": "NASOAR REFIL 30 ENVEL", "line_total": "39.90",
-                 "category": "Farmácia"},
-                {"description": "PIRACANJ WH AMEND250ML", "line_total": "6.99",
-                 "category": "Alimentação"},
+                {
+                    "description": "PIRACANJ WH CACAU250ML",
+                    "line_total": "6.99",
+                    "category": "Alimentação",
+                },
+                {
+                    "description": "PROFU PURIANC CONT 150",
+                    "line_total": "57.99",
+                    "category": "Farmácia",
+                },
+                {
+                    "description": "PIRACANJ WH CACAU250ML",
+                    "line_total": "6.99",
+                    "category": "Alimentação",
+                },
+                {
+                    "description": "NASOAR REFIL 30 ENVEL",
+                    "line_total": "39.90",
+                    "category": "Farmácia",
+                },
+                {
+                    "description": "PIRACANJ WH AMEND250ML",
+                    "line_total": "6.99",
+                    "category": "Alimentação",
+                },
             ],
         },
         status=ReceiptDraftStatus.PENDING,
@@ -127,6 +142,7 @@ def test_no_amount_paid_falls_back_to_printed_discount(seeded_user):
 
 
 # ── consistência: recibo líquido NÃO é falso-inconsistente ──────────────────
+
 
 def _ext(items, discount, paid):
     return ReceiptExtraction(

@@ -78,7 +78,7 @@ def test_delete_removes_both_row_and_card(client, user, entry):
     resp = client.delete(url)
     assert resp.status_code == 200
     body = resp.content.decode()
-    assert f'id="entry-{entry.id}"' in body and "hx-swap-oob=\"delete\"" in body
+    assert f'id="entry-{entry.id}"' in body and 'hx-swap-oob="delete"' in body
     assert f'id="entry-card-{entry.id}"' in body
     assert not Entry.objects.filter(pk=entry.id).exists()
     assert resp.headers.get("HX-Trigger") and "entries-changed" in resp.headers["HX-Trigger"]

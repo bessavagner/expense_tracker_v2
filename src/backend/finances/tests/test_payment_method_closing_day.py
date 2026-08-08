@@ -10,9 +10,7 @@ from finances.services.billing import resolve_closing_day
 @pytest.mark.django_db
 class TestPaymentMethodClosingDay:
     def test_create_per_month_closing_day(self, user):
-        pm = baker.make(
-            "finances.PaymentMethod", user=user, type="credit_card", closing_day=30
-        )
+        pm = baker.make("finances.PaymentMethod", user=user, type="credit_card", closing_day=30)
         cd = PaymentMethodClosingDay.objects.create(
             payment_method=pm, month=date(2026, 1, 1), closing_day=28
         )
@@ -36,18 +34,14 @@ class TestPaymentMethodClosingDay:
 @pytest.mark.django_db
 class TestResolveClosingDay:
     def test_uses_per_month_override_when_present(self, user):
-        pm = baker.make(
-            "finances.PaymentMethod", user=user, type="credit_card", closing_day=30
-        )
+        pm = baker.make("finances.PaymentMethod", user=user, type="credit_card", closing_day=30)
         PaymentMethodClosingDay.objects.create(
             payment_method=pm, month=date(2026, 1, 1), closing_day=28
         )
         assert resolve_closing_day(pm, date(2026, 1, 15)) == 28
 
     def test_falls_back_to_default_closing_day(self, user):
-        pm = baker.make(
-            "finances.PaymentMethod", user=user, type="credit_card", closing_day=30
-        )
+        pm = baker.make("finances.PaymentMethod", user=user, type="credit_card", closing_day=30)
         PaymentMethodClosingDay.objects.create(
             payment_method=pm, month=date(2026, 1, 1), closing_day=28
         )
@@ -55,9 +49,7 @@ class TestResolveClosingDay:
         assert resolve_closing_day(pm, date(2026, 2, 10)) == 30
 
     def test_falls_back_when_no_overrides_at_all(self, user):
-        pm = baker.make(
-            "finances.PaymentMethod", user=user, type="credit_card", closing_day=25
-        )
+        pm = baker.make("finances.PaymentMethod", user=user, type="credit_card", closing_day=25)
         assert resolve_closing_day(pm, date(2026, 5, 3)) == 25
 
     def test_returns_none_for_non_credit(self, user):

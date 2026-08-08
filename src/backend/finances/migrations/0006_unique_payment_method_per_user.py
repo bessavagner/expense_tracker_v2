@@ -5,15 +5,16 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('finances', '0005_alter_paymentmethod_closing_day'),
+        ("finances", "0005_alter_paymentmethod_closing_day"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.AddConstraint(
-            model_name='paymentmethod',
-            constraint=models.UniqueConstraint(fields=('user', 'name'), name='unique_payment_method_per_user'),
+            model_name="paymentmethod",
+            constraint=models.UniqueConstraint(
+                fields=("user", "name"), name="unique_payment_method_per_user"
+            ),
         ),
     ]

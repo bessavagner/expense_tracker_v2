@@ -15,7 +15,11 @@ class TestIncomeGrouping(TestCase):
 
     def _make(self, name, amount, month, recurring=False):
         return baker.make(
-            Income, user=self.user, name=name, amount=amount, month=month,
+            Income,
+            user=self.user,
+            name=name,
+            amount=amount,
+            month=month,
             is_recurring=recurring,
         )
 
@@ -62,8 +66,9 @@ class TestIncomeGroupDelete(TestCase):
 
     def test_deletes_all_rows_of_a_name(self):
         for m in range(1, 13):
-            baker.make(Income, user=self.user, name="Salário", amount="8000",
-                       month=date(2026, m, 1))
+            baker.make(
+                Income, user=self.user, name="Salário", amount="8000", month=date(2026, m, 1)
+            )
         baker.make(Income, user=self.user, name="Freela", amount="500", month=date(2026, 1, 1))
         resp = self.client.post("/settings/income/group-delete/", {"name": "Salário"})
         self.assertEqual(resp.status_code, 200)

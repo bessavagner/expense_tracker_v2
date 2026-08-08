@@ -118,9 +118,7 @@ def monthly_report_csv(user, year: int, month: int) -> str:
     for e in entries:
         value = f"{e.amount:.2f}".replace(".", ",")  # decimal brasileiro
         desc = e.description.replace(",", " -")
-        rows.append(
-            f"{e.date:%d/%m/%Y};{value};{desc};{e.category.name};{e.payment_method.name}"
-        )
+        rows.append(f"{e.date:%d/%m/%Y};{value};{desc};{e.category.name};{e.payment_method.name}")
     return "\n".join(rows)
 
 
@@ -165,9 +163,7 @@ def detect_anomalies(user, year: int, month: int, factor: Decimal = ANOMALY_FACT
         total = totals[cat.id]
         if total > factor * avg:
             ratio = total / avg
-            flagged.append(
-                f"⚠️ {cat.name}: R$ {total:.2f} ({ratio:.1f}× a média de R$ {avg:.2f})"
-            )
+            flagged.append(f"⚠️ {cat.name}: R$ {total:.2f} ({ratio:.1f}× a média de R$ {avg:.2f})")
 
     if not flagged:
         return f"Nenhuma anomalia de gasto detectada em {month:02d}/{year}."
@@ -248,21 +244,15 @@ def upcoming_obligations(user, year: int, month: int) -> str:
         return f"Erro: ano/mês inválido ({year}/{month})."
 
     lines: list[str] = []
-    inst_total = (
-        Entry.objects.filter(
-            user=user, billing_month=bm, installment_plan__isnull=False, amount__gt=0
-        ).aggregate(t=Sum("amount"))["t"]
-        or Decimal("0")
-    )
+    inst_total = Entry.objects.filter(
+        user=user, billing_month=bm, installment_plan__isnull=False, amount__gt=0
+    ).aggregate(t=Sum("amount"))["t"] or Decimal("0")
     if inst_total > 0:
         lines.append(f"- Parcelas no mês: R$ {inst_total:.2f}")
 
-    sys_total = (
-        Entry.objects.filter(
-            user=user, billing_month=bm, systemic_expense__isnull=False, amount__gt=0
-        ).aggregate(t=Sum("amount"))["t"]
-        or Decimal("0")
-    )
+    sys_total = Entry.objects.filter(
+        user=user, billing_month=bm, systemic_expense__isnull=False, amount__gt=0
+    ).aggregate(t=Sum("amount"))["t"] or Decimal("0")
     if sys_total > 0:
         lines.append(f"- Gastos sistemáticos no mês: R$ {sys_total:.2f}")
 

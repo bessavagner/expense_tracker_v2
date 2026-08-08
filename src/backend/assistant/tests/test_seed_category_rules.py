@@ -9,8 +9,7 @@ pytestmark = pytest.mark.django_db
 def test_seed_creates_nf_token_rules(seeded_user):
     call_command("seed_category_rules", "--user", seeded_user.username)
     rules = {
-        (r.trigger, r.value)
-        for r in MemoryRule.objects.filter(user=seeded_user, field="category")
+        (r.trigger, r.value) for r in MemoryRule.objects.filter(user=seeded_user, field="category")
     }
     assert ("energ", "Lanche") in rules
     assert ("refrig", "Lanche") in rules
@@ -21,10 +20,7 @@ def test_seed_is_idempotent(seeded_user):
     call_command("seed_category_rules", "--user", seeded_user.username)
     call_command("seed_category_rules", "--user", seeded_user.username)
     assert (
-        MemoryRule.objects.filter(
-            user=seeded_user, field="category", trigger="energ"
-        ).count()
-        == 1
+        MemoryRule.objects.filter(user=seeded_user, field="category", trigger="energ").count() == 1
     )
 
 

@@ -97,9 +97,7 @@ class Command(BaseCommand):
     def _import(self, options):
         apply = options["apply"]
         raw = (
-            open(options["file"], encoding="utf-8").read()
-            if options["file"]
-            else sys.stdin.read()
+            open(options["file"], encoding="utf-8").read() if options["file"] else sys.stdin.read()
         )
         try:
             rows = json.loads(raw)
@@ -114,9 +112,7 @@ class Command(BaseCommand):
                 errors.append(f"no user '{r['user']}' | {r['description'][:50]}")
                 continue
             cat = _resolve(Category.objects.filter(user=u), r["category"] or "")
-            pm = _resolve(
-                PaymentMethod.objects.filter(user=u, is_active=True), r["payment"] or ""
-            )
+            pm = _resolve(PaymentMethod.objects.filter(user=u, is_active=True), r["payment"] or "")
             if not cat:
                 errors.append(f"no category '{r['category']}' | {r['description'][:50]}")
                 continue
@@ -141,8 +137,12 @@ class Command(BaseCommand):
                 for u, d, amt, desc, cat, pm in to_create:
                     # let save() compute billing_month from date + payment_method
                     Entry.objects.create(
-                        user=u, date=d, amount=amt, description=desc,
-                        category=cat, payment_method=pm,
+                        user=u,
+                        date=d,
+                        amount=amt,
+                        description=desc,
+                        category=cat,
+                        payment_method=pm,
                     )
 
         self.stdout.write("")

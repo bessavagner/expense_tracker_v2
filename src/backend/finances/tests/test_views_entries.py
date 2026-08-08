@@ -71,9 +71,7 @@ class TestEntryListView:
         entries = response.context["entries"]
         assert not any(e.description == "Feb entry" for e in entries)
 
-    def test_credit_purchase_appears_in_launch_month_not_billing_month(
-        self, logged_client, user
-    ):
+    def test_credit_purchase_appears_in_launch_month_not_billing_month(self, logged_client, user):
         cat = baker.make("finances.Category", user=user, name="Cartão")
         card = baker.make(
             "finances.PaymentMethod", user=user, name="Visa", type="credit_card", closing_day=10
@@ -129,9 +127,7 @@ class TestEntryListView:
 
     def test_credit_row_shows_future_invoice_badge(self, logged_client, user):
         cat = baker.make("finances.Category", user=user)
-        card = baker.make(
-            "finances.PaymentMethod", user=user, type="credit_card", closing_day=10
-        )
+        card = baker.make("finances.PaymentMethod", user=user, type="credit_card", closing_day=10)
         baker.make(
             "finances.Entry",
             user=user,

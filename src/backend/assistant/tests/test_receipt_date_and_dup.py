@@ -26,6 +26,7 @@ pytestmark = pytest.mark.django_db
 
 # ── Bug 1: normalização/parse de data ───────────────────────────────────────
 
+
 def test_normalize_brazilian_date_with_time():
     # o caso real do cupom PAGUE MENOS
     assert normalize_receipt_date("04/07/2026 12:09:32") == "2026-07-04"
@@ -79,6 +80,7 @@ def test_propose_uses_cupom_date_not_today(seeded_user):
 
 
 # ── Bug 2: detecção de recibo já registrado (reenvio) ───────────────────────
+
 
 def _registered(user, **over):
     payload = {
@@ -164,6 +166,7 @@ def test_duplicate_directive_steers_to_edit_not_register(seeded_user):
 # ── Evidence-based dedup: a registered receipt whose entries were DELETED must
 #    NOT count as a duplicate (so the user can safely re-send the photo). ──────
 
+
 def _plan_payload(**over):
     payload = {
         "store": "Drogasil",
@@ -228,8 +231,12 @@ def test_live_entries_still_a_duplicate(seeded_user):
     )
     # One matching live entry (date + pm + amount) is enough.
     Entry.objects.create(
-        user=seeded_user, date=date(2026, 7, 4), amount="20.97",
-        description="Drogasil - a", category=cat, payment_method=pm,
+        user=seeded_user,
+        date=date(2026, 7, 4),
+        amount="20.97",
+        description="Drogasil - a",
+        category=cat,
+        payment_method=pm,
     )
     assert find_registered_duplicate(seeded_user, _incoming()) is not None
 

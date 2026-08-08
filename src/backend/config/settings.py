@@ -202,9 +202,7 @@ LLM_TRANSCRIBE_FALLBACK_MODEL = os.environ.get("LLM_TRANSCRIBE_FALLBACK_MODEL", 
 LLM_VISION_MODEL = os.environ.get("LLM_VISION_MODEL", "openai:gpt-5.4")
 # Abaixo deste nível de confiança (ou se a soma do recibo não fecha), o bot
 # confirma campo a campo antes de gravar, em vez de auto-registrar.
-ASSISTANT_RECEIPT_MIN_CONFIDENCE = float(
-    os.environ.get("ASSISTANT_RECEIPT_MIN_CONFIDENCE", "0.6")
-)
+ASSISTANT_RECEIPT_MIN_CONFIDENCE = float(os.environ.get("ASSISTANT_RECEIPT_MIN_CONFIDENCE", "0.6"))
 
 # Projeção: mês de origem (YYYY-MM). Nada antes disso entra no acumulado — dados
 # anteriores são migração/seed e não contam na conta. Default: nov/2025.

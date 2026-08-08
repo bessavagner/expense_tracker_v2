@@ -102,9 +102,7 @@ def simulate_projection_summary(user, items, start, months, today=None):
     for b, s in zip(base, sim, strict=True):
         delta = s["acumulado"] - b["acumulado"]
         ym = b["month"].strftime("%Y-%m")
-        lines.append(
-            f"- {ym}: R$ {b['acumulado']:.2f} → R$ {s['acumulado']:.2f} (Δ {delta:+.2f})"
-        )
+        lines.append(f"- {ym}: R$ {b['acumulado']:.2f} → R$ {s['acumulado']:.2f} (Δ {delta:+.2f})")
         if worst is None or s["acumulado"] < worst[1]:
             worst = (ym, s["acumulado"])
     if worst:

@@ -90,9 +90,7 @@ class TestEntriesSummaryView:
 
     def test_credit_value_counts_in_billing_month_not_launch_month(self, logged_client, user):
         cat = baker.make("finances.Category", user=user)
-        card = baker.make(
-            "finances.PaymentMethod", user=user, type="credit_card", closing_day=10
-        )
+        card = baker.make("finances.PaymentMethod", user=user, type="credit_card", closing_day=10)
         baker.make(
             "finances.Entry",
             user=user,
@@ -102,19 +100,18 @@ class TestEntriesSummaryView:
             category=cat,
             payment_method=card,
         )  # billing_month = 2026-08-01
-        june = logged_client.get(
-            "/entries/2026/6/summary/", HTTP_HX_REQUEST="true"
-        ).context["summary"]
-        august = logged_client.get(
-            "/entries/2026/8/summary/", HTTP_HX_REQUEST="true"
-        ).context["summary"]
+        june = logged_client.get("/entries/2026/6/summary/", HTTP_HX_REQUEST="true").context[
+            "summary"
+        ]
+        august = logged_client.get("/entries/2026/8/summary/", HTTP_HX_REQUEST="true").context[
+            "summary"
+        ]
         # Linha lançada em junho → entra no Total lançado de junho
         assert june["total_lancado"] == Decimal("200.00")
         # Valor só sai em agosto → Total gastos de junho não inclui; agosto inclui
         assert june["total_gastos"] == Decimal("0")
         assert august["total_gastos"] == Decimal("200.00")
         assert august["total_lancado"] == Decimal("0")
-
 
     def test_summary_reconciles_with_projection_current_month(self, logged_client, user):
         from django.db.models import Min
@@ -141,9 +138,9 @@ class TestEntriesSummaryView:
         )
         today = date.today()
         fy, fm = today.year, today.month
-        summary = logged_client.get(
-            f"/entries/{fy}/{fm}/summary/", HTTP_HX_REQUEST="true"
-        ).context["summary"]
+        summary = logged_client.get(f"/entries/{fy}/{fm}/summary/", HTTP_HX_REQUEST="true").context[
+            "summary"
+        ]
         # replicate production anchor logic
         inc_min = Income.objects.filter(user=user).aggregate(m=Min("month"))["m"]
         ent_min = Entry.objects.filter(user=user).aggregate(m=Min("billing_month"))["m"]
@@ -185,9 +182,9 @@ class TestEntriesSummaryView:
         today = date.today()
         # strictly-future month — exercises systemic-template projection branch
         fy, fm = today.year + 1, today.month
-        summary = logged_client.get(
-            f"/entries/{fy}/{fm}/summary/", HTTP_HX_REQUEST="true"
-        ).context["summary"]
+        summary = logged_client.get(f"/entries/{fy}/{fm}/summary/", HTTP_HX_REQUEST="true").context[
+            "summary"
+        ]
         # replicate production anchor logic
         inc_min = Income.objects.filter(user=user).aggregate(m=Min("month"))["m"]
         ent_min = Entry.objects.filter(user=user).aggregate(m=Min("billing_month"))["m"]

@@ -77,23 +77,15 @@ class TestChatEndpoint:
         )
         assert response.status_code == 400
 
-    def test_multipart_audio_transcribes_and_streams(
-        self, logged_client, user, monkeypatch
-    ):
+    def test_multipart_audio_transcribes_and_streams(self, logged_client, user, monkeypatch):
         async def fake_transcribe(data, filename, content_type, *, client=None):
             return "mercado 80 no pix"
 
-        monkeypatch.setattr(
-            "assistant.views.transcribe_audio", fake_transcribe
-        )
+        monkeypatch.setattr("assistant.views.transcribe_audio", fake_transcribe)
 
-        audio = SimpleUploadedFile(
-            "nota.webm", b"\x00\x01\x02", content_type="audio/webm"
-        )
+        audio = SimpleUploadedFile("nota.webm", b"\x00\x01\x02", content_type="audio/webm")
         with agents_override(TestModel()):
-            response = logged_client.post(
-                "/api/assistant/chat/", data={"audio": audio}
-            )
+            response = logged_client.post("/api/assistant/chat/", data={"audio": audio})
             body = consume_streaming(response)
 
         assert response.status_code == 200
@@ -119,9 +111,7 @@ class TestChatEndpoint:
             extraction_agent.override(model=TestModel()),
             assistant_agent.override(model=TestModel()),
         ):
-            response = logged_client.post(
-                "/api/assistant/chat/", data={"image": image}
-            )
+            response = logged_client.post("/api/assistant/chat/", data={"image": image})
             body = consume_streaming(response)
 
         assert response.status_code == 200
@@ -146,9 +136,7 @@ class TestChatEndpoint:
             extraction_agent.override(model=TestModel()),
             assistant_agent.override(model=TestModel()),
         ):
-            response = logged_client.post(
-                "/api/assistant/chat/", data={"image": image}
-            )
+            response = logged_client.post("/api/assistant/chat/", data={"image": image})
             consume_streaming(response)
 
         assert response.status_code == 200
@@ -156,9 +144,7 @@ class TestChatEndpoint:
         # transition pending → discarded; assert creation happened (any status).
         assert ReceiptDraft.objects.filter(user=user).exists()
 
-    def test_resent_registered_receipt_does_not_reregister(
-        self, logged_client, user, monkeypatch
-    ):
+    def test_resent_registered_receipt_does_not_reregister(self, logged_client, user, monkeypatch):
         """Reenviar a MESMA nota (já registrada) NÃO abre um novo fluxo de recibo
         — não cria draft para re-commit. Evita a duplicata do incidente PAGUE
         MENOS (o 'sim' seguinte deixa de ser sequestrado para commit_receipt)."""
@@ -214,21 +200,15 @@ class TestChatEndpoint:
     def test_multipart_rejects_two_files(self, logged_client, user):
         a = SimpleUploadedFile("n.webm", b"\x00", content_type="audio/webm")
         i = SimpleUploadedFile("r.png", b"\x00", content_type="image/png")
-        response = logged_client.post(
-            "/api/assistant/chat/", data={"audio": a, "image": i}
-        )
+        response = logged_client.post("/api/assistant/chat/", data={"audio": a, "image": i})
         assert response.status_code == 400
 
     def test_multipart_rejects_bad_audio_type(self, logged_client, user):
         bad = SimpleUploadedFile("x.txt", b"\x00", content_type="text/plain")
-        response = logged_client.post(
-            "/api/assistant/chat/", data={"audio": bad}
-        )
+        response = logged_client.post("/api/assistant/chat/", data={"audio": bad})
         assert response.status_code == 400
 
-    def test_multipart_accepts_audio_with_codecs_param(
-        self, logged_client, user, monkeypatch
-    ):
+    def test_multipart_accepts_audio_with_codecs_param(self, logged_client, user, monkeypatch):
         """MediaRecorder envia content_type 'audio/webm;codecs=opus' — o
         parâmetro de codec não pode fazer a validação rejeitar (era 400 →
         'Erro de conexão' no widget)."""
@@ -242,9 +222,7 @@ class TestChatEndpoint:
             "nota.webm", b"\x00\x01\x02", content_type="audio/webm;codecs=opus"
         )
         with agents_override(TestModel()):
-            response = logged_client.post(
-                "/api/assistant/chat/", data={"audio": audio}
-            )
+            response = logged_client.post("/api/assistant/chat/", data={"audio": audio})
             consume_streaming(response)
 
         assert response.status_code == 200
@@ -253,14 +231,10 @@ class TestChatEndpoint:
     def test_multipart_rejects_oversized_image(self, logged_client, user, settings):
         settings.ASSISTANT_MAX_IMAGE_MB = 0  # tudo é grande demais
         big = SimpleUploadedFile("r.png", b"\x00" * 1024, content_type="image/png")
-        response = logged_client.post(
-            "/api/assistant/chat/", data={"image": big}
-        )
+        response = logged_client.post("/api/assistant/chat/", data={"image": big})
         assert response.status_code == 400
 
-    def test_image_fallback_uses_vision_model(
-        self, logged_client, user, monkeypatch, settings
-    ):
+    def test_image_fallback_uses_vision_model(self, logged_client, user, monkeypatch, settings):
         """Quando a extração inicial falha, o fallback tenta com LLM_VISION_MODEL."""
         settings.LLM_VISION_MODEL = "openai:vision-sentinel"
         captured = {}
@@ -271,6 +245,7 @@ class TestChatEndpoint:
                 raise RuntimeError("primeira extração falha")
             # segunda chamada com vision model tem sucesso
             from assistant.agents.extraction import ReceiptExtraction
+
             return ReceiptExtraction()
 
         monkeypatch.setattr("assistant.views.extract_receipt", fake_extract)
@@ -288,9 +263,7 @@ class TestChatEndpoint:
         assert captured["calls"][0] is None, "primeira chamada sem model override"
         assert captured["calls"][1] == "openai:vision-sentinel", "segunda usa LLM_VISION_MODEL"
 
-    def test_image_is_preprocessed_before_send(
-        self, logged_client, user, monkeypatch
-    ):
+    def test_image_is_preprocessed_before_send(self, logged_client, user, monkeypatch):
         """_handle_image deve passar a imagem por prepare_receipt_image."""
         calls = {}
 
@@ -358,17 +331,13 @@ class TestChatEndpoint:
         settings.ASSISTANT_MAX_IMAGES = 1
         img1 = SimpleUploadedFile("a.png", self._PNG, content_type="image/png")
         img2 = SimpleUploadedFile("b.png", self._PNG, content_type="image/png")
-        response = logged_client.post(
-            "/api/assistant/chat/", data={"image": [img1, img2]}
-        )
+        response = logged_client.post("/api/assistant/chat/", data={"image": [img1, img2]})
         assert response.status_code == 400
 
     def test_rejects_bad_type_among_images(self, logged_client, user):
         good = SimpleUploadedFile("a.png", self._PNG, content_type="image/png")
         bad = SimpleUploadedFile("x.txt", b"\x00", content_type="text/plain")
-        response = logged_client.post(
-            "/api/assistant/chat/", data={"image": [good, bad]}
-        )
+        response = logged_client.post("/api/assistant/chat/", data={"image": [good, bad]})
         assert response.status_code == 400
 
     def test_image_proposes_without_writing(self, logged_client, seeded_user):
@@ -381,14 +350,11 @@ class TestChatEndpoint:
             extraction_agent.override(model=TestModel()),
             assistant_agent.override(model=TestModel()),
         ):
-            resp = logged_client.post(
-                "/api/assistant/chat/", {"image": image}
-            )
+            resp = logged_client.post("/api/assistant/chat/", {"image": image})
             consume_streaming(resp)
 
         # The image turn must PROPOSE, never write: zero entries created at all.
         assert Entry.objects.count() == 0
-
 
     def test_pending_receipt_routes_confirm_and_commits_once(self, logged_client, seeded_user):
         from assistant.agents.tools import propose_receipt
@@ -396,9 +362,12 @@ class TestChatEndpoint:
         from finances.models import Entry
 
         draft = ReceiptDraft.objects.create(
-            user=seeded_user, status=ReceiptDraftStatus.PENDING,
+            user=seeded_user,
+            status=ReceiptDraftStatus.PENDING,
             payload={
-                "store": "MATEUS", "date": "2026-06-22", "discount": "0",
+                "store": "MATEUS",
+                "date": "2026-06-22",
+                "discount": "0",
                 "payment_hint": "Pix",
                 "items": [
                     {"description": "arroz", "line_total": "60.00"},
@@ -412,7 +381,8 @@ class TestChatEndpoint:
         tm = TestModel(call_tools=["commit_receipt"])
         with assistant_agent.override(model=tm):
             resp = logged_client.post(
-                "/api/assistant/chat/", {"message": "sim"},
+                "/api/assistant/chat/",
+                {"message": "sim"},
                 content_type="application/json",
             )
             consume_streaming(resp)
@@ -423,12 +393,12 @@ class TestChatEndpoint:
         # A second "sim" must NOT duplicate (draft no longer PENDING -> commit no-op).
         with assistant_agent.override(model=TestModel(call_tools=["commit_receipt"])):
             resp2 = logged_client.post(
-                "/api/assistant/chat/", {"message": "sim"},
+                "/api/assistant/chat/",
+                {"message": "sim"},
                 content_type="application/json",
             )
             consume_streaming(resp2)
         assert Entry.objects.filter(user=seeded_user).count() == 2
-
 
     def test_pending_receipt_audio_routes_confirm_and_commits_once(
         self, logged_client, seeded_user, monkeypatch
@@ -460,20 +430,15 @@ class TestChatEndpoint:
 
         monkeypatch.setattr("assistant.views.transcribe_audio", fake_transcribe)
 
-        audio = SimpleUploadedFile(
-            "confirm.webm", b"\x00\x01\x02", content_type="audio/webm"
-        )
+        audio = SimpleUploadedFile("confirm.webm", b"\x00\x01\x02", content_type="audio/webm")
         tm = TestModel(call_tools=["commit_receipt"])
         with assistant_agent.override(model=tm):
-            resp = logged_client.post(
-                "/api/assistant/chat/", data={"audio": audio}
-            )
+            resp = logged_client.post("/api/assistant/chat/", data={"audio": audio})
             consume_streaming(resp)
 
         assert Entry.objects.filter(user=seeded_user).count() == 2
         draft.refresh_from_db()
         assert draft.status == ReceiptDraftStatus.REGISTERED
-
 
     def test_images_pass_user_taxonomy_to_extraction(self, logged_client, user, monkeypatch):
         from assistant.agents.extraction import ReceiptExtraction

@@ -194,9 +194,14 @@ máximo UMA vez. Se o usuário lembrar de um item DEPOIS que o recibo JÁ foi
 registrado (não há mais recibo pendente), registre só esse item como UM lançamento
 novo com register_entry — NUNCA re-registre os itens que já foram gravados.
 """
-    + "\n" + LEGACY_REGISTRO_RULES
-    + "\n" + CONFIRMATION_POLICY
-    + "\n" + PHOTO_POLICY
-    + "\n" + MEMORY_POLICY
-    + "\n" + ENTITY_GLOSSARY
+    + "\n"
+    + LEGACY_REGISTRO_RULES
+    + "\n"
+    + CONFIRMATION_POLICY
+    + "\n"
+    + PHOTO_POLICY
+    + "\n"
+    + MEMORY_POLICY
+    + "\n"
+    + ENTITY_GLOSSARY
 )

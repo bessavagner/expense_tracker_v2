@@ -8,27 +8,56 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('finances', '0006_unique_payment_method_per_user'),
+        ("finances", "0006_unique_payment_method_per_user"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='PaymentMethodClosingDay',
+            name="PaymentMethodClosingDay",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('month', models.DateField(help_text='Primeiro dia do mês ao qual o fechamento se aplica')),
-                ('closing_day', models.PositiveSmallIntegerField(validators=[django.core.validators.MinValueValidator(1), django.core.validators.MaxValueValidator(31)])),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('payment_method', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='monthly_closing_days', to='finances.paymentmethod')),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4, editable=False, primary_key=True, serialize=False
+                    ),
+                ),
+                (
+                    "month",
+                    models.DateField(
+                        help_text="Primeiro dia do mês ao qual o fechamento se aplica"
+                    ),
+                ),
+                (
+                    "closing_day",
+                    models.PositiveSmallIntegerField(
+                        validators=[
+                            django.core.validators.MinValueValidator(1),
+                            django.core.validators.MaxValueValidator(31),
+                        ]
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "payment_method",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="monthly_closing_days",
+                        to="finances.paymentmethod",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'dia de fechamento mensal',
-                'verbose_name_plural': 'dias de fechamento mensais',
-                'ordering': ['payment_method', 'month'],
-                'constraints': [models.UniqueConstraint(fields=('payment_method', 'month'), name='unique_closing_day_per_method_month')],
+                "verbose_name": "dia de fechamento mensal",
+                "verbose_name_plural": "dias de fechamento mensais",
+                "ordering": ["payment_method", "month"],
+                "constraints": [
+                    models.UniqueConstraint(
+                        fields=("payment_method", "month"),
+                        name="unique_closing_day_per_method_month",
+                    )
+                ],
             },
         ),
     ]

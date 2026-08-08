@@ -10,7 +10,8 @@ pytestmark = pytest.mark.django_db
 
 def test_extraction_prompt_asks_for_readable_summaries():
     ext = ReceiptExtraction(
-        store="Cosmos", amount_paid="13.00",
+        store="Cosmos",
+        amount_paid="13.00",
         items=[{"description": "ENERG MONSTER", "line_total": "10.00", "category": "Lanche"}],
     )
     out = extraction_to_prompt(ext)
@@ -21,9 +22,13 @@ def test_extraction_prompt_asks_for_readable_summaries():
 
 def test_pending_directive_asks_summaries_and_learns_category(seeded_user):
     ReceiptDraft.objects.create(
-        user=seeded_user, status=ReceiptDraftStatus.PENDING,
-        payload={"store": "Cosmos", "amount_paid": "13.00",
-                 "items": [{"description": "ENERG MONSTER", "line_total": "10.00"}]},
+        user=seeded_user,
+        status=ReceiptDraftStatus.PENDING,
+        payload={
+            "store": "Cosmos",
+            "amount_paid": "13.00",
+            "items": [{"description": "ENERG MONSTER", "line_total": "10.00"}],
+        },
     )
     out = build_pending_receipt_directive(seeded_user)
     low = out.lower()
@@ -43,7 +48,8 @@ def test_assistant_system_prompt_asks_for_summaries():
 
 def test_extraction_needs_review_head_no_store_name():
     ext = ReceiptExtraction(
-        store="Cosmos", amount_paid="13.00",
+        store="Cosmos",
+        amount_paid="13.00",
         items=[{"description": "ENERG MONSTER", "line_total": "10.00", "category": "Lanche"}],
     )
     out = extraction_to_prompt(ext, needs_review=True)
@@ -60,9 +66,13 @@ def test_pending_directive_forbids_hand_typed_table(seeded_user):
     explicitamente.
     """
     ReceiptDraft.objects.create(
-        user=seeded_user, status=ReceiptDraftStatus.PENDING,
-        payload={"store": "Mercado Livre", "amount_paid": None,
-                 "items": [{"description": "Bermuda", "line_total": "66.09"}]},
+        user=seeded_user,
+        status=ReceiptDraftStatus.PENDING,
+        payload={
+            "store": "Mercado Livre",
+            "amount_paid": None,
+            "items": [{"description": "Bermuda", "line_total": "66.09"}],
+        },
     )
     out = build_pending_receipt_directive(seeded_user)
     low = out.lower()
@@ -74,9 +84,13 @@ def test_pending_directive_payment_method_is_sticky(seeded_user):
     """Bug real: o bot perguntou a forma de pagamento 3 vezes no mesmo recibo,
     mesmo já resolvida (legenda da foto + resposta explícita do usuário)."""
     ReceiptDraft.objects.create(
-        user=seeded_user, status=ReceiptDraftStatus.PENDING,
-        payload={"store": "Mercado Livre", "amount_paid": None,
-                 "items": [{"description": "Bermuda", "line_total": "66.09"}]},
+        user=seeded_user,
+        status=ReceiptDraftStatus.PENDING,
+        payload={
+            "store": "Mercado Livre",
+            "amount_paid": None,
+            "items": [{"description": "Bermuda", "line_total": "66.09"}],
+        },
     )
     out = build_pending_receipt_directive(seeded_user)
     low = out.lower()
