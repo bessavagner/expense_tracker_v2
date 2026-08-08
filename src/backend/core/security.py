@@ -1,9 +1,15 @@
 """Login lockout primitives. No HTTP responses, no Django views — just counting.
 
-``X-Forwarded-For`` is set by the client and only appended to by Google's load
-balancer, so the leftmost entry is spoofable and an attacker can rotate it
-freely. The IP arm of the lockout is therefore a speed bump; the username arm is
-what actually protects an account. Keep both — they fail differently.
+Behind Google's load balancer, ``X-Forwarded-For`` arrives as
+``<client-supplied>, <real-client>, <lb>``: GCP appends exactly two entries —
+the real client address, then its own — so only the second-from-right entry is
+trustworthy. Everything left of it, including the leftmost entry, is supplied
+by the client and forgeable. Trusting the leftmost entry would not just let an
+attacker evade their own IP arm (a tolerable weakening down to the username
+arm); it would let an unauthenticated attacker claim to be *any* address,
+including a real user's, and burn that user's lockout budget by proxy — an
+availability attack aimed at a chosen victim. See ``client_ip`` for how the
+trustworthy entry is picked.
 """
 
 import ipaddress
@@ -16,7 +22,13 @@ from core.models import LoginAttempt
 
 
 def client_ip(request) -> str | None:
-    """The best available client address, normalised, or ``None``.
+    """The real client address behind the GCP load balancer, or ``None``.
+
+    Picks the second-from-right ``X-Forwarded-For`` entry — the one GCP itself
+    appended — rather than the leftmost, client-supplied one. Falls back to
+    ``REMOTE_ADDR`` when the header doesn't have that shape (fewer than two
+    entries, e.g. local dev with no load balancer in front, or the trusted
+    entry itself failing to parse).
 
     Returns ``None`` rather than a garbage string when nothing parses, because
     ``LoginAttempt.ip`` is a real ``inet`` column and a malformed value would
@@ -25,7 +37,11 @@ def client_ip(request) -> str | None:
     if request is None:
         return None
     forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
-    candidates = [forwarded.split(",")[0].strip(), request.META.get("REMOTE_ADDR")]
+    parts = [part.strip() for part in forwarded.split(",") if part.strip()]
+    candidates = []
+    if len(parts) >= 2:
+        candidates.append(parts[-2])
+    candidates.append(request.META.get("REMOTE_ADDR"))
     for candidate in candidates:
         try:
             return str(ipaddress.ip_address(candidate))

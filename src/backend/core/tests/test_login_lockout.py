@@ -93,15 +93,39 @@ class TestIsLockedWindowEdges:
 
 
 class TestClientIp:
-    def test_prefers_the_first_forwarded_address(self):
+    def test_falls_back_to_remote_addr_with_no_forwarded_header(self):
+        request = RequestFactory().post("/", REMOTE_ADDR="198.51.100.4")
+        assert client_ip(request) == "198.51.100.4"
+
+    def test_single_entry_forwarded_header_falls_back_to_remote_addr(self):
+        """A lone XFF entry has no GCP-appended value to trust — it is
+        indistinguishable from a bare client-supplied header."""
         request = RequestFactory().post(
-            "/", HTTP_X_FORWARDED_FOR="203.0.113.9, 10.0.0.1", REMOTE_ADDR="10.0.0.1"
+            "/", HTTP_X_FORWARDED_FOR="203.0.113.9", REMOTE_ADDR="198.51.100.4"
+        )
+        assert client_ip(request) == "198.51.100.4"
+
+    def test_gcp_three_entry_shape_picks_the_second_from_right(self):
+        """``<client-supplied>, <real-client>, <lb>`` — the middle entry is
+        the one GCP itself appended and the only one worth trusting."""
+        request = RequestFactory().post(
+            "/",
+            HTTP_X_FORWARDED_FOR="198.51.100.9, 203.0.113.9, 10.0.0.1",
+            REMOTE_ADDR="10.0.0.1",
         )
         assert client_ip(request) == "203.0.113.9"
 
-    def test_falls_back_to_remote_addr(self):
-        request = RequestFactory().post("/", REMOTE_ADDR="198.51.100.4")
-        assert client_ip(request) == "198.51.100.4"
+    def test_forged_leading_entry_does_not_win(self):
+        """A forged leftmost entry claiming to be some other address must not
+        be picked — that is the forgery the second-from-right rule exists to
+        resist."""
+        request = RequestFactory().post(
+            "/",
+            HTTP_X_FORWARDED_FOR="203.0.113.250, 198.51.100.9, 10.0.0.1",
+            REMOTE_ADDR="10.0.0.1",
+        )
+        assert client_ip(request) != "203.0.113.250"
+        assert client_ip(request) == "198.51.100.9"
 
     def test_garbage_forwarded_header_falls_back_rather_than_crashing(self):
         """X-Forwarded-For is client-controlled — it can be anything at all."""
@@ -113,6 +137,30 @@ class TestClientIp:
     def test_no_usable_address_returns_none(self):
         request = RequestFactory().post("/", REMOTE_ADDR="not-an-ip")
         assert client_ip(request) is None
+
+
+@pytest.mark.django_db
+class TestClientIpForgeryResistance:
+    """The security property the second-from-right rule protects: a forged
+    leftmost XFF entry naming some other address must not be able to record
+    or match a lockout against that address.
+    """
+
+    def test_forged_leading_entry_is_not_recorded_or_locked(self, account, settings):
+        settings.LOGIN_FAILURE_LIMIT = 3
+        victim_ip = "203.0.113.250"
+        attacker_ip = "198.51.100.9"
+        request = RequestFactory().post(
+            "/",
+            HTTP_X_FORWARDED_FOR=f"{victim_ip}, {attacker_ip}, 10.0.0.1",
+            REMOTE_ADDR="10.0.0.1",
+        )
+        for _ in range(3):
+            authenticate(request=request, username="alvo", password="errada")
+        assert not LoginAttempt.objects.filter(ip=victim_ip).exists()
+        assert LoginAttempt.objects.filter(ip=attacker_ip).count() == 3
+        assert is_locked(None, victim_ip) is False
+        assert is_locked(None, attacker_ip) is True
 
 
 @pytest.mark.django_db
