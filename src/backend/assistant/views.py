@@ -177,8 +177,8 @@ async def chat_view(request):
     content_type = request.content_type or ""
     is_multipart = content_type.startswith("multipart/form-data")
     # The kind is decided here, before any model work, because the image budget
-    # is tighter. request.FILES parsing is bounded by MAX_REQUEST_BODY_BYTES,
-    # enforced upstream in core.middleware.
+    # is tighter. request.FILES parsing is currently unbounded on the denied
+    # path — it will be bounded once the request-body ceiling lands (E01 Task 6).
     kind = (
         AssistantUsageKind.IMAGE
         if is_multipart and request.FILES.getlist("image")

@@ -129,8 +129,11 @@ class TestChatEndpointThrottle:
         """POST a text turn with ``_sse_response`` replaced by a call recorder.
 
         Replacing ``_sse_response`` is the cheapest place to prove "zero model
-        calls": every path that reaches the model goes through it, and nothing
-        else does. The stub must return a real ``HttpResponse`` — ``_handle_json``
+        calls" *for the JSON path*: ``_handle_json`` has exactly one route to a
+        model, through ``_sse_response``. This does not hold for the multipart
+        path — ``transcribe_audio`` and ``extract_receipt`` reach models directly,
+        without going through ``_sse_response`` — so this stub only covers text
+        turns. The stub must return a real ``HttpResponse`` — ``_handle_json``
         returns its result straight to Django, which raises on ``None``.
         """
         import json
@@ -243,7 +246,7 @@ class TestChatEndpointThrottle:
         assert calls == []
         assert "fotos" in response.content.decode()
 
-    def test_audio_turn_spends_the_text_budget(self, logged_client, user, settings):
+    def test_audio_turn_spends_the_text_budget(self, logged_client, user, monkeypatch, settings):
         from django.core.files.uploadedfile import SimpleUploadedFile
 
         settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 1
@@ -251,6 +254,20 @@ class TestChatEndpointThrottle:
         settings.ASSISTANT_THROTTLE_IMAGE_PER_HOUR = 100
         settings.ASSISTANT_THROTTLE_IMAGE_PER_DAY = 100
         _burn(user, AssistantUsageKind.TEXT, 1)
+
+        calls = []
+
+        async def _stub_multipart(*args, **kwargs):
+            # Stubbed so a regression that lets this turn through cannot reach
+            # transcribe_audio, which would make a real outbound call to
+            # api.openai.com with whatever credentials the environment holds.
+            from django.http import HttpResponse
+
+            calls.append("call")
+            return HttpResponse("stubbed", content_type="text/event-stream")
+
+        monkeypatch.setattr("assistant.views._handle_multipart", _stub_multipart)
         audio = SimpleUploadedFile("nota.webm", b"\x00\x01\x02", content_type="audio/webm")
         response = logged_client.post("/api/assistant/chat/", data={"audio": audio})
         assert response.status_code == 429
+        assert calls == []
