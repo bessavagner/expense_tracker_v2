@@ -94,12 +94,21 @@ will not track future FX moves, so revisit it periodically or the day
 USD/BRL moves meaningfully.
 
 **Alert path proven:** to confirm the notification actually fires, the
-budget was temporarily dropped to `1BRL` at `2026-08-08T16:07:54Z`. The owner
-received the alert email (subject `Budget alert: expense-tracker monthly
-ceiling`) at the 50% threshold on **2026-08-08 09:27**, naming the budget,
-billing account `01EAA6-4C3E7C-8FE819`, and project `expense-tracker-482807`.
-The budget has since been restored to BRL 50 — no further action needed. The
-restore command, for reference if the budget is ever dropped again to
+budget was temporarily dropped to `1BRL` at `2026-08-08T16:07:54Z` (ours,
+precise, UTC). The owner confirmed receipt of the resulting 50%-threshold
+alert email, subject `Budget alert: expense-tracker monthly ceiling`,
+displaying the timestamp `Aug 8, 2026, 9:27 AM` as rendered by Google. That
+displayed time is in the billing account's configured timezone, not UTC —
+Google does not state which timezone in the email itself — so it cannot be
+compared directly against the UTC drop time above; do not convert it or
+assume an offset. The clock reading is not what proves this was the right
+alert — the identifying details in the email are: it names the budget
+"expense-tracker monthly ceiling", billing account `01EAA6-4C3E7C-8FE819`,
+and project `expense-tracker-482807`. A correctly-identified alert for this
+budget arrived after the threshold was crossed, and the owner confirmed
+receiving it — that is what the notification path being proven rests on.
+The budget has since been restored to BRL 50 — no further action needed.
+The restore command, for reference if the budget is ever dropped again to
 re-test:
 
 ```bash
