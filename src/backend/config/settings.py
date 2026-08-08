@@ -173,6 +173,12 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOGIN_URL = "/admin/login/"
 
+# Brute-force protection lives in the authentication backend, not a view, so it
+# keeps working when E05 replaces /admin/login/ with a real login page.
+AUTHENTICATION_BACKENDS = ["core.auth_backends.LockoutModelBackend"]
+LOGIN_FAILURE_LIMIT = int(os.environ.get("LOGIN_FAILURE_LIMIT", "10"))
+LOGIN_FAILURE_WINDOW_MINUTES = int(os.environ.get("LOGIN_FAILURE_WINDOW_MINUTES", "15"))
+
 # AI Assistant
 LLM_MODEL = os.environ.get("LLM_MODEL", "openai:gpt-5.4")
 # Agente único (prompt 009): um assistente forte com todas as ferramentas.
