@@ -17,9 +17,9 @@ CSRF_TRUSTED_ORIGINS = os.environ.get("CSRF_TRUSTED_ORIGINS", "http://localhost:
 
 # Stated rather than inherited. Lax is correct here — the React widget and the
 # Android TWA are both same-origin — but a setting that is only correct by
-# default breaks silently when the default changes. Tests pin these values.
-SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "Lax")
-CSRF_COOKIE_SAMESITE = os.environ.get("CSRF_COOKIE_SAMESITE", "Lax")
+# default breaks silently when the default changes.
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
 
 # TWA (Trusted Web Activity) — Digital Asset Links for the Android app.
 # Fingerprint(s) come from the Bubblewrap signing key; set TWA_CERT_FINGERPRINT

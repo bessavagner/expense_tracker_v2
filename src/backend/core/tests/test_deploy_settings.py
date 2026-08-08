@@ -132,3 +132,16 @@ class TestCookieSameSite:
 
     def test_csrf_cookie_samesite_is_lax(self):
         assert settings.CSRF_COOKIE_SAMESITE == "Lax"
+
+    def test_samesite_settings_are_stated_in_settings_source(self):
+        """Source-level guard: stated, not merely inherited from the framework default.
+
+        Django's built-in default for both settings is already ``Lax``, so the
+        two assertions above cannot go red if the lines were deleted — they
+        would keep passing on the inherited default. Only a check on the
+        settings module's own source text distinguishes "stated" from
+        "inherited".
+        """
+        settings_source = (BACKEND_DIR / "config" / "settings.py").read_text(encoding="utf-8")
+        assert 'SESSION_COOKIE_SAMESITE = "Lax"' in settings_source
+        assert 'CSRF_COOKIE_SAMESITE = "Lax"' in settings_source
