@@ -220,6 +220,18 @@ ASSISTANT_ALLOWED_AUDIO_TYPES = (
     "audio/x-wav",
 )
 
+# Assistant throttling — a crude per-account ceiling, deliberately blunt (E01).
+# Sized from measured usage: the single production account peaked at 5 turns/day
+# and 3 turns/hour, of which 3 were image turns. These defaults sit ~20x above
+# that peak, so ordinary daily use never meets them, while a runaway client loop
+# or a stolen session is capped within the hour.
+# Audio counts against the TEXT budget: transcription is ~100x cheaper per turn
+# than a vision call, so only the image path needs its own ceiling.
+ASSISTANT_THROTTLE_TEXT_PER_HOUR = int(os.environ.get("ASSISTANT_THROTTLE_TEXT_PER_HOUR", "60"))
+ASSISTANT_THROTTLE_TEXT_PER_DAY = int(os.environ.get("ASSISTANT_THROTTLE_TEXT_PER_DAY", "300"))
+ASSISTANT_THROTTLE_IMAGE_PER_HOUR = int(os.environ.get("ASSISTANT_THROTTLE_IMAGE_PER_HOUR", "15"))
+ASSISTANT_THROTTLE_IMAGE_PER_DAY = int(os.environ.get("ASSISTANT_THROTTLE_IMAGE_PER_DAY", "50"))
+
 # Ensure OpenAI client can be instantiated (uses dummy key in dev/test; real key in prod)
 if LLM_API_KEY and not os.environ.get("OPENAI_API_KEY"):
     os.environ["OPENAI_API_KEY"] = LLM_API_KEY

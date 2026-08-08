@@ -126,3 +126,44 @@ class MemoryEmbedding(models.Model):
 
     def __str__(self):
         return self.text[:50]
+
+
+class AssistantUsageKind(models.TextChoices):
+    TEXT = "text", "Texto"
+    IMAGE = "image", "Imagem"
+
+
+class AssistantUsageEvent(models.Model):
+    """One admitted assistant turn.
+
+    Written *before* the model call, so the counter records intent to spend
+    rather than successful spend — a run that fails halfway still consumed the
+    tokens. Audio turns count as ``TEXT``: transcription is roughly two orders of
+    magnitude cheaper per turn than a vision call, so only the image path earns a
+    budget of its own.
+
+    E07 will extend this row with token counts and a household FK. Keep it
+    append-only and cheap to write.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="assistant_usage_events",
+    )
+    kind = models.CharField(max_length=20, choices=AssistantUsageKind.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "evento de uso do assistente"
+        verbose_name_plural = "eventos de uso do assistente"
+        indexes = [
+            models.Index(
+                fields=["user", "kind", "-created_at"],
+                name="usage_user_kind_recent_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user_id} {self.kind} {self.created_at:%Y-%m-%d %H:%M}"

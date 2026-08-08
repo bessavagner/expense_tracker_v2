@@ -1,0 +1,121 @@
+"""Rolling-window counting for the assistant throttle.
+
+The window is rolling rather than calendar-bucketed on purpose: a calendar hour
+lets a caller spend the whole hourly budget at 10:59 and the whole next budget at
+11:00, doubling the real ceiling at exactly the moment that matters.
+"""
+
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from asgiref.sync import async_to_sync
+from django.utils import timezone
+
+from assistant.models import AssistantUsageEvent, AssistantUsageKind
+from assistant.throttling import exceeded_rule, rules_for
+
+# Frozen so "N hours ago" is computed from a fixed instant rather than the real
+# clock — a rolling-window test that reads the real clock is exactly the
+# time-bomb this freeze exists to prevent.
+FROZEN_NOW = datetime(2026, 6, 15, 12, 0, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def _frozen_clock(time_machine):
+    time_machine.move_to(FROZEN_NOW, tick=False)
+
+
+def _burn(user, kind, count, *, age=timedelta(0)):
+    """Create ``count`` usage events, backdated by ``age``."""
+    stamp = timezone.now() - age
+    for _ in range(count):
+        event = AssistantUsageEvent.objects.create(user=user, kind=kind)
+        AssistantUsageEvent.objects.filter(pk=event.pk).update(created_at=stamp)
+
+
+@pytest.mark.django_db
+class TestRulesFor:
+    def test_image_rules_are_tighter_than_text_rules(self, settings):
+        text_hourly = rules_for(AssistantUsageKind.TEXT)[0]
+        image_hourly = rules_for(AssistantUsageKind.IMAGE)[0]
+        assert image_hourly.limit < text_hourly.limit
+
+    def test_rules_read_current_settings(self, settings):
+        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 7
+        assert rules_for(AssistantUsageKind.TEXT)[0].limit == 7
+
+    def test_each_kind_has_an_hourly_and_a_daily_rule(self):
+        for kind in (AssistantUsageKind.TEXT, AssistantUsageKind.IMAGE):
+            windows = {rule.window for rule in rules_for(kind)}
+            assert windows == {timedelta(hours=1), timedelta(days=1)}
+
+
+@pytest.mark.django_db
+class TestExceededRule:
+    def test_no_usage_is_never_throttled(self, user):
+        assert async_to_sync(exceeded_rule)(user, AssistantUsageKind.TEXT) is None
+
+    def test_under_the_hourly_limit_is_allowed(self, user, settings):
+        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 5
+        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
+        _burn(user, AssistantUsageKind.TEXT, 4)
+        assert async_to_sync(exceeded_rule)(user, AssistantUsageKind.TEXT) is None
+
+    def test_at_the_hourly_limit_is_blocked(self, user, settings):
+        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 5
+        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
+        _burn(user, AssistantUsageKind.TEXT, 5)
+        rule = async_to_sync(exceeded_rule)(user, AssistantUsageKind.TEXT)
+        assert rule is not None
+        assert rule.limit == 5
+        assert rule.label == "hora"
+
+    def test_events_outside_the_window_do_not_count(self, user, settings):
+        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 5
+        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
+        _burn(user, AssistantUsageKind.TEXT, 5, age=timedelta(hours=2))
+        assert async_to_sync(exceeded_rule)(user, AssistantUsageKind.TEXT) is None
+
+    def test_daily_limit_blocks_even_when_hourly_is_clear(self, user, settings):
+        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 100
+        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 6
+        _burn(user, AssistantUsageKind.TEXT, 6, age=timedelta(hours=5))
+        rule = async_to_sync(exceeded_rule)(user, AssistantUsageKind.TEXT)
+        assert rule is not None
+        assert rule.label == "dia"
+
+    def test_kinds_have_independent_budgets(self, user, settings):
+        settings.ASSISTANT_THROTTLE_IMAGE_PER_HOUR = 2
+        settings.ASSISTANT_THROTTLE_IMAGE_PER_DAY = 100
+        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 100
+        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
+        _burn(user, AssistantUsageKind.IMAGE, 2)
+        assert async_to_sync(exceeded_rule)(user, AssistantUsageKind.IMAGE) is not None
+        assert async_to_sync(exceeded_rule)(user, AssistantUsageKind.TEXT) is None
+
+    def test_other_users_usage_does_not_count(self, user, settings):
+        from model_bakery import baker
+
+        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 2
+        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
+        stranger = baker.make("core.CustomUser", username="stranger")
+        _burn(stranger, AssistantUsageKind.TEXT, 5)
+        assert async_to_sync(exceeded_rule)(user, AssistantUsageKind.TEXT) is None
+
+    def test_event_exactly_at_the_window_edge_still_counts(self, user, settings):
+        """The window boundary is inclusive: an event exactly one hour old is
+        still "this hour" for a caller who has been active for exactly an
+        hour, not a loophole that lets the count reset a moment early.
+        """
+        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 1
+        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
+        _burn(user, AssistantUsageKind.TEXT, 1, age=timedelta(hours=1))
+        rule = async_to_sync(exceeded_rule)(user, AssistantUsageKind.TEXT)
+        assert rule is not None
+        assert rule.label == "hora"
+
+    def test_event_one_second_past_the_window_edge_does_not_count(self, user, settings):
+        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 1
+        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
+        _burn(user, AssistantUsageKind.TEXT, 1, age=timedelta(hours=1, seconds=1))
+        assert async_to_sync(exceeded_rule)(user, AssistantUsageKind.TEXT) is None
