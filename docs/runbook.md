@@ -6,6 +6,8 @@ Production is Cloud Run service `expense-tracker`, GCP project
 `expense-tracker-482807`, region `southamerica-east1`, fronted by
 <https://expense-tracker-654941182076.southamerica-east1.run.app>.
 
+**No load balancer sits in front of this service** (ingress `all`, direct to Cloud Run) — if that ever changes, `core.security.client_ip` (E01's login lockout) must switch from trusting the *last* `X-Forwarded-For` entry to the second-from-right one; see its docstring.
+
 > `gcloud`'s active project defaults to something else on this machine — always
 > pass `--project expense-tracker-482807` explicitly.
 

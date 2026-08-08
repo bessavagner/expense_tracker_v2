@@ -97,31 +97,22 @@ class TestClientIp:
         request = RequestFactory().post("/", REMOTE_ADDR="198.51.100.4")
         assert client_ip(request) == "198.51.100.4"
 
-    def test_single_entry_forwarded_header_falls_back_to_remote_addr(self):
-        """A lone XFF entry has no GCP-appended value to trust — it is
-        indistinguishable from a bare client-supplied header."""
+    def test_single_entry_forwarded_header_is_the_real_client_ip(self):
+        """Cloud Run's own front end appends the real client IP as the last
+        (here, only) entry — there is no load balancer in front of this
+        service to add a further hop."""
         request = RequestFactory().post(
-            "/", HTTP_X_FORWARDED_FOR="203.0.113.9", REMOTE_ADDR="198.51.100.4"
-        )
-        assert client_ip(request) == "198.51.100.4"
-
-    def test_gcp_three_entry_shape_picks_the_second_from_right(self):
-        """``<client-supplied>, <real-client>, <lb>`` — the middle entry is
-        the one GCP itself appended and the only one worth trusting."""
-        request = RequestFactory().post(
-            "/",
-            HTTP_X_FORWARDED_FOR="198.51.100.9, 203.0.113.9, 10.0.0.1",
-            REMOTE_ADDR="10.0.0.1",
+            "/", HTTP_X_FORWARDED_FOR="203.0.113.9", REMOTE_ADDR="10.0.0.1"
         )
         assert client_ip(request) == "203.0.113.9"
 
-    def test_forged_leading_entry_does_not_win(self):
-        """A forged leftmost entry claiming to be some other address must not
-        be picked — that is the forgery the second-from-right rule exists to
-        resist."""
+    def test_two_entry_header_picks_the_last_not_the_forged_leading_one(self):
+        """``<forged-victim>, <real-client>`` — Cloud Run appends the real
+        client IP after whatever the client supplied, so the last entry
+        wins, not the leftmost."""
         request = RequestFactory().post(
             "/",
-            HTTP_X_FORWARDED_FOR="203.0.113.250, 198.51.100.9, 10.0.0.1",
+            HTTP_X_FORWARDED_FOR="203.0.113.250, 198.51.100.9",
             REMOTE_ADDR="10.0.0.1",
         )
         assert client_ip(request) != "203.0.113.250"
@@ -141,9 +132,9 @@ class TestClientIp:
 
 @pytest.mark.django_db
 class TestClientIpForgeryResistance:
-    """The security property the second-from-right rule protects: a forged
-    leftmost XFF entry naming some other address must not be able to record
-    or match a lockout against that address.
+    """The security property the last-entry rule protects: a forged leading
+    XFF entry naming some other address must not be able to record or match
+    a lockout against that address.
     """
 
     def test_forged_leading_entry_is_not_recorded_or_locked(self, account, settings):
@@ -152,7 +143,7 @@ class TestClientIpForgeryResistance:
         attacker_ip = "198.51.100.9"
         request = RequestFactory().post(
             "/",
-            HTTP_X_FORWARDED_FOR=f"{victim_ip}, {attacker_ip}, 10.0.0.1",
+            HTTP_X_FORWARDED_FOR=f"{victim_ip}, {attacker_ip}",
             REMOTE_ADDR="10.0.0.1",
         )
         for _ in range(3):
