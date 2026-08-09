@@ -152,27 +152,30 @@ class ImportMappingView(LoginRequiredMixin, View):
                 if pm and pm.lower() not in existing_pms:
                     unmatched_pms.add(pm)
 
-        # Check duplicates
+        # Check duplicates. One query for the whole file rather than one
+        # `.exists()` per row: a 500-row statement export is a common import, and
+        # per-row existence checks made this step's cost linear in the file.
+        # Narrowed to the dates the file actually mentions, so the set stays
+        # small however long the user's history is.
         duplicate_indices = []
         amount_field = "total_amount" if import_type == "installment" else "amount"
-        for i, row in enumerate(rows):
-            if row["status"] != "ok":
-                continue
-            if import_type == "installment":
-                exists = InstallmentPlan.objects.filter(
-                    user=user,
-                    date=row["date"],
-                    total_amount=Decimal(row["total_amount"]),
-                    description=row["description"],
-                ).exists()
-            else:
-                exists = Entry.objects.filter(
-                    user=user,
-                    date=row["date"],
-                    amount=Decimal(row[amount_field]),
-                    description=row["description"],
-                ).exists()
-            if exists:
+        candidates = [(i, row) for i, row in enumerate(rows) if row["status"] == "ok"]
+        dates = {row["date"] for _, row in candidates}
+        if import_type == "installment":
+            already_imported = set(
+                InstallmentPlan.objects.filter(user=user, date__in=dates).values_list(
+                    "date", "total_amount", "description"
+                )
+            )
+        else:
+            already_imported = set(
+                Entry.objects.filter(user=user, date__in=dates).values_list(
+                    "date", "amount", "description"
+                )
+            )
+        for i, row in candidates:
+            key = (row["date"], Decimal(row[amount_field]), row["description"])
+            if key in already_imported:
                 row["status"] = "duplicate"
                 duplicate_indices.append(i)
 
@@ -280,7 +283,14 @@ class ImportExecuteView(LoginRequiredMixin, View):
 
         # Build category and PM lookup maps (case-insensitive)
         cat_map = {c.name.lower(): c for c in Category.objects.filter(user=user)}
-        pm_map = {p.name.lower(): p for p in PaymentMethod.objects.filter(user=user)}
+        # Prefetched so resolve_closing_day (called twice per row — here and
+        # again inside Entry.save) reads a cache instead of querying.
+        pm_map = {
+            p.name.lower(): p
+            for p in PaymentMethod.objects.filter(user=user).prefetch_related(
+                "monthly_closing_days"
+            )
+        }
 
         # Create new categories/PMs from resolutions
         for name, resolution in category_resolutions.items():

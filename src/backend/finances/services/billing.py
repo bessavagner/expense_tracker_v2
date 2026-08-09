@@ -9,11 +9,21 @@ def resolve_closing_day(payment_method, entry_date: date) -> int | None:
     Looks up a per-month override (:class:`PaymentMethodClosingDay`) for the
     month of ``entry_date``; falls back to the payment method's default
     ``closing_day`` when there is no override.
+
+    Iterates ``.all()`` and filters in Python rather than calling ``.filter()``:
+    a related manager's ``.filter()`` always issues a query, while ``.all()``
+    returns the ``prefetch_related`` cache when the caller has one. The CSV
+    importer creates hundreds of entries against a handful of payment methods,
+    and this is the difference between one query and one per row — twice per
+    row, in fact, because ``Entry.save()`` calls this again.
+
+    A payment method has at most a handful of monthly overrides, so scanning
+    them in Python is free.
     """
     month = entry_date.replace(day=1)
-    override = payment_method.monthly_closing_days.filter(month=month).first()
-    if override is not None:
-        return override.closing_day
+    for override in payment_method.monthly_closing_days.all():
+        if override.month == month:
+            return override.closing_day
     return payment_method.closing_day
 
 
