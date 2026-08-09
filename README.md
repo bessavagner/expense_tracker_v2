@@ -147,9 +147,11 @@ uv run python src/backend/manage.py createsuperuser
 ### 4. Build frontend assets
 
 ```bash
-# React islands (Vite) + Tailwind CSS
+# React islands (Vite)
+cd src/backend/frontend && CI=true pnpm install --frozen-lockfile && pnpm build && cd -
+
+# Tailwind CSS — --force is required, see docs/runbook.md
 uv run python src/backend/manage.py tailwind build --force
-# build the React bundle per the frontend toolchain (mount.js)
 ```
 
 ### 5. Run

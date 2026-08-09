@@ -381,3 +381,59 @@ keepalive afterwards.**
   imports and memory.
 
 Removing any of these re-introduces the slow cold start.
+
+---
+
+## Rebuilding the committed frontend artifacts
+
+`src/backend/static/frontend/mount.js` and `src/backend/static/css/tailwind.css`
+are **tracked in git**. They are committed so local dev and the Docker build work
+without a Node toolchain. CI fails if they drift from their source, so rebuild
+and commit both whenever you touch `src/backend/frontend/src/**`,
+`src/backend/templates/**`, or `src/backend/static/css/input.css`.
+
+```bash
+# React islands
+cd src/backend/frontend
+CI=true pnpm install --frozen-lockfile
+pnpm build            # runs tsc, then vite build -> ../static/frontend/mount.js
+cd -
+
+# Tailwind — --force is NOT optional
+uv run python src/backend/manage.py tailwind build --force
+
+git add src/backend/static/frontend/mount.js src/backend/static/css/tailwind.css
+```
+
+**Both builds are reproducible, but only because both toolchains are pinned.**
+`settings.TAILWIND_CLI_VERSION = "2.8.3"` (the tailwind-cli-extra release
+carrying tailwindcss 4.2.2) and the Dockerfile's `pnpm@10.23.0` / Node 22, which
+CI mirrors. Unpinned, `django-tailwind-cli` resolves *latest* from GitHub at
+build time: that is how the committed CSS came to be un-reproducible, built by
+4.2.2 while this machine's CLI had moved to 4.3.3 and emitted a file ~32 KB
+larger. Upgrading Tailwind is therefore deliberate: bump the pin, rebuild with
+`--force`, look at the site, and commit the new CSS in the same commit.
+
+**Common failure #1:** dropping `--force`. Tailwind v4 trusts its cache and emits
+CSS that is missing any class you just added to a template. The page renders
+unstyled in exactly one place and looks like a template bug.
+
+**Common failure #2:** `ERR_PNPM_IGNORED_BUILDS` (or, on an older pnpm,
+`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`) from `pnpm install`. Both mean the
+pnpm on your PATH is not the pinned one — pnpm 11 replaced the
+`onlyBuiltDependencies` key that `pnpm-workspace.yaml` uses with `allowBuilds`,
+fails the frozen install, and **rewrites that tracked file**. Use pnpm 10.23.0.
+Note `npx -y pnpm@10.23.0` does not help: it silently runs whatever pnpm is
+already on PATH. `npm install --prefix /tmp/pnpm10 pnpm@10.23.0` and run
+`/tmp/pnpm10/node_modules/.bin/pnpm`, or install 10.23.0 globally.
+
+**Common failure #3:** a local `vite build --watch` service (systemd `--user`
+`expense-tracker-js`) rewriting `mount.js` under you mid-commit. Stop it before
+rebuilding by hand.
+
+**Surprise worth knowing:** Tailwind v4 scans *every* source file under
+`src/backend`, including `.py`. A prose word in a Python comment that happens to
+match a utility name adds that utility to the CSS — a comment containing the word
+"grow" is what put `.grow{flex-grow:1}` in the stylesheet. So a commit that
+touches only comments can legitimately require a CSS rebuild, and the CI gate
+will say so.

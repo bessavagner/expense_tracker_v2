@@ -168,6 +168,13 @@ STORAGES = {
 }
 
 # TailwindCSS v4 + DaisyUI
+# Pinned: without this, django-tailwind-cli resolves "latest" from GitHub at build
+# time, so two machines on different days emit different CSS and the committed
+# static/css/tailwind.css cannot be reproduced. 2.8.3 is the tailwind-cli-extra
+# release bundling tailwindcss 4.2.2 — the version that built the committed file.
+# Bumping this is a deliberate act: bump, rebuild with --force, eyeball the site,
+# commit the new CSS in the same commit.
+TAILWIND_CLI_VERSION = "2.8.3"
 TAILWIND_CLI_USE_DAISY_UI = True
 TAILWIND_CLI_SRC_CSS = "static/css/input.css"
 TAILWIND_CLI_DIST_CSS = "css/tailwind.css"

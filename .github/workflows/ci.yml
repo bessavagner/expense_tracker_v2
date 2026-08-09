@@ -69,6 +69,17 @@ jobs:
       - name: No missing migrations
         run: uv run python src/backend/manage.py makemigrations --check --dry-run
 
+      # Tailwind v4 scans templates for class names, so a new class in a template
+      # needs a rebuild. --force is required: without it the CLI trusts its cache
+      # and emits CSS that is missing the new class. The gate only works because
+      # settings pin TAILWIND_CLI_VERSION — on "latest" the CLI would differ by
+      # the day and this step would fail on unrelated pull requests.
+      - name: Committed Tailwind CSS matches a fresh build
+        run: |
+          uv run python src/backend/manage.py tailwind build --force
+          git diff --exit-code -- src/backend/static/css/tailwind.css \
+            || { echo "::error::tailwind.css is stale. Run 'uv run python src/backend/manage.py tailwind build --force' and commit the result."; exit 1; }
+
       # The production-only settings live inside `if not DEBUG:`, so the plain
       # `check` above never sees them. This is the only place CI does.
       - name: Deploy check under production-like settings
@@ -116,6 +127,13 @@ jobs:
 
       - name: Build the React islands
         run: pnpm build
+
+      # The artifact is committed so local dev and the Docker build work without
+      # a Node toolchain. That only stays safe if CI proves it matches its source.
+      - name: Committed React bundle matches a fresh build
+        run: |
+          git diff --exit-code -- ../static/frontend/mount.js \
+            || { echo "::error::mount.js is stale. Run 'pnpm build' in src/backend/frontend and commit the result."; exit 1; }
 
   clock-shift:
     # The suite is time-sensitive by domain (billing months), so "does it still
