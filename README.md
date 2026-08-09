@@ -11,7 +11,7 @@ Built as a real, daily-driven app to manage a family's finances — installed as
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![PydanticAI](https://img.shields.io/badge/PydanticAI-agent-E92063)](https://ai.pydantic.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-v4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
-[![Tests](https://img.shields.io/badge/tests-817%20passing-success)](#-quality--testing)
+[![CI](https://github.com/bessavagner/expense_tracker_v2/actions/workflows/ci.yml/badge.svg)](https://github.com/bessavagner/expense_tracker_v2/actions/workflows/ci.yml)
 [![Deploy](https://img.shields.io/badge/deploy-Cloud%20Run%20%2B%20Supabase-4285F4?logo=googlecloud&logoColor=white)](#-deployment)
 
 </div>
@@ -170,7 +170,7 @@ uv run python src/backend/manage.py runserver
 This project is built **test-first** — TDD is non-negotiable, and every feature lands with its tests.
 
 ```bash
-uv run pytest src/backend/ -v              # run the full suite (818 tests)
+uv run pytest src/backend/ -v              # run the full suite
 uv run coverage run -m pytest src/backend/ # with coverage
 uv run coverage report --fail-under=80     # enforce ≥80% coverage
 uv run ruff check src/backend/             # lint
@@ -180,8 +180,13 @@ uv run ruff format --check src/backend/    # format check
 - **Time-stable by construction.** Date-sensitive tests freeze the clock rather
   than read it; `TEST_CLOCK_SHIFT=+1y` re-runs the suite a year from now. The
   rules are in **[`docs/testing-conventions.md`](docs/testing-conventions.md)**.
-- **818 tests** across unit, integration, and BDD scenarios (`pytest-bdd`) — 817 passing, 1 skipped.
-- **GitHub Actions CI** runs lint, format check, the full suite with an ≥80% coverage gate, and `manage.py check` on every push and PR.
+- Unit, integration, and BDD scenarios (`pytest-bdd`). The only skipped tests are
+  the real-LLM ones, gated behind `RUN_LLM_TESTS=1` because they cost money.
+- **GitHub Actions CI** on every push and PR: lint, format check, the full suite
+  with an ≥80% coverage gate, `manage.py check` and `check --deploy`, a missing
+  migration check, a frontend type-check and build, a committed-artifact drift
+  gate, and the suite re-run with the clock shifted forward a month and a year —
+  which also runs nightly.
 - **Ruff** enforces a strict rule set including `flake8-django`, `flake8-bandit` (security), `pyupgrade`, and `isort`.
 - **Pre-commit hooks** keep the working tree clean.
 
