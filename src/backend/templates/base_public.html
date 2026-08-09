@@ -1,0 +1,41 @@
+{% load static %}<!DOCTYPE html>
+{% comment %}
+Shell for pages seen before signing in.
+
+Deliberately not an extension of base.html: that one carries the navbar, the
+side drawer, the "+" FAB and the assistant island, all of which assume a
+logged-in user and half of which would 302 straight back here. What it does
+share is the head — same theme bootstrap, same fonts, same stylesheet, same PWA
+tags — so the login screen looks like the app rather than like a gate in front
+of it.
+{% endcomment %}
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <title>{% block title %}Expense Tracker{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+    <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
+    <script>
+        // Apply the saved theme before paint (no flash). No saved theme =>
+        // DaisyUI auto-picks ledger / ledger-dark from the OS preference.
+        (function () {
+            try {
+                var t = localStorage.getItem("theme");
+                if (t) document.documentElement.setAttribute("data-theme", t);
+            } catch (e) {}
+        })();
+    </script>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
+    {% include "partials/_pwa_head.html" %}
+</head>
+<body class="min-h-screen bg-base-200">
+    <main class="min-h-screen flex items-center justify-center p-4">
+        {% block content %}{% endblock %}
+    </main>
+    {% include "partials/_submit_guard.html" %}
+</body>
+</html>

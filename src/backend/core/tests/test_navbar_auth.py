@@ -10,10 +10,10 @@ class TestLogout(TestCase):
         self.client.force_login(user)
         resp = self.client.post("/logout/")
         self.assertEqual(resp.status_code, 302)
-        # A protected page now bounces to the login screen.
+        # A protected page now bounces to the app's login screen.
         protected = self.client.get("/entries/")
         self.assertEqual(protected.status_code, 302)
-        self.assertIn("/admin/login", protected["Location"])
+        self.assertIn("/login/", protected["Location"])
 
 
 class TestNavbarControls(TestCase):
