@@ -650,11 +650,26 @@ Three things this established that local Postgres could not:
   `CREATE DATABASE` and index DDL. The 6543 transaction pooler is still the wrong
   door; nothing here tested it, and nothing should.
 - **The rehearsal also applied E01's migrations** — `assistant/0006_assistant_usage_event`
-  and `core/0002_login_attempt` were both pending on the copy, which confirms from
-  the database side what the branch already knew: **E01 is merged but not
-  deployed**, and production is still missing the assistant usage counter and the
-  login-attempt table. The deploy that ships this branch applies E01's and E03's
-  migrations together.
+  and `core/0002_login_attempt` were both pending on the copy, confirming from the
+  database side that E01 was merged but not deployed.
+
+## Applied to production
+
+2026-08-09, after the rehearsal above and in that order — migrations first, then
+code, because E01's code writes to `assistant_assistantusageevent` and
+`core_loginattempt` on every assistant turn and every login. Deploying first
+would have 500'd both.
+
+All seven migrations applied to the live database in **8.345s**, within 2% of the
+8.18s the rehearsal predicted, and `showmigrations` reports nothing pending. Row
+counts unchanged either side: 2,298 entries, 91 incomes, 262 chat messages. All
+nine indexes E01 and E03 declare are present, and the three redundant FK indexes
+are gone.
+
+Cloud Run revision **`expense-tracker-00040-x7q`** then took 100% of traffic,
+replacing `00039-rg6`. Smoke test `200 / 302 / 200`, `/admin/login/` renders,
+`--max-instances 3` carried over as a bare deploy should, and the revision logged
+no error at or since startup.
 
 ## Re-run this after E04
 

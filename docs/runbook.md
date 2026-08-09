@@ -58,7 +58,7 @@ layer (E01's throttle) sits below all of them.
 
 | Ceiling | Value | Status | Effect when hit |
 |---|---|---|---|
-| Cloud Run `--max-instances` | 3 (was `20`) | **Live** — revision `expense-tracker-00039-rg6` | New requests queue rather than starting a 4th billable instance |
+| Cloud Run `--max-instances` | 3 (was `20`) | **Live** — carried onto revision `expense-tracker-00040-x7q` | New requests queue rather than starting a 4th billable instance |
 | GCP budget alert | BRL 50/month (target was USD 50, see below) | **Live**, alert path **proven** — see below | **Notifies only.** Email at 50%, 80%, 100% |
 | OpenAI org monthly limit | USD 30/month hard, USD 20 soft | **Live** — set by the owner in the console (no CLI) | API returns errors — the actual stop |
 
@@ -264,6 +264,12 @@ gcloud run services update-traffic expense-tracker \
   --project expense-tracker-482807 --region southamerica-east1 \
   --to-revisions expense-tracker-00039-rg6=100
 ```
+
+`00039-rg6` is the last revision before E01 and E03 shipped, and rolling back to
+it is safe against the current schema: those epics' migrations only *add* tables
+and indexes (plus drop three redundant ones), so the older code neither misses
+anything it needs nor trips over what it does not know about. **Do not unapply
+the migrations to roll back the code** — they are not the thing that breaks.
 
 ---
 
