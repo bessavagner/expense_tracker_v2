@@ -175,6 +175,9 @@ uv run ruff check src/backend/             # lint
 uv run ruff format --check src/backend/    # format check
 ```
 
+- **Time-stable by construction.** Date-sensitive tests freeze the clock rather
+  than read it; `TEST_CLOCK_SHIFT=+1y` re-runs the suite a year from now. The
+  rules are in **[`docs/testing-conventions.md`](docs/testing-conventions.md)**.
 - **818 tests** across unit, integration, and BDD scenarios (`pytest-bdd`) — 817 passing, 1 skipped.
 - **GitHub Actions CI** runs lint, format check, the full suite with an ≥80% coverage gate, and `manage.py check` on every push and PR.
 - **Ruff** enforces a strict rule set including `flake8-django`, `flake8-bandit` (security), `pyupgrade`, and `isort`.
