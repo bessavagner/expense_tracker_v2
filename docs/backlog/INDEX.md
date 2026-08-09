@@ -60,7 +60,7 @@ graph LR
 |---|---|---|---|---|---|
 | [E01](E01-spend-and-abuse-containment.md) | Spend & abuse containment | R0 | | — | review (deploy pending) |
 | [E02](E02-suite-integrity-and-ci-gates.md) | Suite integrity & CI gates | R0 | | — | review (CI run pending) |
-| [E03](E03-query-performance-floor.md) | Query performance floor | R0 | | — | ready |
+| [E03](E03-query-performance-floor.md) | Query performance floor | R0 | | — | review (deploy pending) |
 | [E04](E04-household-tenancy.md) | Household tenancy | R1 | | E02 | blocked |
 | [E05](E05-identity-invitations-admin-isolation.md) | Identity, invitations & admin isolation | R1 | | E04 | blocked |
 | [E06](E06-observability-and-agent-tracing.md) | Observability & agent tracing | R1 | | E01 | blocked |

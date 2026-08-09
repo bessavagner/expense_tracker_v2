@@ -437,3 +437,101 @@ match a utility name adds that utility to the CSS — a comment containing the w
 "grow" is what put `.grow{flex-grow:1}` in the stylesheet. So a commit that
 touches only comments can legitimately require a CSS rebuild, and the CI gate
 will say so.
+
+---
+
+## Applying a migration to Supabase
+
+Migrations go through the **direct/session connection on port 5432**, never the
+transaction pooler on 6543 — the pooler is pgbouncer in transaction mode and does
+not support everything a migration needs. The app runtime uses 6543; migrations
+do not.
+
+```bash
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/postgres?sslmode=require" \
+  uv run python src/backend/manage.py migrate
+```
+
+For anything schema-heavy — a new index, a column type change — rehearse it on a
+restored copy first:
+
+```bash
+pg_dump "postgresql://USER:PASSWORD@HOST:5432/postgres?sslmode=require" \
+  --no-owner --no-acl -Fc -f /tmp/ledger-prod.dump
+createdb -h HOST -p 5432 -U USER ledger_rehearsal
+pg_restore -h HOST -p 5432 -U USER -d ledger_rehearsal --no-owner /tmp/ledger-prod.dump
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/ledger_rehearsal?sslmode=require" \
+  uv run python src/backend/manage.py migrate
+dropdb -h HOST -p 5432 -U USER ledger_rehearsal
+```
+
+The dump contains every entry, income and chat message in the product. Treat
+`/tmp/ledger-prod.dump` as production data: delete it when the rehearsal is done.
+
+All five commands above were run for real on 2026-08-09. Everything below is a
+failure that actually happened doing it, in the order it bit.
+
+**Common failure #1: `pg_dump: aborting because of server version mismatch`.**
+Supabase runs **PostgreSQL 17.6**; Ubuntu 24.04 ships client 16, and `pg_dump`
+refuses to talk to a newer server. Use a matching client from Docker rather than
+installing one:
+
+```bash
+docker run --rm -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD -e PGDATABASE \
+  -e PGSSLMODE=require -v "$PWD:/work" postgres:17 \
+  pg_dump --no-owner --no-acl -Fc -f /work/ledger-prod.dump
+```
+
+**Common failure #2: `unexpected spaces found in "...", use percent-encoded
+spaces (%20) instead`.** The production password contains a space. `psql` 16
+tolerates it inside a URL, `pg_dump` 17 does not, and Django's URL parser would
+mangle it too. Do not hand-encode it — pass the parts as libpq variables
+(`PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`, `PGSSLMODE`) and, for
+`manage.py`, as `POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_USER` /
+`POSTGRES_PASSWORD` / `POSTGRES_DB`. Both tools then need no URL at all.
+
+**Common failure #3: `pg_restore: warning: errors ignored on restore: 2`,
+`permission denied for table secrets`.** Those two errors are Supabase's internal
+`vault` schema, which the pooler user cannot write. They do **not** affect
+application data — check the row counts rather than the exit code:
+
+```bash
+psql -tAc "SELECT 'entries', count(*) FROM finances_entry
+   UNION ALL SELECT 'incomes', count(*) FROM finances_income
+   UNION ALL SELECT 'chat', count(*) FROM assistant_chatmessage;"
+```
+
+**Common failure #4: `dropdb` fails with `database "..." is being accessed by
+other users — There is 1 other session using the database`, and
+`pg_stat_activity` shows nobody.** The connection is held by Supabase's pooler,
+not by a client, so `pg_terminate_backend` cannot clear it. Use:
+
+```bash
+psql -c 'DROP DATABASE IF EXISTS ledger_rehearsal WITH (FORCE);'
+```
+
+**Common failure #5:** `CREATE EXTENSION vector` is denied on a restored copy.
+Supabase enables extensions per database — run
+`CREATE EXTENSION IF NOT EXISTS vector;` on the copy as its owner first, before
+restoring.
+
+**Common failure #2:** the HNSW index build (`assistant/0009_memory_hnsw_index`)
+exhausts `maintenance_work_mem` on a small instance. It will not at the current
+few thousand embeddings; if it ever does, `SET maintenance_work_mem = '256MB';`
+in the session before migrating.
+
+**Verifying the E03 indexes landed**, after migrating any copy:
+
+```bash
+psql "postgresql://USER:PASSWORD@HOST:5432/DBNAME?sslmode=require" -c "
+  SELECT tablename, indexname FROM pg_indexes
+   WHERE indexname IN ('entry_user_billing_type_idx','entry_user_date_recent_idx',
+                       'income_user_month_idx','chat_user_recent_idx',
+                       'draft_user_status_recent_idx',
+                       'memory_embed_hnsw_cosine_idx')
+   ORDER BY tablename;"
+```
+
+Expect six rows. Note the vector index is `memory_embed_hnsw_cosine_idx` — the
+longer name the E03 plan specifies exceeds Django's 31-character index-name limit
+and will not migrate.

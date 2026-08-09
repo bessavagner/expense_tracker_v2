@@ -2,7 +2,7 @@
 id: E03
 title: Query performance floor
 release: R0
-status: ready
+status: review
 depends_on: []
 blocks: []
 wedge_critical: false

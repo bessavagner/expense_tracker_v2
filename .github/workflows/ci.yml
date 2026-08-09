@@ -143,9 +143,10 @@ jobs:
 
   clock-shift:
     # The suite is time-sensitive by domain (billing months), so "does it still
-    # pass next year" is a real question. Measured at 54s for 906 tests on
-    # 2026-08-09, so it runs on every PR as well as nightly. If the suite ever
-    # passes ~3 minutes, add `if: github.event_name == 'schedule'` here.
+    # pass next year" is a real question. Measured on 2026-08-09 at 45-70s for
+    # 949 tests on an idle machine, 133s under heavy load, so it runs on every PR
+    # as well as nightly. If the suite ever settles past ~3 minutes, add
+    # `if: github.event_name == 'schedule'` here.
     runs-on: ubuntu-latest
 
     strategy:

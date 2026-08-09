@@ -583,9 +583,78 @@ pytest-django runs migrations with checks disabled. They surface only at
 `migrate`, which is to say on container start in production. CI now runs
 `check --database default` as well.
 
-## After — Task 6
+## Migrations
 
-Filled in by Task 6.
+Five migrations, applied and unapplied cleanly against local Postgres 16 with
+pgvector (`localhost:5433`), then reapplied, with `makemigrations --check
+--dry-run` reporting `No changes detected` afterwards:
+
+| Migration | What it does |
+|---|---|
+| `finances/0010_query_indexes` | adds `entry_user_billing_type_idx`, `entry_user_date_recent_idx`, `income_user_month_idx` |
+| `finances/0011_drop_redundant_user_fk_indexes` | drops Django's implicit `user_id` index on `Entry` and `Income` |
+| `assistant/0007_query_indexes` | adds `chat_user_recent_idx`, `draft_user_status_recent_idx` |
+| `assistant/0008_drop_redundant_user_fk_indexes` | drops it on `ChatMessage` and `ReceiptDraft` |
+| `assistant/0009_memory_hnsw_index` | adds `memory_embed_hnsw_cosine_idx` |
+
+The inverse of the Task 1 check: `grep -rn 'Index' src/backend/*/migrations/*.py`
+returned three hits before this epic, all E01's on its own tables and none in
+`finances`. It now returns those three plus every migration above.
+
+## Supabase — rehearsed against a copy of production
+
+Run on 2026-08-09, with the owner's explicit approval, against a restored copy of
+the live database rather than the live database itself. Procedure and every
+failure encountered are in
+[`docs/runbook.md`](../runbook.md#applying-a-migration-to-supabase).
+
+The copy held real production data: **2,298 entries, 91 incomes, 262 chat
+messages, 0 embeddings**. Supabase runs PostgreSQL 17.6.
+
+```
+Applying assistant.0006_assistant_usage_event... OK
+Applying assistant.0007_query_indexes... OK
+Applying assistant.0008_drop_redundant_user_fk_indexes... OK
+Applying assistant.0009_memory_hnsw_index... OK
+Applying core.0002_login_attempt... OK
+Applying finances.0010_query_indexes... OK
+Applying finances.0011_drop_redundant_user_fk_indexes... OK
+
+real    0m8.176s
+```
+
+All six indexes present afterwards:
+
+| tablename | indexname |
+|---|---|
+| `assistant_chatmessage` | `chat_user_recent_idx` |
+| `assistant_memoryembedding` | `memory_embed_hnsw_cosine_idx` |
+| `assistant_receiptdraft` | `draft_user_status_recent_idx` |
+| `finances_entry` | `entry_user_billing_type_idx` |
+| `finances_entry` | `entry_user_date_recent_idx` |
+| `finances_income` | `income_user_month_idx` |
+
+And all three redundant FK indexes gone — the query for
+`finances_entry_user_id_7697a46d`, `finances_income_user_id_0193ced0` and
+`assistant_chatmessage_user_id_99675823` returned `0`. The copy was then dropped
+and the local dump deleted; the project is back to a single `postgres` database.
+
+Three things this established that local Postgres could not:
+
+- **The whole epic's DDL takes 8 seconds on production-sized data**, so the
+  deploy needs no maintenance window. The HNSW build is instant because
+  **production currently holds zero embeddings** — worth knowing, because it also
+  means Task 3's 7.5× improvement is real but not yet *felt* in production. It
+  starts mattering as remembered corrections accumulate.
+- **Migrations work through the session pooler on port 5432**, including
+  `CREATE DATABASE` and index DDL. The 6543 transaction pooler is still the wrong
+  door; nothing here tested it, and nothing should.
+- **The rehearsal also applied E01's migrations** — `assistant/0006_assistant_usage_event`
+  and `core/0002_login_attempt` were both pending on the copy, which confirms from
+  the database side what the branch already knew: **E01 is merged but not
+  deployed**, and production is still missing the assistant usage counter and the
+  login-attempt table. The deploy that ships this branch applies E01's and E03's
+  migrations together.
 
 ## Re-run this after E04
 
