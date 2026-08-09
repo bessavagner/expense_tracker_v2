@@ -1,0 +1,53 @@
+{% comment %}
+Stops a plain HTML form being submitted twice, and tells the user why.
+
+htmx already drops a second request while one is in flight, so the app's 18
+htmx forms never needed this. The plain ones did: the importer's four steps and
+the login form are ordinary browser POSTs, and a double-tap on a slow one sends
+two. On the importer that used to replay the whole CSV — see Finding 5 in
+.superpowers/sdd/HANDOFF-login-and-double-submit.md.
+
+This is the "I heard you" half of the fix and it is not the guarantee: a reload
+or a second tab bypasses anything client-side. The server-side guarantee lives
+in ImportBatch. What this buys is that the round trip stops *looking* broken,
+which is why the second tap happened at all.
+
+Opt out with data-no-submit-guard on the form. Give a button data-pending="…"
+to have its label swapped while the request is out.
+{% endcomment %}
+<script>
+  (function () {
+    function submitters(form) {
+      return form.querySelectorAll('button[type="submit"], input[type="submit"], button:not([type])');
+    }
+
+    document.addEventListener('submit', function (event) {
+      var form = event.target;
+      if (!(form instanceof HTMLFormElement)) return;
+      if (form.method.toLowerCase() !== 'post') return;
+      if (form.hasAttribute('data-no-submit-guard')) return;
+      // htmx guards its own elements; disabling them would only fight it.
+      if (form.hasAttribute('hx-post') || form.hasAttribute('hx-put') ||
+          form.hasAttribute('hx-delete') || form.hasAttribute('hx-patch')) return;
+
+      // Deferred to the next tick: disabling a submit button *during* its own
+      // submit event cancels the submission in some browsers.
+      setTimeout(function () {
+        submitters(form).forEach(function (button) {
+          button.disabled = true;
+          var pending = button.getAttribute('data-pending');
+          if (pending) button.textContent = pending;
+        });
+      }, 0);
+    });
+
+    // Coming back to a page from the back/forward cache would otherwise restore
+    // it with its buttons still disabled and no way to retry.
+    window.addEventListener('pageshow', function (event) {
+      if (!event.persisted) return;
+      document.querySelectorAll('form').forEach(function (form) {
+        submitters(form).forEach(function (button) { button.disabled = false; });
+      });
+    });
+  })();
+</script>

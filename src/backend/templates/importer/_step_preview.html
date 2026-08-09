@@ -101,7 +101,8 @@
             <a href="{% url 'finances:import_map' %}" class="btn btn-ghost">← Voltar</a>
             <form method="post" action="{% url 'finances:import_execute' %}">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-accent">Importar {{ ok_count }} entradas →</button>
+                <button type="submit" class="btn btn-accent"
+                        data-pending="Importando… não feche a página">Importar {{ ok_count }} entradas →</button>
             </form>
         </div>
     </div>

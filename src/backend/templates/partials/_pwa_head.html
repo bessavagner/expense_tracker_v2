@@ -1,0 +1,26 @@
+{% load static %}
+{% comment %}
+The PWA head tags, in one place.
+
+Three shells need them: the app (base.html), the app's login page
+(base_public.html) and the Django admin (admin/base_site.html, which is the
+maintainer's door and was the family's until E05). They were copied into two of
+those and drifted; keeping them here is what stops "the login page advertises
+the PWA" from quietly becoming false for whichever shell nobody edited.
+{% endcomment %}
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#f5f3ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0c1115" media="(prefers-color-scheme: dark)">
+<meta name="msapplication-TileColor" content="#147874">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Ledger">
+<link rel="apple-touch-icon" href="{% static 'images/pwa/apple-touch-icon.png' %}">
+<script>
+  if ('serviceWorker' in navigator &&
+      !['localhost', '127.0.0.1'].includes(location.hostname)) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js');
+    });
+  }
+</script>
