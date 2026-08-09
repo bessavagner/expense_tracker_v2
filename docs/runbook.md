@@ -541,3 +541,70 @@ psql "postgresql://USER:PASSWORD@HOST:5432/DBNAME?sslmode=require" -c "
 Expect six rows. Note the vector index is `memory_embed_hnsw_cosine_idx` — the
 longer name the E03 plan specifies exceeds Django's 31-character index-name limit
 and will not migrate.
+
+---
+
+## Signing in, and clearing a lockout
+
+The family's login page is **`/login/`**. It used to be `/admin/login/`, which is
+why the app opened on a Django admin screen; that URL still exists and still
+works, but it is the maintainer's door now. `LOGIN_URL` and `LogoutView` both
+point at `/login/`, so an unauthenticated request to any page lands there with
+`?next=` preserved.
+
+**After deploying this change, tell the family nothing.** Their bookmarks and the
+installed TWA point at `/`, which redirects correctly. Only a bookmark saved
+directly on `/admin/login/` keeps working as-is (it does; it just skips the
+branded page).
+
+Brute-force lockout is **10 failed attempts in 15 minutes**, counted by username
+*and* by IP, enforced in `core.auth_backends.LockoutModelBackend`. While locked,
+even the correct password is refused, and `/login/` now says so in Portuguese
+instead of showing the same message as a typo.
+
+Clear a lockout for one person:
+
+```bash
+# Locally (dev DB on :5433)
+POSTGRES_PORT=5433 uv run python src/backend/manage.py shell -c "
+from core.models import LoginAttempt
+print(LoginAttempt.objects.filter(username='NOME').delete())"
+```
+
+In production, run the same statement through the session connection (port 5432,
+never the 6543 pooler) using the `POSTGRES_*` variables — see *Applying a
+migration to Supabase* for why a URL will not do. Deleting **all** rows
+(`LoginAttempt.objects.all().delete()`) clears every lockout, including the IP
+arm, which is what you want when you have locked yourself out by IP.
+
+Set or reset a password:
+
+```bash
+POSTGRES_PORT=5433 uv run python src/backend/manage.py changepassword NOME
+POSTGRES_PORT=5433 uv run python src/backend/manage.py createsuperuser
+```
+
+## Import batches
+
+Each confirmed column mapping creates one `finances_importbatch` row, and the
+execute step locks it so a double-tapped or replayed "Importar" cannot import the
+same file twice (`executed_at` records that it already ran, and the second
+request renders the first one's counts instead of importing again).
+
+Consequence for the operator: abandoned imports — someone who reached the preview
+and closed the tab — leave rows with `executed_at IS NULL` forever. They are
+tiny and harmless. Prune them if they ever bother you:
+
+```bash
+POSTGRES_PORT=5433 uv run python src/backend/manage.py shell -c "
+from datetime import timedelta
+from django.utils import timezone
+from finances.models import ImportBatch
+print(ImportBatch.objects.filter(
+    executed_at__isnull=True,
+    created_at__lt=timezone.now() - timedelta(days=30)).delete())"
+```
+
+Do **not** delete executed batches that a user might still re-POST — a browser
+that replays the execute step against a missing batch is sent back to the upload
+step, which is safe but looks like the import vanished.
