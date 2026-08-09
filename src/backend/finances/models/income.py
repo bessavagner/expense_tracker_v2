@@ -10,6 +10,10 @@ class Income(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="incomes",
+        # Redundant with income_user_month_idx, whose leading column is user.
+        # See the longer note on Entry.user for why the extra index is a cost
+        # rather than a spare tyre.
+        db_index=False,
     )
     name = models.CharField(max_length=100)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
@@ -24,6 +28,9 @@ class Income(models.Model):
         verbose_name = "renda"
         verbose_name_plural = "rendas"
         ordering = ["-month", "name"]
+        indexes = [
+            models.Index(fields=["user", "month"], name="income_user_month_idx"),
+        ]
 
     def __str__(self):
         return f"{self.name} — {self.month:%Y-%m}"

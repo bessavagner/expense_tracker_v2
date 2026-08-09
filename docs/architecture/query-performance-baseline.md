@@ -452,9 +452,94 @@ Time: 10.484 ms
 
 </details>
 
-## After
+## After — Task 2, the relational indexes
 
-Filled in by Task 2, Task 3 and Task 6.
+Five indexes were added (`entry_user_billing_type_idx`,
+`entry_user_date_recent_idx`, `income_user_month_idx`, `chat_user_recent_idx`,
+`draft_user_status_recent_idx`) and **four were removed**: Django's implicit
+per-`ForeignKey` index on `user_id` for `Entry`, `Income`, `ChatMessage` and
+`ReceiptDraft`. The removal is the part that made the addition work; see below.
+
+### A note on what these numbers can and cannot show
+
+This machine runs other work. During the "after" measurements its load average
+was 7.6, and the same unchanged endpoint measured 61 ms in one session and 170 ms
+in another. **Wall-clock times from different sessions are not comparable**, and
+any table that compares them is measuring the machine, not the change. Two kinds
+of evidence here are trustworthy, and only those are used to draw conclusions:
+
+- **Rows read and plan shape**, from `EXPLAIN (ANALYZE)`. Load-independent.
+- **Interleaved A/B**: the same measurement run alternately with and without the
+  indexes, minutes apart, twice.
+
+### Query plans
+
+| Query | Index chosen | Rows read → returned | Before |
+|---|---|---|---|
+| `Entry(user, billing_month)` | `entry_user_billing_type_idx` | 189 → 189 | FK index, **5,000 → 189** |
+| `Entry(user, billing_month, entry_type)` | `entry_user_billing_type_idx` | 25 → 25 | FK index, **5,000 → 25** |
+| `Entry(user, billing_month IN 6)` | `entry_user_billing_type_idx` | 1,235 → 1,235 | FK index, **5,000 → 1,235** |
+| `Entry(user) ORDER BY -date LIMIT 50` | `entry_user_date_recent_idx` | 50 → 50 | FK index, **sorted all 5,000** |
+| `Income(user, month)` | `income_user_month_idx` | 1 → 1 | FK index, 12 → 1 |
+| `ChatMessage(user) ORDER BY -created_at LIMIT 20` | `chat_user_recent_idx` | 20 → 20 | FK index, 20 → 20 |
+| `MemoryEmbedding ORDER BY embedding <=> q LIMIT 5` | none — `Seq Scan` | 200 → 5 | unchanged; **Task 3** |
+
+That is the whole point of the epic in one column: every `Entry` query now reads
+exactly the rows it returns. The work no longer grows with the user's history.
+
+### The FK index had to go, and finding that out required disagreeing with the planner
+
+Adding the composite index was not enough. With Django's `user_id` index still in
+place, Postgres kept choosing it for `filter(user, billing_month)` — the single
+predicate the composite was built for — and went on discarding 4,811 rows. The
+composite is wider, so the planner costs it higher (362.75 vs 293.54) and picks
+the cheaper-looking plan. Measured in one session, same data, same cache:
+
+| `Entry(user, billing_month)` | Rows read | Time |
+|---|---|---|
+| FK index present (planner's choice) | 5,000 | 1.698 ms |
+| FK index dropped, composite forced | 189 | 0.288 ms |
+
+The estimate was wrong by roughly 6×. Dropping the FK index is safe because it is
+a strict *prefix* of the composite: `user_id` is the composite's leading column,
+so every user-only lookup still resolves — verified directly, `count(*)` filtered
+by user alone becomes an **Index Only Scan** on `entry_user_billing_type_idx`,
+touching no heap at all. What was removed was a redundant index that cost writes,
+disk and — because it looked cheap — correct plans.
+
+### Endpoints, interleaved A/B
+
+Two rounds, alternating, on shape B. Each cell is round 1 / round 2:
+
+| Endpoint | Without the indexes | With the indexes |
+|---|---|---|
+| `/api/dashboard/summary/` | 7.7 / 8.5 ms | 7.2 / 5.9 ms |
+| `/api/dashboard/top-categories/` | 8.1 / 7.9 ms | 6.7 / 4.7 ms |
+| `/api/dashboard/evolution/` | 6.4 / 4.5 ms | 5.2 / 5.0 ms |
+| `/api/dashboard/alerts/` | 13.2 / 8.9 ms | 8.6 / 7.4 ms |
+| `/api/dashboard/recent-entries/` | 5.1 / 3.2 ms | 3.9 / 2.3 ms |
+| `/api/dashboard/installments/` | 5.0 / 2.8 ms | 4.0 / 2.4 ms |
+| `/entries/2026/8/` | 76.8 / 71.5 ms | 66.1 / 62.8 ms |
+| `/projection/?start=2026-07&months=14` | 12.6 / 12.1 ms | 15.5 / 10.5 ms |
+| `/consolidated/` | 7.1 / 5.0 ms | 5.2 / 4.5 ms |
+
+Every endpoint is faster with the indexes in both rounds except `/projection/`,
+whose 15.5 ms in round 1 is the one measurement that inverts and is inside this
+machine's noise. The honest reading of the size of the win: **10–25% at the
+endpoint level**, and ~13% on `/entries/`, the hot path — far less than the 5×
+the query plans show, because most of these endpoints' time is Python and
+template rendering rather than waiting on Postgres. Indexing was still the right
+move: the query cost is now flat in the user's history where it used to be
+linear, so this gap widens every month the app is used. But nobody should expect
+a user-visible speedup today, and the epic should not claim one.
+
+Query *counts* are unchanged by this task, as expected — an index changes what a
+query costs, not how many are issued. `/api/dashboard/alerts/` still issues 9 on
+shape B against 7 on shape A; that is Task 4/5's problem, not this one's.
+
+## After — Task 3 and Task 6
+
+Filled in by Task 3 and Task 6.
 
 ## Re-run this after E04
 

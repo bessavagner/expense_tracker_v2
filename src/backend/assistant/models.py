@@ -17,6 +17,9 @@ class ChatMessage(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="chat_messages",
+        # Redundant with chat_user_recent_idx, whose leading column is user.
+        # See the note on finances.Entry.user.
+        db_index=False,
     )
     role = models.CharField(max_length=20, choices=MessageRole.choices)
     content = models.TextField()
@@ -27,6 +30,12 @@ class ChatMessage(models.Model):
         verbose_name = "mensagem"
         verbose_name_plural = "mensagens"
         ordering = ["created_at"]
+        indexes = [
+            # Every chat turn loads the last ASSISTANT_MAX_HISTORY messages
+            # newest-first (assistant/views.py, `_load_history`), which is the
+            # opposite of Meta.ordering — hence the explicit descending index.
+            models.Index(fields=["user", "-created_at"], name="chat_user_recent_idx"),
+        ]
 
     def __str__(self):
         preview = self.content[:50]
@@ -81,6 +90,9 @@ class ReceiptDraft(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="receipt_drafts",
+        # Redundant with draft_user_status_recent_idx, whose leading column is
+        # user. See the note on finances.Entry.user.
+        db_index=False,
     )
     chat_message = models.ForeignKey(
         ChatMessage,
@@ -102,6 +114,14 @@ class ReceiptDraft(models.Model):
         verbose_name = "rascunho de recibo"
         verbose_name_plural = "rascunhos de recibo"
         ordering = ["-created_at"]
+        indexes = [
+            # The pending-draft lookup that runs on every chat turn
+            # (assistant/views.py, `_pending_receipt`).
+            models.Index(
+                fields=["user", "status", "-created_at"],
+                name="draft_user_status_recent_idx",
+            ),
+        ]
 
     def __str__(self):
         store = (self.payload or {}).get("store", "?")
