@@ -7,9 +7,17 @@ from decimal import Decimal
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
 from django.shortcuts import redirect, render
+from django.utils import timezone
 from django.views import View
 
-from finances.models import Category, Entry, EntryType, InstallmentPlan, PaymentMethod
+from finances.models import (
+    Category,
+    Entry,
+    EntryType,
+    ImportBatch,
+    InstallmentPlan,
+    PaymentMethod,
+)
 from finances.services.billing import compute_billing_month, resolve_closing_day
 from finances.services.csv_parser import detect_columns, parse_csv_rows
 
@@ -179,7 +187,12 @@ class ImportMappingView(LoginRequiredMixin, View):
                 row["status"] = "duplicate"
                 duplicate_indices.append(i)
 
+        # Mint the batch here, where a ready-to-execute row list first exists.
+        # Its id is what makes the execute step idempotent — see ImportBatch.
+        batch = ImportBatch.objects.create(user=user, import_type=import_type)
+
         # Store in session
+        import_data["batch_id"] = str(batch.id)
         import_data["column_mapping"] = mapping
         import_data["rows"] = rows
         import_data["unmatched_categories"] = sorted(unmatched_categories)
@@ -268,11 +281,45 @@ class ImportPreviewView(LoginRequiredMixin, View):
 class ImportExecuteView(LoginRequiredMixin, View):
     """Step 4: Execute the import."""
 
+    def _result(self, request, batch):
+        """Render the result step from what the batch records."""
+        return render(
+            request,
+            "importer/import_page.html",
+            {
+                "step": "result",
+                "created_count": batch.created_count,
+                "skipped_count": batch.skipped_count,
+                "error_count": batch.error_count,
+                "import_type": batch.import_type,
+            },
+        )
+
     @transaction.atomic
     def post(self, request):
         import_data = request.session.get("import_data")
         if not import_data or "rows" not in import_data:
             return redirect("finances:import_upload")
+
+        batch_id = import_data.get("batch_id")
+        if not batch_id:
+            # A session prepared before this guard shipped. Refusing is the safe
+            # side of the trade: the alternative is the unguarded old path.
+            return redirect("finances:import_upload")
+
+        # The lock, and the whole point of the batch. A second POST arriving
+        # mid-import blocks here until the first commits, then reads the row
+        # again and finds executed_at set.
+        batch = (
+            ImportBatch.objects.select_for_update().filter(pk=batch_id, user=request.user).first()
+        )
+        if batch is None:
+            return redirect("finances:import_upload")
+        if batch.executed_at is not None:
+            # Already imported — by the first tap, a reload, or another tab.
+            # Report that run's counts rather than importing again or claiming
+            # zero: this response is the one the user actually sees.
+            return self._result(request, batch)
 
         rows = import_data["rows"]
         import_type = import_data["import_type"]
@@ -373,6 +420,21 @@ class ImportExecuteView(LoginRequiredMixin, View):
             except Exception:
                 error_count += 1
 
+        # Mark the batch spent inside the same transaction as the rows it
+        # created, so no second POST can observe the rows without the record.
+        batch.executed_at = timezone.now()
+        batch.created_count = created_count
+        batch.skipped_count = skipped_count
+        batch.error_count = error_count
+        batch.save(
+            update_fields=[
+                "executed_at",
+                "created_count",
+                "skipped_count",
+                "error_count",
+            ]
+        )
+
         # Clean up temp file and session
         file_path = import_data.get("file_path")
         if file_path and os.path.exists(file_path):
@@ -380,14 +442,4 @@ class ImportExecuteView(LoginRequiredMixin, View):
         if "import_data" in request.session:
             del request.session["import_data"]
 
-        return render(
-            request,
-            "importer/import_page.html",
-            {
-                "step": "result",
-                "created_count": created_count,
-                "skipped_count": skipped_count,
-                "error_count": error_count,
-                "import_type": import_type,
-            },
-        )
+        return self._result(request, batch)
