@@ -16,6 +16,12 @@ def user(db):
 
 
 @pytest.fixture
+def other_user(db):
+    """A second tenant, for asserting that a query stays scoped to one user."""
+    return baker.make("core.CustomUser", username="amanda")
+
+
+@pytest.fixture
 def logged_client(user):
     client = Client()
     client.force_login(user)

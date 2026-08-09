@@ -27,10 +27,19 @@ def find_matching_rules(user, message: str) -> list[MemoryRule]:
 def find_semantic_matches(
     user, query_vector: list[float], threshold: float = 0.8, limit: int = 5
 ) -> list:
-    """Find memory embeddings similar to query_vector using cosine distance."""
-    return list(
+    """Memory embeddings similar to ``query_vector``, nearest first.
+
+    The threshold is applied in Python, deliberately. A ``WHERE distance < x``
+    predicate makes Postgres compute the distance for every candidate row, which
+    means a sequential scan no matter what index exists — pgvector's HNSW index
+    answers "the k nearest", not "everything within a radius". Ordering and
+    limiting in SQL, then filtering the small result set here, is what lets the
+    index do its job.
+    """
+    max_distance = 1 - threshold
+    nearest = (
         MemoryEmbedding.objects.filter(user=user)
         .annotate(distance=CosineDistance("embedding", query_vector))
-        .filter(distance__lt=1 - threshold)
         .order_by("distance")[:limit]
     )
+    return [match for match in nearest if match.distance < max_distance]

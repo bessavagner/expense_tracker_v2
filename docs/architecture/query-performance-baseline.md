@@ -537,9 +537,52 @@ Query *counts* are unchanged by this task, as expected — an index changes what
 query costs, not how many are issued. `/api/dashboard/alerts/` still issues 9 on
 shape B against 7 on shape A; that is Task 4/5's problem, not this one's.
 
-## After — Task 3 and Task 6
+## After — Task 3, the vector index
 
-Filled in by Task 3 and Task 6.
+`memory_embed_hnsw_cosine_idx`, an HNSW index with `vector_cosine_ops`, plus a
+rewrite of `find_semantic_matches` that moves the similarity threshold out of SQL
+and into Python. Measured on 2,000 embeddings — the same table the 10.15 ms
+"before" row above came from.
+
+| Query shape | Plan | Buffers | Time |
+|---|---|---|---|
+| **Before**: no index, `ORDER BY … LIMIT 5` | Seq Scan, 2,000 rows | 12,049 | 10.150 ms |
+| **After**: index, `ORDER BY … LIMIT 5` | `Index Scan using memory_embed_hnsw_cosine_idx` | 1,064 | **1.360 ms** |
+| After, with `enable_seqscan = off` | same index | 1,030 | 0.660 ms |
+| **The old query shape, with the index present**: `WHERE distance < 0.2 ORDER BY … LIMIT 5` | **Seq Scan, 1,999 rows removed by filter** | 12,033 | 7.130 ms |
+
+The last row is the point of this task. Adding the index changes nothing on its
+own: a `WHERE` over the distance expression forces Postgres to compute the
+distance for every row, so it sequential-scans with the index sitting unused.
+HNSW answers "the k nearest", not "everything within a radius". The threshold had
+to move into Python — applied to the k rows the index returns — and only then
+does the plan change. **7.5× fewer buffers and 7.5× less time**, and unlike the
+relational indexes this one is a real speedup at today's data size, not just a
+better slope.
+
+The behavioural contract shifted slightly and the tests were written for it:
+before, "up to `limit` rows within the threshold, chosen from all that qualify";
+after, "the `limit` nearest, of which we keep those within the threshold". For an
+exhaustive scan these are identical; for an approximate index they can differ at
+the margin, so the tests assert that the expected memory is *found*, never that a
+fixed list comes back in a fixed order. The existing 303 assistant tests pass
+unchanged, so recall did not regress at this scale and `ef_search` was left at
+its default.
+
+### A gate this exposed
+
+The index was first declared as `memory_embedding_hnsw_cosine_idx` — 32
+characters against Django's 31-character limit — and without
+`django.contrib.postgres` in `INSTALLED_APPS`, which `HnswIndex` requires. Both
+are `manage.py check` errors, and **both passed CI's check step and the entire
+test suite**: plain `check` skips every check needing a database connection, and
+pytest-django runs migrations with checks disabled. They surface only at
+`migrate`, which is to say on container start in production. CI now runs
+`check --database default` as well.
+
+## After — Task 6
+
+Filled in by Task 6.
 
 ## Re-run this after E04
 

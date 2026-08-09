@@ -3,7 +3,7 @@ import uuid
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
-from pgvector.django import VectorField
+from pgvector.django import HnswIndex, VectorField
 
 
 class MessageRole(models.TextChoices):
@@ -143,6 +143,20 @@ class MemoryEmbedding(models.Model):
     class Meta:
         verbose_name = "embedding de memória"
         verbose_name_plural = "embeddings de memória"
+        indexes = [
+            # pgvector's own defaults. At this scale — thousands of vectors, not
+            # millions — they give effectively exhaustive recall, and raising
+            # them costs build time and index memory on a Supabase instance that
+            # is not sized for it. vector_cosine_ops must match the distance
+            # operator used by CosineDistance (<=>), or the index is ignored.
+            HnswIndex(
+                name="memory_embed_hnsw_cosine_idx",
+                fields=["embedding"],
+                m=16,
+                ef_construction=64,
+                opclasses=["vector_cosine_ops"],
+            ),
+        ]
 
     def __str__(self):
         return self.text[:50]

@@ -36,6 +36,10 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # Required by pgvector's HnswIndex on MemoryEmbedding: the index class is
+    # validated by a django.contrib.postgres check, which errors (postgres.E005)
+    # if the app is absent.
+    "django.contrib.postgres",
     # Third-party
     "django_tailwind_cli",
     "django_htmx",

@@ -61,8 +61,14 @@ jobs:
           uv run coverage run -m pytest src/backend/ -v
           uv run coverage report --fail-under=80
 
+      # `check` on its own skips every check that needs a database connection,
+      # which is where index-name length and index-class validity live. An
+      # HnswIndex with a 32-character name passed this step and the whole test
+      # suite, and would have failed at `migrate` on container start.
       - name: Django system check
-        run: uv run python src/backend/manage.py check
+        run: |
+          uv run python src/backend/manage.py check
+          uv run python src/backend/manage.py check --database default
 
       # A model change without its migration is invisible until deploy, where it
       # surfaces as a 500 on a column that does not exist.
