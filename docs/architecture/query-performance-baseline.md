@@ -124,9 +124,12 @@ Two things to carry forward:
   same 14 queries when the user's history grows 20×. It is the page this epic
   should be judged on.
 - **`/api/dashboard/alerts/` issued 7 queries at shape A and 9 at shape B.** A
-  query count that moves with the data is the signature of a per-row query. Task 5
-  should pin this endpoint's count, and Task 4 should check whether the extra two
-  come from the same pattern as the import path.
+  query count that moves with the data is the signature of a per-row query.
+  *Resolved by Task 5, and it is not an N+1*: guards that hold the code fixed and
+  scale entries 5 → 100, then categories and budgets 4 → 24, show this endpoint
+  flat at 7 queries in both dimensions. The two extra queries in the seeded
+  database are a conditional branch that runs when there is something to report,
+  not work repeated per row. No fix needed; the guards are what keeps it that way.
 
 <details>
 <summary>Raw EXPLAIN output — shape B (deep)</summary>
