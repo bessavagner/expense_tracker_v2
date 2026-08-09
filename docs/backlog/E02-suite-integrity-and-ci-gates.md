@@ -2,7 +2,7 @@
 id: E02
 title: Suite integrity & CI gates
 release: R0
-status: ready
+status: review
 depends_on: []
 blocks: [E04, E08]
 wedge_critical: false
