@@ -42,6 +42,31 @@ def test_card_opens_edit_modal_and_has_delete(entry):
     assert "hx-swap-oob" not in html
 
 
+def test_card_shows_fatura_badge_when_billing_month_differs(user):
+    """Mobile parity with the desktop row: a credit-card purchase that lands on
+    a later invoice must say so on the card too, otherwise the phone view looks
+    like the expense hit the purchase month."""
+    entry = baker.make(
+        Entry,
+        user=user,
+        entry_type=EntryType.REGULAR,
+        amount="10.00",
+        description="Mercado Livre",
+        date=date(2026, 8, 9),
+        billing_month=date(2026, 9, 1),
+        # pin it: Entry.save() would otherwise recompute from the (random,
+        # non-credit) payment method baker builds and collapse it onto august.
+        billing_month_override=True,
+    )
+    html = render_to_string("entries/_entry_card.html", {"entry": entry})
+    assert "fatura 09/26" in html
+
+
+def test_card_omits_fatura_badge_when_billing_month_matches(entry):
+    html = render_to_string("entries/_entry_card.html", {"entry": entry})
+    assert "fatura" not in html
+
+
 def test_card_oob_flag_adds_swap_oob(entry):
     html = render_to_string("entries/_entry_card.html", {"entry": entry, "oob": True})
     assert 'hx-swap-oob="true"' in html

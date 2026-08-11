@@ -26,6 +26,9 @@
             <span>{{ entry.date|date:"d/m" }}</span>
             <span class="badge badge-xs">{{ entry.category.name }}</span>
             <span>{{ entry.payment_method.name }}</span>
+            {% if entry.billing_month|date:"Y-m" != entry.date|date:"Y-m" %}
+            <span class="badge badge-xs badge-warning whitespace-nowrap" title="Valor cai nesta fatura">fatura {{ entry.billing_month|date:"m/y" }}</span>
+            {% endif %}
         </div>
     </div>
 </div>
