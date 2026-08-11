@@ -26,8 +26,10 @@ class TestCockpitVencimentos(TestCase):
         baker.make(PaymentMethod, user=self.user, name="Pix", type=PaymentType.PIX, is_active=True)
         resp = self.client.get("/cockpit/2026/10/vencimentos/")
         body = resp.content.decode()
-        self.assertIn("Nubank", body)
-        self.assertNotIn("Pix", body)
+        # Cell-anchored for the same reason as the income section test: a bare
+        # substring check also reads the CSRF token in the form below.
+        self.assertIn("<td>Nubank</td>", body)
+        self.assertNotIn("<td>Pix</td>", body)
 
     def test_set_override_creates_row(self):
         resp = self.client.post(

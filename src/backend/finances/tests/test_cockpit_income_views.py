@@ -27,8 +27,11 @@ class TestCockpitIncomeViews(TestCase):
         baker.make(Income, user=self.user, name="Nov", amount="200", month=date(2026, 11, 1))
         resp = self.client.get("/cockpit/2026/10/income/")
         body = resp.content.decode()
-        self.assertIn("Out", body)
-        self.assertNotIn("Nov", body)
+        # Anchor on the rendered cell, not the whole document: a bare
+        # `assertNotIn("Nov", body)` also reads the CSRF token, and a random
+        # token containing "Nov" fails the test for no reason (seen in CI).
+        self.assertIn("<td>Out</td>", body)
+        self.assertNotIn("<td>Nov</td>", body)
 
     def test_delete_income_removes_row(self):
         inc = baker.make(Income, user=self.user, name="X", amount="100", month=date(2026, 10, 1))
