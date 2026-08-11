@@ -2,7 +2,7 @@
 id: E02
 title: Suite integrity & CI gates
 release: R0
-status: review
+status: done
 depends_on: []
 blocks: [E04, E08]
 wedge_critical: false
@@ -104,11 +104,45 @@ cd src/backend/frontend && pnpm install --frozen-lockfile && pnpm build
 
 Observable assertions:
 
-- [ ] Zero failing tests; skip count is explained (the `RUN_LLM_TESTS` gated tests are the legitimate skips)
-- [ ] The suite passes with the clock shifted forward by a year
-- [ ] CI has jobs for migrations check, deploy check, frontend build, and a nightly schedule
-- [ ] CI fails on a deliberately stale committed artifact (prove it by committing a stale one on a scratch branch)
-- [ ] README test claims match `pytest` output
+- [x] Zero failing tests; skip count is explained (the `RUN_LLM_TESTS` gated tests are the legitimate skips)
+- [x] The suite passes with the clock shifted forward by a year
+- [x] CI has jobs for migrations check, deploy check, frontend build, and a nightly schedule
+- [x] CI fails on a deliberately stale committed artifact (prove it by committing a stale one on a scratch branch)
+- [x] README test claims match `pytest` output
+
+### Closeout — 2026-08-11, at `08f4f15`
+
+| Gate | Result |
+|---|---|
+| Suite, real clock | 967 passed, 2 skipped |
+| Suite, `TEST_CLOCK_SHIFT=+1y` / `+1m` / `-6m` | 967 passed, 2 skipped each |
+| `coverage report --fail-under=80` | **90%** |
+| `ruff check` / `ruff format --check` | clean / 238 files |
+| `makemigrations --check --dry-run` | no changes |
+| `check --deploy` (real 50-char key) | no issues |
+| `pnpm install --frozen-lockfile && pnpm build` | built; **no artifact drift** |
+| CI on `main` | green |
+
+Two notes for whoever reads this next:
+
+- **No test carries the `current_date` marker.** The marker is registered in
+  `pyproject.toml` and the clock-shift job excludes it, but nothing claims it —
+  so the shifted runs cover the *whole* suite, not a subset. Stronger than this
+  epic asked for; keep it that way.
+- **One flake was found during closeout and fixed in `08f4f15`.**
+  `test_cockpit_income_views.py` asserted `assertNotIn("Nov", body)` over the
+  entire rendered document, which contains a CSRF token — and 1 token in 4000
+  contains the substring `Nov` (measured over 200k tokens). It failed on `main`
+  on a token reading `ibMfv3mJCr8NovVsY…`. `test_cockpit_vencimentos.py` had the
+  same latent bug with `"Pix"`. Both now anchor on `<td>…</td>`, which a token
+  cannot produce. **Whole-document substring assertions on short strings are a
+  time bomb of the same family as wall-clock dependence** — that is why this
+  belongs to E02 rather than being a drive-by fix.
+
+Reproduce the gates with the commands above; the frontend one needs
+`corepack pnpm@10.23.0` locally (pnpm 11 renames `onlyBuiltDependencies` to
+`allowBuilds` and rewrites `pnpm-workspace.yaml`, which CI and the Dockerfile
+do not want).
 
 ## Out of scope
 

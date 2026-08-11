@@ -2,7 +2,7 @@
 id: E04
 title: Household tenancy
 release: R1
-status: blocked
+status: ready
 depends_on: [E02]
 blocks: [E05, E07]
 wedge_critical: false
@@ -54,6 +54,15 @@ Every domain model is `FK(user)` today, and `docs/deploy/production-roadmap.md:4
 | Analytics | `assistant/agents/analytics.py:252, 261` |
 | Memory | `assistant/agents/memory.py:14, 28` |
 | Services | `finances/services/` — `category_stats`, `budget_stats`, `projection`, `daily_trend`, `whatif` |
+
+**Two call sites look like leaks and are not** — verified 2026-08-11, do not
+"fix" them into a bare household filter without reading them:
+`views/cockpit.py:233` and `:469` do `PaymentMethod.objects.filter(pk=...)`
+*unscoped*, but union it onto an already-scoped queryset purely to keep the
+entry's or plan's current payment method selectable in the form. The pk comes
+from an object that was itself scoped, so re-tenanting the scoped half is
+sufficient. A test asserting the union cannot surface a foreign household's
+payment method is cheap and worth having.
 
 ### Tests that become cross-household tests
 
@@ -160,12 +169,32 @@ Observable assertions:
 - Postgres Row-Level Security — parked (see INDEX §10)
 - Changing what the domain models *mean*; this is a re-tenanting refactor, not a redesign
 
-## Open questions
+## Open questions — DECIDED 2026-08-11
 
-1. **Can a user belong to multiple households?** Recommendation: yes in the schema, single active household in the UI. Costs almost nothing now, impossible to add cheaply later.
-2. **What roles are actually needed at MVP?** Recommendation: `owner` and `member`. Owner can invite and remove; both can edit entries. Resist anything more.
-3. **What happens to a household when its last owner deletes their account?** Interacts with E13 (LGPD deletion). Decide here, implement in E13.
-4. **Does `PaymentMethodClosingDay` need a direct household column,** or is transitive scoping via `PaymentMethod` sufficient? Verify — transitive scoping is fine only if no query reaches it independently.
+All four are closed. They are **not** open for re-litigation inside the epic; the
+same rule as the backlog's PD-1..PD-5 applies.
+
+1. **Can a user belong to multiple households?** → **Yes in the schema, one
+   active at a time in the UI.** `Membership` is a real join table and middleware
+   resolves the active household onto `request.household`. Rationale: near-free
+   now, needs a second migration over live financial records later.
+2. **What roles at MVP?** → **`owner` and `member`, nothing else.** Owner invites
+   and removes; both edit entries. No viewer role, no permission framework. If a
+   read-only role is ever wanted, it is a new epic, not a widening of this one.
+3. **Last owner deletes their account?** → **Promote the longest-standing
+   remaining member to owner.** The household and its financial history survive
+   for the people still in it; the household is deleted only when the last
+   member leaves. Decided here, **implemented in E13** alongside the LGPD
+   deletion flow — E04 only needs the schema to make the promotion expressible
+   (`Membership.created_at` is the tiebreaker, so it must exist and be indexed).
+4. **Does `PaymentMethodClosingDay` need its own household column?** →
+   **No — transitive scoping via `PaymentMethod` is sufficient.** Verified at
+   `08f4f15`: every read and write of it filters by a `PaymentMethod` *instance*
+   that was itself fetched user-scoped (`views/cockpit.py:303`, `:341` — the
+   latter 404s on a foreign pk), plus `services/billing.py:24` which traverses
+   `payment_method.monthly_closing_days`. No call site reaches the model by bare
+   pk. **This holds only while that pattern holds**, so S04-6's parameterized
+   test must cover it through its parent rather than assume it.
 
 ## Risk notes for the executing agent
 

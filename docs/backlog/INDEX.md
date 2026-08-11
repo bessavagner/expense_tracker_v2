@@ -59,13 +59,13 @@ graph LR
 | ID | Epic | Rel | W | Depends on | Status |
 |---|---|---|---|---|---|
 | [E01](E01-spend-and-abuse-containment.md) | Spend & abuse containment | R0 | | — | review (TWA check pending) |
-| [E02](E02-suite-integrity-and-ci-gates.md) | Suite integrity & CI gates | R0 | | — | review |
+| [E02](E02-suite-integrity-and-ci-gates.md) | Suite integrity & CI gates | R0 | | — | **done** (2026-08-11) |
 | [E03](E03-query-performance-floor.md) | Query performance floor | R0 | | — | review |
-| [E04](E04-household-tenancy.md) | Household tenancy | R1 | | E02 | blocked |
+| [E04](E04-household-tenancy.md) | Household tenancy | R1 | | E02 | ready |
 | [E05](E05-identity-invitations-admin-isolation.md) | Identity, invitations & admin isolation | R1 | | E04 | blocked |
 | [E06](E06-observability-and-agent-tracing.md) | Observability & agent tracing | R1 | | E01 | blocked |
 | [E07](E07-usage-metering-and-quota.md) | Usage metering & quota | R1 | W | E04, E06 | blocked |
-| [E08](E08-ai-evaluation-harness.md) | AI evaluation harness | R2 | W | E02 | blocked |
+| [E08](E08-ai-evaluation-harness.md) | AI evaluation harness | R2 | W | E02 | ready |
 | [E09](E09-model-tiering-and-routing.md) | Model tiering & routing | R2 | W | E07, E08 | blocked |
 | [E10](E10-async-work-pipeline.md) | Async work pipeline | R2 | W | E06 | blocked |
 | [E11](E11-onboarding-and-activation.md) | Onboarding & activation | R3 | W | E05 | blocked |
