@@ -54,7 +54,10 @@ local_pg17() {  # client inside the throwaway container (root, so it can read $D
     "$LOCAL_CONTAINER" "$@"
 }
 on_copy() {  # run manage.py against the local rehearsal copy
-  DATABASE_URL="" \
+  # PGSSLMODE is exported for the production client and libpq would apply it
+  # here too — Django sets host/port/user/password but not sslmode, so the
+  # loopback connection would demand TLS the throwaway container has not got.
+  DATABASE_URL="" PGSSLMODE=disable \
   POSTGRES_HOST=127.0.0.1 POSTGRES_PORT="$LOCAL_PORT" POSTGRES_USER=postgres \
   POSTGRES_PASSWORD="$LOCAL_PASSWORD" POSTGRES_DB="$COPY" \
     uv run python "$ROOT/src/backend/manage.py" "$@"

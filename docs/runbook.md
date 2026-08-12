@@ -555,10 +555,13 @@ not. The rehearsal therefore compares **balances and the monthly acumulado**, vi
 fingerprints must be **byte-identical**.
 
 Required env — libpq variables, **never** a connection URL, because the password
-contains a space (Common failure #2 above):
+contains a space (Common failure #2 above). Take them from
+`SUPABASE_SESSION_POOLER` in `.env` (port **5432**, not the 6543 transaction
+pooler), URL-decoding the password:
 
 ```bash
-export PGHOST=... PGPORT=5432 PGUSER=... PGPASSWORD='...' PGSSLMODE=require
+export PGHOST=aws-1-sa-east-1.pooler.supabase.com PGPORT=5432
+export PGUSER=postgres.<project-ref> PGPASSWORD='...' PGSSLMODE=require
 scripts/rehearse-e04-migration.sh
 ```
 
@@ -580,6 +583,11 @@ with `SIGKILL`, clean up by hand: `docker rm -f e04-rehearsal-<pid>` and
 expected and tolerated — vanilla Postgres has neither those extensions nor those
 roles. What matters is the `public` schema, which is where every Django table
 lives; the printed entry counts are the check that it arrived.
+
+**Ran for real against production on 2026-08-12**: 3 users, 2320 entries,
+sum 344529.48. Production had neither E04 phase, so `migrate` applied
+`accounts.0001`–`0003` and both phases' six migrations in one go; fingerprint
+identical, no unfilled rows, six indexes present.
 
 Three outputs to check:
 
