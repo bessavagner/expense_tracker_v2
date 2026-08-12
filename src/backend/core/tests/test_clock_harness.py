@@ -6,7 +6,7 @@ report "passes a year from now" while testing today.
 
 import subprocess
 import sys
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -64,22 +64,29 @@ def test_shift_moves_date_today_in_a_real_pytest_run(tmp_path):
     finally:
         probe.unlink(missing_ok=True)
 
-    expected = (_real_today() + timedelta(days=365)).isoformat()
+    expected = (_real_utc_today() + timedelta(days=365)).isoformat()
     assert f"PROBE_TODAY {expected}" in result.stdout, (
         f"stdout={result.stdout!r} stderr={result.stderr!r}"
     )
 
 
-def _real_today() -> date:
-    """The actual system date, even when this test runs inside an ambient
-    TEST_CLOCK_SHIFT (the audit does exactly that). ``shifted_clock`` is
-    autouse, so it wraps this test too; ``date.today()`` here would otherwise
-    silently read the *outer* shift instead of the real clock the subprocess
-    is measured against, throwing the arithmetic off by the outer shift.
+def _real_utc_today() -> date:
+    """The actual system date **in UTC**, even when this test runs inside an
+    ambient TEST_CLOCK_SHIFT (the audit does exactly that).
+
+    UTC, not local: ``shifted_clock`` travels to a timezone-aware UTC instant,
+    and ``time_machine`` activates the destination's timezone, so the probe's
+    ``date.today()`` reads the UTC date. Comparing against the *local* date
+    made this test fail for the three hours a night when UTC-3 and UTC are on
+    different days — a time bomb in the very harness that exists to defuse them.
+
+    ``shifted_clock`` is autouse and wraps this test too, so a plain
+    ``datetime.now`` here would read the *outer* shift instead of the real
+    clock the subprocess is measured against.
     """
     if time_machine.escape_hatch.is_travelling():
-        return time_machine.escape_hatch.datetime.date.today()
-    return date.today()
+        return time_machine.escape_hatch.datetime.datetime.now(UTC).date()
+    return datetime.now(UTC).date()
 
 
 def _clean_env():
