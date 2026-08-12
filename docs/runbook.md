@@ -542,6 +542,58 @@ Expect six rows. Note the vector index is `memory_embed_hnsw_cosine_idx` — the
 longer name the E03 plan specifies exceeds Django's 31-character index-name limit
 and will not migrate.
 
+### Rehearsing the E04 tenancy migration
+
+E04 phase 2 gives all 13 domain models a `household` column and back-fills it
+from `user`. It runs over real financial records, so it gets rehearsed against a
+throwaway copy of production before it goes anywhere near the live database.
+
+Row counts do not prove a migration was lossless — this project has a documented
+history of reconciliation issues where the counts matched and the balances did
+not. The rehearsal therefore compares **balances and the monthly acumulado**, via
+`manage.py dump_ledger_totals --json`. Phase 2 changes no read path, so the two
+fingerprints must be **byte-identical**.
+
+Required env — libpq variables, **never** a connection URL, because the password
+contains a space (Common failure #2 above):
+
+```bash
+export PGHOST=... PGPORT=5432 PGUSER=... PGPASSWORD='...' PGSSLMODE=require
+scripts/rehearse-e04-migration.sh
+```
+
+The script dumps production read-only, restores into a scratch database
+(`ledger_rehearsal`, dropped again at the end), fingerprints it, migrates it,
+fingerprints it again, and diffs.
+
+Three outputs to check:
+
+1. `OK — counts, sums and acumulado identical across the migration.`
+2. `unfilled rows: none`
+3. six index rows: `entry_hh_billing_type_idx`, `entry_hh_date_recent_idx`,
+   `income_hh_month_idx`, `chat_hh_recent_idx`, `draft_hh_status_recent_idx`,
+   `usage_hh_kind_recent_idx`
+
+**A non-empty diff means the back-fill is wrong. Never apply to production on a
+non-empty diff.** Read it instead: a changed `acumulado` with an unchanged
+`entry_sum` means rows moved between billing months; a changed `entry_count`
+means the migration deleted or duplicated.
+
+**If `unfilled rows` is non-empty**, some user has no owner `Membership` — the
+E04 phase 1 seed (`accounts.0003`) did not cover them. Re-run it on the copy and
+rehearse again.
+
+**The `--months` window and the pinned clock.** `dump_ledger_totals` pins `today`
+to a literal date so two runs days apart still compare; if the rehearsal happens
+long after 2026-08-12, update `FIXED_TODAY` in the command.
+
+**Rehearsing without Supabase credentials.** The same comparison runs against the
+local ledger copy: create a scratch database with
+`CREATE DATABASE ledger_rehearsal TEMPLATE expense_tracker;`, rewind it with
+`migrate finances 0012` and `migrate assistant 0009`, fingerprint, `migrate`
+forward, fingerprint, diff. Weaker evidence — the local copy may lag production —
+but it exercises the whole migration path on real records.
+
 ---
 
 ## Signing in, and clearing a lockout
