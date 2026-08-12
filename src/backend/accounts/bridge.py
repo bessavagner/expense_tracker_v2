@@ -33,6 +33,15 @@ def household_for_writer(user):
     ledger is the fail-closed outcome; borrowing an existing household would
     be the leak.
 
+    Takes the user's *oldest* membership, which diverges from
+    ``accounts.middleware.resolve_active_household`` — that one honours the
+    session-selected household. For a multi-household user an unconverted
+    write would therefore land in the wrong household. Not reachable today:
+    ``Membership.objects.create`` has a single, idempotent call site
+    (``accounts/migrations_helpers.py``), so nobody holds two memberships.
+    Phase 3 must convert writes to pass the *active* household explicitly
+    rather than inherit this fallback.
+
     Memoised on the user *instance*, and ``select_related`` on the way in.
     Without both, a bulk write path that saves N rows against one request user
     pays 2N queries — a lookup plus a lazy FK dereference each — which is the
@@ -55,6 +64,13 @@ def household_for_writer(user):
 
 
 def fill_household(sender, instance, **kwargs):
+    """Fill ``household`` — and ``created_by``, where the model has it.
+
+    ``created_by_id is None`` is read as "not set yet", so a converted phase-3
+    site cannot express "written by the system, not by a person". Harmless
+    while the bridge exists; phase 4 deletes the module and the question with
+    it.
+    """
     if instance.household_id is not None:
         return
     # user_id, not user: on a non-nullable FK with nothing set, touching the

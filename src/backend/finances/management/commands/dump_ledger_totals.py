@@ -16,7 +16,7 @@ from datetime import date
 
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
-from django.db.models import Count, Min, Sum
+from django.db.models import Count, Max, Min, Sum
 
 from finances.models import Entry, Income
 from finances.services.projection import build_projection, projection_origin
@@ -27,25 +27,49 @@ from finances.services.projection import build_projection, projection_origin
 FIXED_TODAY = date(2026, 8, 12)
 
 
+def _months_between(start: date, end: date) -> int:
+    """Inclusive count of months from ``start`` to ``end``; 0 if ``end`` precedes it."""
+    span = (end.year - start.year) * 12 + (end.month - start.month) + 1
+    return max(span, 0)
+
+
 class Command(BaseCommand):
     help = "Dump per-user ledger totals and the monthly acumulado as JSON."
 
     def add_arguments(self, parser):
         parser.add_argument("--json", action="store_true", help="Machine-readable output.")
         parser.add_argument(
-            "--months", type=int, default=36, help="How many months of acumulado to include."
+            "--months",
+            type=int,
+            default=36,
+            help=(
+                "Minimum months of acumulado to include. The window always stretches "
+                "to cover the newest entry or income, so the tail is never dropped."
+            ),
         )
 
     def handle(self, *args, **options):
         report = {}
         for user in get_user_model().objects.order_by("username"):
             entries = Entry.objects.filter(user=user).aggregate(
-                n=Count("id"), total=Sum("amount"), first=Min("billing_month")
+                n=Count("id"),
+                total=Sum("amount"),
+                first=Min("billing_month"),
+                last=Max("billing_month"),
             )
-            incomes = Income.objects.filter(user=user).aggregate(total=Sum("amount"))
+            incomes = Income.objects.filter(user=user).aggregate(
+                total=Sum("amount"), last=Max("month")
+            )
             start = entries["first"] or projection_origin()
             start = max(start.replace(day=1), projection_origin())
-            months = build_projection(user, start, options["months"], today=FIXED_TODAY)
+            # A window that stops short of the data would compare only its head,
+            # and corruption in the tail would read as "identical" (finding C1).
+            tail = max(
+                (m.replace(day=1) for m in (entries["last"], incomes["last"]) if m),
+                default=start,
+            )
+            num_months = max(options["months"], _months_between(start, tail))
+            months = build_projection(user, start, num_months, today=FIXED_TODAY)
             report[user.get_username()] = {
                 "entry_count": entries["n"],
                 "entry_sum": f"{entries['total'] or 0:.2f}",

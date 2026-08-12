@@ -555,16 +555,39 @@ not. The rehearsal therefore compares **balances and the monthly acumulado**, vi
 fingerprints must be **byte-identical**.
 
 Required env — libpq variables, **never** a connection URL, because the password
-contains a space (Common failure #2 above):
+contains a space (Common failure #2 above). Take them from
+`SUPABASE_SESSION_POOLER` in `.env` (port **5432**, not the 6543 transaction
+pooler), URL-decoding the password:
 
 ```bash
-export PGHOST=... PGPORT=5432 PGUSER=... PGPASSWORD='...' PGSSLMODE=require
+export PGHOST=aws-1-sa-east-1.pooler.supabase.com PGPORT=5432
+export PGUSER=postgres.<project-ref> PGPASSWORD='...' PGSSLMODE=require
 scripts/rehearse-e04-migration.sh
 ```
 
-The script dumps production read-only, restores into a scratch database
-(`ledger_rehearsal`, dropped again at the end), fingerprints it, migrates it,
-fingerprints it again, and diffs.
+Also needs `docker`: the script uses `postgres:17` for the dump (the system
+`pg_dump` is older than the server) and `pgvector/pgvector:pg17` for the copy.
+
+The script touches production exactly once, read-only, with `pg_dump`. It then
+restores into a **throwaway local container** (`ledger_rehearsal`, bound to
+`127.0.0.1:55432`), fingerprints it, migrates it, fingerprints it again, and
+diffs. Nothing creates, migrates or drops a database on the production server.
+
+The dump holds every row of the real ledger, so it is written to a `0700` temp
+directory that an `EXIT` trap removes on **any** exit — including the
+fingerprint-mismatch exit. The container goes with it. If the script is killed
+with `SIGKILL`, clean up by hand: `docker rm -f e04-rehearsal-<pid>` and
+`rm -rf /tmp/e04-rehearsal.*`.
+
+`pg_restore` errors on Supabase's own schemas (`auth`, `vault`, `graphql`) are
+expected and tolerated — vanilla Postgres has neither those extensions nor those
+roles. What matters is the `public` schema, which is where every Django table
+lives; the printed entry counts are the check that it arrived.
+
+**Ran for real against production on 2026-08-12**: 3 users, 2320 entries,
+sum 344529.48. Production had neither E04 phase, so `migrate` applied
+`accounts.0001`–`0003` and both phases' six migrations in one go; fingerprint
+identical, no unfilled rows, six indexes present.
 
 Three outputs to check:
 
@@ -585,14 +608,26 @@ rehearse again.
 
 **The `--months` window and the pinned clock.** `dump_ledger_totals` pins `today`
 to a literal date so two runs days apart still compare; if the rehearsal happens
-long after 2026-08-12, update `FIXED_TODAY` in the command.
+long after 2026-08-12, update `FIXED_TODAY` in the command. `--months` is a
+*floor*, not a cap: the window always stretches to cover the newest entry or
+income, so the ledger's tail can never silently drop out of the comparison.
 
-**Rehearsing without Supabase credentials.** The same comparison runs against the
-local ledger copy: create a scratch database with
-`CREATE DATABASE ledger_rehearsal TEMPLATE expense_tracker;`, rewind it with
-`migrate finances 0012` and `migrate assistant 0009`, fingerprint, `migrate`
-forward, fingerprint, diff. Weaker evidence — the local copy may lag production —
-but it exercises the whole migration path on real records.
+**Rehearsing without Supabase credentials.** The same script runs against the
+local ledger copy. It is already migrated, so it needs rewinding first —
+`REWIND=1` does that (`migrate finances 0012`, `migrate assistant 0009`) before
+the BEFORE fingerprint:
+
+```bash
+PGHOST=172.17.0.1 PGPORT=5433 PGUSER=postgres PGPASSWORD=postgres \
+PGSSLMODE=prefer SOURCE_DB=expense_tracker REWIND=1 \
+  scripts/rehearse-e04-migration.sh
+```
+
+`172.17.0.1`, not `localhost`: `pg_dump` runs inside a container, where
+`localhost` is the container itself. `SOURCE_DB` names the database to dump —
+`postgres` on Supabase, `expense_tracker` locally. Weaker evidence than the real
+thing, since the local copy may lag production, but it exercises the whole
+migration path on real records.
 
 ---
 

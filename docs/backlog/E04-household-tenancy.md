@@ -157,7 +157,7 @@ Observable assertions:
 - [ ] Two users in one household see identical ledger data
 - [ ] The agent cannot be argument-injected across households
 - [ ] `created_by` is populated for all back-filled rows
-- [ ] The data migration has been run against a **copy of the real Supabase data**, and entry counts, balances, and the monthly acumulado match before and after — this project has a documented history of balance reconciliation issues; verify totals, not just row counts
+- [x] The data migration has been run against a **copy of the real Supabase data**, and entry counts, balances, and the monthly acumulado match before and after — this project has a documented history of balance reconciliation issues; verify totals, not just row counts — *2026-08-12: 3 users, 2320 entries, sum 344529.48; fingerprint identical, no unfilled rows (`scripts/rehearse-e04-migration.sh`, runbook § "Rehearsing the E04 tenancy migration")*
 - [ ] E03's indexes are re-created with `household` leading, and `EXPLAIN ANALYZE` confirms usage
 - [ ] `/security-review` passed with no cross-tenant finding
 
