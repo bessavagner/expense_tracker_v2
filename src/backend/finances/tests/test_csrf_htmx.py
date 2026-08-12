@@ -14,13 +14,6 @@ from django.test import Client
 from model_bakery import baker
 
 
-@pytest.fixture
-def logged_client(user):
-    client = Client()
-    client.force_login(user)
-    return client
-
-
 @pytest.mark.django_db
 class TestHtmxCsrfWiring:
     def test_base_template_sets_global_csrf_header(self, logged_client):

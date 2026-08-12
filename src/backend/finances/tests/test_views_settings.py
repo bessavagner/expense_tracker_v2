@@ -1,15 +1,7 @@
 from decimal import Decimal
 
 import pytest
-from django.test import Client
 from model_bakery import baker
-
-
-@pytest.fixture
-def logged_client(user):
-    client = Client()
-    client.force_login(user)
-    return client
 
 
 @pytest.mark.django_db

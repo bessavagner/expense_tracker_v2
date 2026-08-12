@@ -16,13 +16,6 @@ def user(db):
     return baker.make("core.CustomUser", username="vagner")
 
 
-@pytest.fixture
-def logged_client(user):
-    client = Client()
-    client.force_login(user)
-    return client
-
-
 @pytest.mark.django_db
 class TestGlobalBodyCeiling:
     def test_oversized_body_is_rejected_with_413(self, logged_client, settings):

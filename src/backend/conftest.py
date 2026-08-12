@@ -65,3 +65,22 @@ def other_household(other_user):
     from accounts.resolution import household_for_user
 
     return household_for_user(other_user)
+
+
+@pytest.fixture
+def logged_client(user, household):
+    """A logged-in client whose user resolves to a household.
+
+    `household` is requested for its side effect, and that is the whole point:
+    the middleware reads `request.household` from a Membership, and a user
+    without one makes every scoped queryset return none() — which would turn
+    "the neighbour's row is absent" into a test that passes because *everything*
+    is absent. Nine test modules used to shadow this with their own copy that
+    omitted the dependency; keeping one definition here is what stops that
+    coming back.
+    """
+    from django.test import Client
+
+    client = Client()
+    client.force_login(user)
+    return client

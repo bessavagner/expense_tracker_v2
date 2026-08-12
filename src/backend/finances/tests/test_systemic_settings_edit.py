@@ -2,18 +2,10 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from django.test import Client
 from model_bakery import baker
 
 from finances.forms import SystemicTemplateEditForm
 from finances.models import Entry
-
-
-@pytest.fixture
-def logged_client(user):
-    c = Client()
-    c.force_login(user)
-    return c
 
 
 @pytest.fixture

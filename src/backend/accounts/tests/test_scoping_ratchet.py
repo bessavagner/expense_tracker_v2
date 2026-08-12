@@ -25,7 +25,6 @@ BASELINE = {
     "src/backend/finances/management/commands/transfer_entries.py",
     "src/backend/finances/views/cockpit.py",
     "src/backend/finances/views/consolidated.py",
-    "src/backend/finances/views/entries.py",
     "src/backend/finances/views/importer.py",
     "src/backend/finances/views/projection.py",
     "src/backend/finances/views/settings.py",

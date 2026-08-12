@@ -10,6 +10,7 @@ from django.urls import reverse
 from django.views import View
 from django.views.generic import ListView, UpdateView
 
+from accounts.mixins import HouseholdScopedMixin
 from finances.forms import EntryForm, InstallmentForm, SystemicExpenseCreateForm
 from finances.models import Entry, Income, PaymentMethod
 from finances.models.entry import EntryType
@@ -22,7 +23,7 @@ from finances.views.mixins import HtmxLoginRequiredMixin
 ENTRIES_CHANGED = '"entries-changed": true'
 
 
-def compute_entry_summary(user, year, month):
+def compute_entry_summary(household, year, month):
     """Totais do mês para o painel de Entradas.
 
     ``total_lancado`` é a soma das entradas REGULARES *lançadas* no mês (por
@@ -33,21 +34,23 @@ def compute_entry_summary(user, year, month):
     """
     target = date(year, month, 1)
 
-    lanc = Entry.objects.filter(
-        user=user, entry_type=EntryType.REGULAR, date__year=year, date__month=month
-    ).aggregate(total=Sum("amount"), count=Count("id"))
+    lanc = (
+        Entry.objects.for_household(household)
+        .filter(entry_type=EntryType.REGULAR, date__year=year, date__month=month)
+        .aggregate(total=Sum("amount"), count=Count("id"))
+    )
     total_lancado = lanc["total"] or Decimal("0")
     entry_count = lanc["count"]
 
-    inc_min = Income.objects.filter(user=user).aggregate(m=Min("month"))["m"]
-    ent_min = Entry.objects.filter(user=user).aggregate(m=Min("billing_month"))["m"]
+    inc_min = Income.objects.for_household(household).aggregate(m=Min("month"))["m"]
+    ent_min = Entry.objects.for_household(household).aggregate(m=Min("billing_month"))["m"]
     candidates = [d for d in (inc_min, ent_min) if d is not None]
     anchor = min(candidates).replace(day=1) if candidates else target
     if anchor > target:
         anchor = target
     num_months = (year * 12 + month) - (anchor.year * 12 + anchor.month) + 1
 
-    rows = build_projection(user, anchor, num_months, today=date.today())
+    rows = build_projection(household, anchor, num_months, today=date.today())
     if not rows:
         # Month precedes the projection origin (e.g. nov/2025): build_projection
         # floors everything at the origin and returns no rows. Projection-derived
@@ -84,7 +87,7 @@ class EntryRedirectView(HtmxLoginRequiredMixin, View):
         return redirect("finances:entries_month", year=today.year, month=today.month)
 
 
-class EntryListView(HtmxLoginRequiredMixin, ListView):
+class EntryListView(HouseholdScopedMixin, HtmxLoginRequiredMixin, ListView):
     """Display entries launched (by date) in a specific month."""
 
     model = Entry
@@ -99,12 +102,9 @@ class EntryListView(HtmxLoginRequiredMixin, ListView):
         year = int(self.kwargs["year"])
         month = int(self.kwargs["month"])
         return (
-            Entry.objects.filter(
-                user=self.request.user,
-                date__year=year,
-                date__month=month,
-                entry_type=EntryType.REGULAR,
-            )
+            super()
+            .get_queryset()
+            .filter(date__year=year, date__month=month, entry_type=EntryType.REGULAR)
             .select_related("category", "payment_method")
             .order_by("-date", "-created_at")
         )
@@ -120,10 +120,10 @@ class EntryListView(HtmxLoginRequiredMixin, ListView):
         context["year_range"] = range(2024, date.today().year + 2)
 
         # Summary (aggregated across the whole month, not just this page)
-        context["summary"] = compute_entry_summary(self.request.user, year, month)
+        context["summary"] = compute_entry_summary(self.request.household, year, month)
 
         # Inline form
-        context["form"] = EntryForm(user=self.request.user)
+        context["form"] = EntryForm(household=self.request.household)
 
         return context
 
@@ -137,7 +137,7 @@ class EntriesSummaryView(HtmxLoginRequiredMixin, View):
         html = render_to_string(
             "entries/_entries_summary.html",
             {
-                "summary": compute_entry_summary(request.user, year, month),
+                "summary": compute_entry_summary(request.household, year, month),
                 "current_year": year,
                 "current_month": month,
             },
@@ -150,10 +150,12 @@ class EntryCreateView(HtmxLoginRequiredMixin, View):
     """Create entry from inline form."""
 
     def post(self, request):
-        form = EntryForm(request.POST, user=request.user)
+        form = EntryForm(request.POST, household=request.household)
         if form.is_valid():
             entry = form.save(commit=False)
-            entry.user = request.user
+            entry.user = request.user  # still NOT NULL until phase 4
+            entry.household = request.household
+            entry.created_by = request.user
             entry.save()
             html = render_to_string("entries/_entry_row.html", {"entry": entry}, request=request)
             response = HttpResponse(html)
@@ -176,11 +178,11 @@ class EntryUpdateView(HtmxLoginRequiredMixin, UpdateView):
     htmx_template_name = "entries/_entry_edit_row.html"
 
     def get_queryset(self):
-        return Entry.objects.filter(user=self.request.user)
+        return Entry.objects.for_request(self.request)
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
-        kwargs["user"] = self.request.user
+        kwargs["household"] = self.request.household
         return kwargs
 
     def form_valid(self, form):
@@ -198,7 +200,7 @@ class EntryDeleteView(HtmxLoginRequiredMixin, View):
     """Delete entry."""
 
     def delete(self, request, pk):
-        entry = Entry.objects.filter(user=request.user, pk=pk).first()
+        entry = Entry.objects.for_request(request).filter(pk=pk).first()
         if not entry:
             raise Http404
         entry_id = entry.pk
@@ -219,7 +221,7 @@ class EntryEditModalView(HtmxLoginRequiredMixin, View):
     """Edit a regular entry inside the shared #entry-modal."""
 
     def _get_entry(self, request, pk):
-        entry = Entry.objects.filter(user=request.user, pk=pk).first()
+        entry = Entry.objects.for_request(request).filter(pk=pk).first()
         if not entry:
             raise Http404
         return entry
@@ -235,7 +237,7 @@ class EntryEditModalView(HtmxLoginRequiredMixin, View):
 
     def get(self, request, pk):
         entry = self._get_entry(request, pk)
-        form = EntryForm(instance=entry, user=request.user)
+        form = EntryForm(instance=entry, household=request.household)
         self._patch_form_querysets(form, entry)
         html = render_to_string(
             "partials/_modal_edit_form.html",
@@ -257,7 +259,7 @@ class EntryEditModalView(HtmxLoginRequiredMixin, View):
 
     def post(self, request, pk):
         entry = self._get_entry(request, pk)
-        form = EntryForm(request.POST, instance=entry, user=request.user)
+        form = EntryForm(request.POST, instance=entry, household=request.household)
         self._patch_form_querysets(form, entry)
         if form.is_valid():
             entry = form.save()
@@ -296,7 +298,7 @@ class InstallmentPreviewView(HtmxLoginRequiredMixin, View):
         except ValueError:
             return JsonResponse({"months": [], "note": ""})
 
-        pm = PaymentMethod.objects.filter(user=request.user, pk=pm_id).first()
+        pm = PaymentMethod.objects.for_request(request).filter(pk=pm_id).first()
         if pm is None or num < 1 or num > 60:
             return JsonResponse({"months": [], "note": ""})
 
@@ -325,10 +327,10 @@ class EntryModalView(HtmxLoginRequiredMixin, View):
     def get(self, request):
         start = self._start_month(request)
         context = {
-            "entry_form": EntryForm(user=request.user),
-            "installment_form": InstallmentForm(user=request.user),
+            "entry_form": EntryForm(household=request.household),
+            "installment_form": InstallmentForm(household=request.household),
             "systemic_form": SystemicExpenseCreateForm(
-                user=request.user, initial={"start_month": start}
+                household=request.household, initial={"start_month": start}
             ),
             "initial_mode": request.GET.get("mode", "regular"),
         }
@@ -339,10 +341,12 @@ class EntryModalView(HtmxLoginRequiredMixin, View):
         entry_mode = request.POST.get("entry_mode", "regular")
 
         if entry_mode == "installment":
-            form = InstallmentForm(request.POST, user=request.user)
+            form = InstallmentForm(request.POST, household=request.household)
             if form.is_valid():
                 plan = form.save(commit=False)
-                plan.user = request.user
+                plan.user = request.user  # still NOT NULL until phase 4
+                plan.household = request.household
+                plan.created_by = request.user
                 plan.save()
                 plan.generate_entries()
                 response = HttpResponse("")
@@ -358,9 +362,9 @@ class EntryModalView(HtmxLoginRequiredMixin, View):
                 )
                 return response
         elif entry_mode == "systemic":
-            form = SystemicExpenseCreateForm(request.POST, user=request.user)
+            form = SystemicExpenseCreateForm(request.POST, household=request.household)
             if form.is_valid():
-                systemic, launched = form.save_for_user(request.user)
+                systemic, launched = form.save_for_household(request.household, request.user)
                 msg = f"{systemic.name} adicionado!"
                 if launched:
                     msg = f"{systemic.name}: {launched} mês(es) lançado(s)!"
@@ -375,10 +379,12 @@ class EntryModalView(HtmxLoginRequiredMixin, View):
                 )
                 return response
         else:
-            form = EntryForm(request.POST, user=request.user)
+            form = EntryForm(request.POST, household=request.household)
             if form.is_valid():
                 entry = form.save(commit=False)
-                entry.user = request.user
+                entry.user = request.user  # still NOT NULL until phase 4
+                entry.household = request.household
+                entry.created_by = request.user
                 entry.save()
                 response = HttpResponse("")
                 response["HX-Trigger"] = (
@@ -388,12 +394,18 @@ class EntryModalView(HtmxLoginRequiredMixin, View):
                 return response
 
         context = {
-            "entry_form": (form if entry_mode == "regular" else EntryForm(user=request.user)),
+            "entry_form": (
+                form if entry_mode == "regular" else EntryForm(household=request.household)
+            ),
             "installment_form": (
-                form if entry_mode == "installment" else InstallmentForm(user=request.user)
+                form
+                if entry_mode == "installment"
+                else InstallmentForm(household=request.household)
             ),
             "systemic_form": (
-                form if entry_mode == "systemic" else SystemicExpenseCreateForm(user=request.user)
+                form
+                if entry_mode == "systemic"
+                else SystemicExpenseCreateForm(household=request.household)
             ),
             "initial_mode": entry_mode,
             "errors": True,

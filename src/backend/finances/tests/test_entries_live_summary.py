@@ -7,13 +7,6 @@ from model_bakery import baker
 
 
 @pytest.fixture
-def logged_client(user):
-    client = Client()
-    client.force_login(user)
-    return client
-
-
-@pytest.fixture
 def march_setup(user):
     category = baker.make("finances.Category", user=user, name="Alimentação")
     pix = baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")

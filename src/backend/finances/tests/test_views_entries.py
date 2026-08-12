@@ -3,14 +3,10 @@ from decimal import Decimal
 
 import pytest
 from django.test import Client
+from django.urls import reverse
 from model_bakery import baker
 
-
-@pytest.fixture
-def logged_client(user):
-    client = Client()
-    client.force_login(user)
-    return client
+from finances.models.entry import EntryType
 
 
 @pytest.fixture
@@ -410,3 +406,39 @@ class TestModalEntryForm:
         assert response.status_code == 200
         s = SystemicExpense.objects.get(user=user, name="Academia")
         assert Entry.objects.filter(systemic_expense=s).count() == 2
+
+
+@pytest.mark.django_db
+def test_entry_list_excludes_other_households(
+    logged_client, user, household, other_user, other_household
+):
+    baker.make(
+        "finances.Entry",
+        user=other_user,
+        household=other_household,
+        description="Compra do vizinho",
+        date=date(2026, 3, 10),
+        billing_month=date(2026, 3, 1),
+        entry_type=EntryType.REGULAR,
+    )
+
+    response = logged_client.get(reverse("finances:entries_month", args=[2026, 3]))
+
+    assert response.status_code == 200
+    assert "Compra do vizinho" not in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_entry_edit_404s_across_households(logged_client, other_user, other_household):
+    theirs = baker.make(
+        "finances.Entry",
+        user=other_user,
+        household=other_household,
+        date=date(2026, 3, 10),
+        billing_month=date(2026, 3, 1),
+        entry_type=EntryType.REGULAR,
+    )
+
+    response = logged_client.get(reverse("finances:entry_edit_modal", args=[theirs.pk]))
+
+    assert response.status_code == 404

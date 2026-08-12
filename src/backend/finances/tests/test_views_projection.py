@@ -7,13 +7,6 @@ from django.urls import reverse
 from model_bakery import baker
 
 
-@pytest.fixture
-def logged_client(user):
-    client = Client()
-    client.force_login(user)
-    return client
-
-
 @pytest.mark.django_db
 class TestProjectionView:
     def test_requires_login(self):
