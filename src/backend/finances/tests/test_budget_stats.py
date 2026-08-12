@@ -24,41 +24,41 @@ def _entry(user, cat, amount, billing_month):
 
 @pytest.mark.django_db
 class TestBudgetStats:
-    def test_spend_and_status(self, user):
+    def test_spend_and_status(self, user, household):
         b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("1000"))
         luz = baker.make("finances.Category", user=user, name="Luz", budget=b)
         agua = baker.make("finances.Category", user=user, name="Água", budget=b)
         _entry(user, luz, "600", date(2026, 6, 1))
         _entry(user, agua, "550", date(2026, 6, 1))  # total 1150 -> over
-        [row] = budget_stats.budget_spend_for_month(user, date(2026, 6, 1))
+        [row] = budget_stats.budget_spend_for_month(household, date(2026, 6, 1))
         assert row["spent"] == Decimal("1150")
         assert row["pct"] == 115
         assert row["status"] == "error"
 
-    def test_warning_band(self, user):
+    def test_warning_band(self, user, household):
         b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("1000"))
         luz = baker.make("finances.Category", user=user, name="Luz", budget=b)
         _entry(user, luz, "950", date(2026, 6, 1))
-        [row] = budget_stats.budget_spend_for_month(user, date(2026, 6, 1))
+        [row] = budget_stats.budget_spend_for_month(household, date(2026, 6, 1))
         assert row["status"] == "warning"
 
-    def test_pct_truncates_below_warning_threshold(self, user):
+    def test_pct_truncates_below_warning_threshold(self, user, household):
         # 899.50 / 1000 = 89.95% must truncate to 89 (success), not round to 90 (warning).
         b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("1000"))
         luz = baker.make("finances.Category", user=user, name="Luz", budget=b)
         _entry(user, luz, "899.50", date(2026, 6, 1))
-        [row] = budget_stats.budget_spend_for_month(user, date(2026, 6, 1))
+        [row] = budget_stats.budget_spend_for_month(household, date(2026, 6, 1))
         assert row["pct"] == 89
         assert row["status"] == "success"
 
-    def test_excludes_adjustment_entries(self, user):
+    def test_excludes_adjustment_entries(self, user, household):
         b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("1000"))
         ajuste = baker.make("finances.Category", user=user, name="Ajuste de saldo", budget=b)
         _entry(user, ajuste, "5000", date(2026, 6, 1))
-        [row] = budget_stats.budget_spend_for_month(user, date(2026, 6, 1))
+        [row] = budget_stats.budget_spend_for_month(household, date(2026, 6, 1))
         assert row["spent"] == Decimal("0")
 
-    def test_orphan_categories(self, user):
+    def test_orphan_categories(self, user, household):
         orphan = baker.make(
             "finances.Category",
             user=user,
@@ -67,11 +67,11 @@ class TestBudgetStats:
             budget_ceiling=Decimal("200"),
         )
         _entry(user, orphan, "250", date(2026, 6, 1))
-        [row] = budget_stats.orphan_category_spend_for_month(user, date(2026, 6, 1))
+        [row] = budget_stats.orphan_category_spend_for_month(household, date(2026, 6, 1))
         assert row["name"] == "Lazer"
         assert row["status"] == "error"
 
-    def test_orphan_ignores_zero_ceiling(self, user):
+    def test_orphan_ignores_zero_ceiling(self, user, household):
         orphan = baker.make(
             "finances.Category",
             user=user,
@@ -80,9 +80,9 @@ class TestBudgetStats:
             budget_ceiling=Decimal("0"),
         )
         _entry(user, orphan, "100", date(2026, 6, 1))
-        assert budget_stats.orphan_category_spend_for_month(user, date(2026, 6, 1)) == []
+        assert budget_stats.orphan_category_spend_for_month(household, date(2026, 6, 1)) == []
 
-    def test_total_diverse_ceiling(self, user):
+    def test_total_diverse_ceiling(self, user, household):
         b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("1000"))
         baker.make(
             "finances.Category", user=user, name="Luz", budget=b, budget_ceiling=Decimal("400")
@@ -90,9 +90,9 @@ class TestBudgetStats:
         baker.make(
             "finances.Category", user=user, name="Lazer", budget=None, budget_ceiling=Decimal("200")
         )
-        assert budget_stats.total_diverse_ceiling(user) == Decimal("1200")
+        assert budget_stats.total_diverse_ceiling(household) == Decimal("1200")
 
-    def test_seed_amount_from_ceilings(self, user):
+    def test_seed_amount_from_ceilings(self, user, household):
         b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("0"))
         baker.make(
             "finances.Category", user=user, name="Luz", budget=b, budget_ceiling=Decimal("400")

@@ -32,7 +32,7 @@ def _percentile(values: list[Decimal], q: Decimal) -> Decimal:
     return (xs[lo] + (xs[lo + 1] - xs[lo]) * frac).quantize(_CENTS, rounding=ROUND_HALF_UP)
 
 
-def daily_spend_trend(user, period=30, as_of=None) -> list[dict]:
+def daily_spend_trend(household, period=30, as_of=None) -> list[dict]:
     """Rolling median + IQR (p25/p75) of daily spend over the last ``period`` days.
 
     Daily spend = Σ ``Entry.amount`` (>0, excluding #AJUSTE) grouped by the real
@@ -48,7 +48,8 @@ def daily_spend_trend(user, period=30, as_of=None) -> list[dict]:
     start_fetch = start_display - timedelta(days=rolling - 1)
 
     rows = (
-        Entry.objects.filter(user=user, amount__gt=0, date__gte=start_fetch, date__lte=as_of)
+        Entry.objects.for_household(household)
+        .filter(amount__gt=0, date__gte=start_fetch, date__lte=as_of)
         .exclude(category__name__icontains=ADJUSTMENT_CATEGORY_PATTERN)
         .values("date")
         .annotate(total=Sum("amount"))
