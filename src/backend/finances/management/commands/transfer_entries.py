@@ -25,6 +25,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
+from accounts.resolution import household_for_user
 from finances.models import Category, Entry, PaymentMethod
 
 User = get_user_model()
@@ -111,8 +112,13 @@ class Command(BaseCommand):
             if not u:
                 errors.append(f"no user '{r['user']}' | {r['description'][:50]}")
                 continue
-            cat = _resolve(Category.objects.filter(user=u), r["category"] or "")
-            pm = _resolve(PaymentMethod.objects.filter(user=u, is_active=True), r["payment"] or "")
+            # Each row names its own user, so the household resolves per row.
+            hh = household_for_user(u)
+            cat = _resolve(Category.objects.for_household(hh), r["category"] or "")
+            pm = _resolve(
+                PaymentMethod.objects.for_household(hh).filter(is_active=True),
+                r["payment"] or "",
+            )
             if not cat:
                 errors.append(f"no category '{r['category']}' | {r['description'][:50]}")
                 continue
@@ -121,23 +127,27 @@ class Command(BaseCommand):
                 continue
             d = date.fromisoformat(r["date"])
             amt = Decimal(r["amount"])
-            if Entry.objects.filter(
-                user=u, date=d, amount=amt, description=r["description"]
-            ).exists():
+            if (
+                Entry.objects.for_household(hh)
+                .filter(date=d, amount=amt, description=r["description"])
+                .exists()
+            ):
                 skipped += 1
                 continue
-            to_create.append((u, d, amt, r["description"], cat, pm))
+            to_create.append((u, hh, d, amt, r["description"], cat, pm))
 
         mode = "APPLY" if apply else "DRY-RUN"
-        for _u, d, amt, desc, cat, pm in to_create:
+        for _u, _hh, d, amt, desc, cat, pm in to_create:
             self.stdout.write(f"[{mode}] + {d} R$ {amt:>9} {cat.name}/{pm.name} | {desc[:45]}")
 
         if apply and to_create:
             with transaction.atomic():
-                for u, d, amt, desc, cat, pm in to_create:
+                for u, hh, d, amt, desc, cat, pm in to_create:
                     # let save() compute billing_month from date + payment_method
                     Entry.objects.create(
-                        user=u,
+                        user=u,  # still NOT NULL until phase 4
+                        household=hh,
+                        created_by=u,
                         date=d,
                         amount=amt,
                         description=desc,

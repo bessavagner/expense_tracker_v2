@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from django.core.management.base import BaseCommand, CommandError
 
+from accounts.resolution import household_for_user
 from core.models import CustomUser
 from finances.models import (
     Category,
@@ -98,8 +99,12 @@ class Command(BaseCommand):
         except CustomUser.DoesNotExist as e:
             raise CommandError(f"User '{username}' does not exist.") from e
 
-        categories = {c.name: c for c in Category.objects.filter(user=user)}
-        payment_methods = {pm.name: pm for pm in PaymentMethod.objects.filter(user=user)}
+        # Resolved once: the seeded ledger belongs to the household, and the
+        # catalogue it draws on is the household's.
+        household = household_for_user(user)
+
+        categories = {c.name: c for c in Category.objects.for_household(household)}
+        payment_methods = {pm.name: pm for pm in PaymentMethod.objects.for_household(household)}
 
         if not categories or not payment_methods:
             raise CommandError("Run seed_data first to create categories and payment methods.")
@@ -117,7 +122,9 @@ class Command(BaseCommand):
         months.reverse()  # oldest first
 
         # Skip if data already exists
-        existing = Entry.objects.filter(user=user, entry_type=EntryType.REGULAR).count()
+        existing = (
+            Entry.objects.for_household(household).filter(entry_type=EntryType.REGULAR).count()
+        )
         if existing > 10:
             self.stdout.write(
                 self.style.WARNING(f"User already has {existing} regular entries. Skipping.")
@@ -126,10 +133,12 @@ class Command(BaseCommand):
 
         random.seed(42)  # Reproducible data
 
-        income_count = self._seed_income(user, months)
-        systemic_count = self._seed_systemics(user, categories, payment_methods, months)
-        entry_count = self._seed_entries(user, categories, payment_methods, months)
-        installment_count = self._seed_installments(user, categories, payment_methods, months)
+        income_count = self._seed_income(user, household, months)
+        systemic_count = self._seed_systemics(user, household, categories, payment_methods, months)
+        entry_count = self._seed_entries(user, household, categories, payment_methods, months)
+        installment_count = self._seed_installments(
+            user, household, categories, payment_methods, months
+        )
 
         self.stdout.write(
             self.style.SUCCESS(
@@ -139,25 +148,27 @@ class Command(BaseCommand):
             )
         )
 
-    def _seed_income(self, user, months):
+    def _seed_income(self, user, household, months):
         count = 0
         for month in months:
             for name, amount in [("Salário", "8000.00"), ("Bolsa PIBID", "400.00")]:
                 _, created = Income.objects.get_or_create(
-                    user=user,
+                    household=household,
                     name=name,
                     month=month,
                     defaults={
                         "amount": Decimal(amount),
                         "is_recurring": True,
                         "recurrence_start": months[0],
+                        "user": user,  # still NOT NULL until phase 4
+                        "created_by": user,
                     },
                 )
                 if created:
                     count += 1
         return count
 
-    def _seed_systemics(self, user, categories, payment_methods, months):
+    def _seed_systemics(self, user, household, categories, payment_methods, months):
         count = 0
         pix = payment_methods.get("Pix")
         for name, cat_name, default_amount in SYSTEMIC_EXPENSES:
@@ -165,18 +176,22 @@ class Command(BaseCommand):
             if not category:
                 continue
             systemic, _ = SystemicExpense.objects.get_or_create(
-                user=user,
+                household=household,
                 name=name,
                 defaults={
                     "category": category,
                     "payment_method": pix,
                     "default_amount": Decimal(default_amount),
+                    "user": user,  # still NOT NULL until phase 4
+                    "created_by": user,
                 },
             )
             for month in months:
-                exists = Entry.objects.filter(
-                    user=user, systemic_expense=systemic, billing_month=month
-                ).exists()
+                exists = (
+                    Entry.objects.for_household(household)
+                    .filter(systemic_expense=systemic, billing_month=month)
+                    .exists()
+                )
                 if not exists:
                     # Vary amount slightly for realism
                     variation = Decimal(str(random.uniform(0.9, 1.1)))
@@ -185,7 +200,7 @@ class Command(BaseCommand):
                     count += 1
         return count
 
-    def _seed_entries(self, user, categories, payment_methods, months):
+    def _seed_entries(self, user, household, categories, payment_methods, months):
         pm_list = list(payment_methods.values())
         count = 0
         for month in months:
@@ -215,7 +230,9 @@ class Command(BaseCommand):
 
                 pm = random.choice(pm_list)
                 Entry.objects.create(
-                    user=user,
+                    user=user,  # still NOT NULL until phase 4
+                    household=household,
+                    created_by=user,
                     date=entry_date,
                     amount=amount,
                     description=description,
@@ -226,7 +243,7 @@ class Command(BaseCommand):
                 count += 1
         return count
 
-    def _seed_installments(self, user, categories, payment_methods, months):
+    def _seed_installments(self, user, household, categories, payment_methods, months):
         count = 0
         # Start installments 3 months ago
         start_month = months[2] if len(months) > 2 else months[0]
@@ -237,7 +254,11 @@ class Command(BaseCommand):
             if not category or not pm:
                 continue
 
-            exists = InstallmentPlan.objects.filter(user=user, description=description).exists()
+            exists = (
+                InstallmentPlan.objects.for_household(household)
+                .filter(description=description)
+                .exists()
+            )
             if exists:
                 continue
 
@@ -245,7 +266,9 @@ class Command(BaseCommand):
             installment_amount = (total_amount / num).quantize(Decimal("0.01"))
 
             plan = InstallmentPlan.objects.create(
-                user=user,
+                user=user,  # still NOT NULL until phase 4
+                household=household,
+                created_by=user,
                 date=start_month,
                 description=description,
                 category=category,

@@ -8,12 +8,13 @@ the user's stated preference "energético e refrigerante são Lanche" in
 NF-matching form, so future receipts categorize them correctly on their own.
 
 Idempotent (reuses ``create_memory_rule`` → ``update_or_create``). Rules whose
-target category does not exist for the user are skipped with a warning.
+target category does not exist in the household are skipped with a warning.
 """
 
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 
+from accounts.resolution import household_for_user
 from assistant.agents.tools import create_memory_rule
 from finances.models import Category
 
@@ -42,9 +43,13 @@ class Command(BaseCommand):
         if user is None:
             raise CommandError(f"Usuário '{ident}' não encontrado.")
 
+        # A rule is the household's: the categories it points at are shared, so
+        # the existence check that guards it must ask the same question.
+        household = household_for_user(user)
+
         seeded = skipped = 0
         for trigger, category_name in DEFAULT_RULES:
-            if not Category.objects.filter(user=user, name=category_name).exists():
+            if not Category.objects.for_household(household).filter(name=category_name).exists():
                 self.stdout.write(
                     self.style.WARNING(
                         f"pulado '{trigger}': categoria '{category_name}' não existe para {user}."

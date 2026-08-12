@@ -107,11 +107,11 @@ class TestSystemicEditFormRecurrence:
         d.update(over)
         return d
 
-    def test_no_recurrence_edits_only_this_month(self, user, template):
+    def test_no_recurrence_edits_only_this_month(self, household, template):
         june = template.create_monthly_entry(date(2026, 6, 1), amount=Decimal("11.90"))
         july = template.create_monthly_entry(date(2026, 7, 1), amount=Decimal("11.90"))
 
-        form = SystemicEntryEditForm(self._data(template, june), entry=june, user=user)
+        form = SystemicEntryEditForm(self._data(template, june), entry=june, household=household)
         assert form.is_valid(), form.errors
         form.save()
 
@@ -120,7 +120,7 @@ class TestSystemicEditFormRecurrence:
         assert june.amount == Decimal("23.90")
         assert july.amount == Decimal("11.90")  # untouched without recurrence
 
-    def test_recurrence_propagates_value(self, user, template):
+    def test_recurrence_propagates_value(self, household, template):
         june = template.create_monthly_entry(date(2026, 6, 1), amount=Decimal("11.90"))
         july = template.create_monthly_entry(date(2026, 7, 1), amount=Decimal("11.90"))
 
@@ -133,7 +133,7 @@ class TestSystemicEditFormRecurrence:
                 recurrence_end="2026-08-01",
             ),
             entry=june,
-            user=user,
+            household=household,
         )
         assert form.is_valid(), form.errors
         form.save()

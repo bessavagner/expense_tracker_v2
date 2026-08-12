@@ -17,11 +17,7 @@ BASELINE = {
     "src/backend/assistant/agents/analytics.py",
     "src/backend/assistant/agents/memory.py",
     "src/backend/assistant/agents/tools.py",
-    "src/backend/assistant/management/commands/seed_category_rules.py",
     "src/backend/assistant/views.py",
-    "src/backend/finances/management/commands/import_csv.py",
-    "src/backend/finances/management/commands/seed_qa_data.py",
-    "src/backend/finances/management/commands/transfer_entries.py",
 }
 
 # Tenancy-transition tooling. Deliberately *not* in BASELINE, which may only
