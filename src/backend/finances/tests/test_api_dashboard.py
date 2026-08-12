@@ -5,6 +5,8 @@ import pytest
 from django.test import Client
 from model_bakery import baker
 
+from accounts.models import Membership
+
 
 @pytest.mark.django_db
 class TestSummaryEndpoint:
@@ -560,3 +562,52 @@ class TestTopCategoriesAverage:
         d = r.json()
         assert d[0]["name"] == "Alimentação"
         assert d[0]["avg_3m"] == "1000.00"
+
+
+@pytest.mark.django_db
+def test_summary_excludes_other_households(
+    logged_client, user, household, other_user, other_household
+):
+    baker.make(
+        "finances.Income",
+        user=other_user,
+        household=other_household,
+        amount=Decimal("9999.00"),
+        month=date(2026, 3, 1),
+    )
+    baker.make(
+        "finances.Income",
+        user=user,
+        household=household,
+        amount=Decimal("100.00"),
+        month=date(2026, 3, 1),
+    )
+
+    response = logged_client.get("/api/dashboard/summary/?year=2026&month=3")
+
+    assert response.status_code == 200
+    assert response.json()["income"] == "100.00"
+
+
+@pytest.mark.django_db
+def test_api_without_a_household_returns_zeroes_not_everything(client, user):
+    """A user with no Membership must see an empty dashboard, never the table.
+    Note: `user`, not `logged_client` — this test needs a household-less user."""
+    from finances.models import Income
+
+    client.force_login(user)
+    income = baker.make(
+        "finances.Income",
+        user=user,
+        amount=Decimal("100.00"),
+        month=date(2026, 3, 1),
+    )
+    # The phase-2 write bridge fills `household` on create, and creating the row
+    # also mints the Membership the middleware reads. Strip both back out with
+    # `.update()`, which bypasses signals — the technique phase 2's own tests used.
+    Income.objects.filter(pk=income.pk).update(household=None)
+    Membership.objects.filter(user=user).delete()
+
+    response = client.get("/api/dashboard/summary/?year=2026&month=3")
+
+    assert response.json()["income"] == "0.00"

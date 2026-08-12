@@ -19,7 +19,6 @@ BASELINE = {
     "src/backend/assistant/agents/tools.py",
     "src/backend/assistant/management/commands/seed_category_rules.py",
     "src/backend/assistant/views.py",
-    "src/backend/finances/api/views.py",
     "src/backend/finances/management/commands/import_csv.py",
     "src/backend/finances/management/commands/seed_qa_data.py",
     "src/backend/finances/management/commands/transfer_entries.py",
