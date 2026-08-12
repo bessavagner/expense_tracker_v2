@@ -3,6 +3,7 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from accounts.models import AuthoredHouseholdModel
 from finances.services.billing import compute_billing_month, resolve_closing_day
 
 
@@ -12,7 +13,7 @@ class EntryType(models.TextChoices):
     SYSTEMIC = "systemic", "Sistemático"
 
 
-class Entry(models.Model):
+class Entry(AuthoredHouseholdModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
