@@ -3,6 +3,8 @@ import uuid
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
+from accounts.resolution import household_for_user
+from assistant.agents.scope import AgentScope
 from assistant.models import MemoryEmbedding
 
 User = get_user_model()
@@ -45,15 +47,19 @@ class MemoryEmbeddingModelTest(TestCase):
 class SemanticSearchTest(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="searchuser", password="testpass")
+        self.household = household_for_user(self.user)
+        self.scope = AgentScope(household=self.household, user=self.user)
         # Create embeddings with known vectors for cosine similarity testing
         self.emb1 = MemoryEmbedding.objects.create(
             user=self.user,
+            household=self.household,
             text="supermercado cosmos",
             embedding=[1.0] + [0.0] * 1535,
             metadata={"field": "category", "value": "Alimentação"},
         )
         self.emb2 = MemoryEmbedding.objects.create(
             user=self.user,
+            household=self.household,
             text="posto de gasolina",
             embedding=[0.0, 1.0] + [0.0] * 1534,
             metadata={"field": "category", "value": "Combustível"},
@@ -63,7 +69,7 @@ class SemanticSearchTest(TestCase):
         from assistant.agents.memory import find_semantic_matches
 
         query_vector = [0.9] + [0.1] + [0.0] * 1534
-        matches = find_semantic_matches(self.user, query_vector, threshold=0.5)
+        matches = find_semantic_matches(self.scope, query_vector, threshold=0.5)
         self.assertEqual(len(matches), 1)
         self.assertEqual(matches[0].text, "supermercado cosmos")
 
@@ -71,18 +77,19 @@ class SemanticSearchTest(TestCase):
         from assistant.agents.memory import find_semantic_matches
 
         query_vector = [0.5, 0.5] + [0.0] * 1534
-        matches = find_semantic_matches(self.user, query_vector, threshold=0.95)
+        matches = find_semantic_matches(self.scope, query_vector, threshold=0.95)
         self.assertEqual(len(matches), 0)
 
-    def test_find_semantic_matches_filters_by_user(self):
+    def test_find_semantic_matches_filters_by_household(self):
         from assistant.agents.memory import find_semantic_matches
 
         other_user = User.objects.create_user(username="other", password="testpass")
         MemoryEmbedding.objects.create(
             user=other_user,
+            household=household_for_user(other_user),
             text="other user embedding",
             embedding=[1.0] + [0.0] * 1535,
         )
         query_vector = [1.0] + [0.0] * 1535
-        matches = find_semantic_matches(self.user, query_vector, threshold=0.5)
-        self.assertTrue(all(m.user == self.user for m in matches))
+        matches = find_semantic_matches(self.scope, query_vector, threshold=0.5)
+        self.assertTrue(all(m.household == self.household for m in matches))
