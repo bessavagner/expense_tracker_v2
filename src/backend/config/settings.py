@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     "rest_framework",
     # Local apps
     "core",
+    "accounts",
     "finances",
     "assistant",
 ]
@@ -62,6 +63,7 @@ MIDDLEWARE = [
     "django_htmx.middleware.HtmxMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "accounts.middleware.active_household_middleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
