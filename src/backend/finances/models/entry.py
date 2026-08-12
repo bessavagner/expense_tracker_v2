@@ -79,6 +79,17 @@ class Entry(AuthoredHouseholdModel):
                 fields=["user", "-date", "-created_at"],
                 name="entry_user_date_recent_idx",
             ),
+            # The household twins of the two indexes above. Phase 3 converts
+            # the dashboard's queries onto them one surface at a time; the
+            # user-leading pair stays until phase 4 drops the column.
+            models.Index(
+                fields=["household", "billing_month", "entry_type"],
+                name="entry_hh_billing_type_idx",
+            ),
+            models.Index(
+                fields=["household", "-date", "-created_at"],
+                name="entry_hh_date_recent_idx",
+            ),
         ]
 
     def __str__(self):

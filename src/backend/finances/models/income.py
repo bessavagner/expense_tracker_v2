@@ -32,6 +32,7 @@ class Income(AuthoredHouseholdModel):
         ordering = ["-month", "name"]
         indexes = [
             models.Index(fields=["user", "month"], name="income_user_month_idx"),
+            models.Index(fields=["household", "month"], name="income_hh_month_idx"),
         ]
 
     def __str__(self):

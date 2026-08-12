@@ -37,6 +37,7 @@ class ChatMessage(AuthoredHouseholdModel):
             # newest-first (assistant/views.py, `_load_history`), which is the
             # opposite of Meta.ordering — hence the explicit descending index.
             models.Index(fields=["user", "-created_at"], name="chat_user_recent_idx"),
+            models.Index(fields=["household", "-created_at"], name="chat_hh_recent_idx"),
         ]
 
     def __str__(self):
@@ -129,6 +130,10 @@ class ReceiptDraft(AuthoredHouseholdModel):
                 fields=["user", "status", "-created_at"],
                 name="draft_user_status_recent_idx",
             ),
+            models.Index(
+                fields=["household", "status", "-created_at"],
+                name="draft_hh_status_recent_idx",
+            ),
         ]
 
     def __str__(self):
@@ -206,6 +211,10 @@ class AssistantUsageEvent(HouseholdOwnedModel):
             models.Index(
                 fields=["user", "kind", "-created_at"],
                 name="usage_user_kind_recent_idx",
+            ),
+            models.Index(
+                fields=["household", "kind", "-created_at"],
+                name="usage_hh_kind_recent_idx",
             ),
         ]
 
