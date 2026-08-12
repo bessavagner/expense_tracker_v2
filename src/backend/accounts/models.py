@@ -63,9 +63,7 @@ class Membership(models.Model):
             )
         ]
         indexes = [
-            models.Index(
-                fields=["household", "created_at"], name="membership_household_age_idx"
-            ),
+            models.Index(fields=["household", "created_at"], name="membership_household_age_idx"),
         ]
 
     def __str__(self):
