@@ -43,15 +43,20 @@ def _parse_receipt_date(value) -> "date | None":
         return None
 
 
-def list_categories(user) -> list[str]:
-    """List available category names for the user."""
-    return list(Category.objects.filter(user=user).order_by("name").values_list("name", flat=True))
-
-
-def list_payment_methods(user) -> list[str]:
-    """List available active payment method names for the user."""
+def list_categories(scope) -> list[str]:
+    """List available category names for the household."""
     return list(
-        PaymentMethod.objects.filter(user=user, is_active=True)
+        Category.objects.for_household(scope.household)
+        .order_by("name")
+        .values_list("name", flat=True)
+    )
+
+
+def list_payment_methods(scope) -> list[str]:
+    """List available active payment method names for the household."""
+    return list(
+        PaymentMethod.objects.for_household(scope.household)
+        .filter(is_active=True)
         .order_by("name")
         .values_list("name", flat=True)
     )
@@ -77,7 +82,7 @@ def _resolve_by_name(queryset, raw_name: str):
 
 
 def create_entry(
-    user,
+    scope,
     date_str: str,
     amount_str: str,
     description: str,
@@ -86,19 +91,22 @@ def create_entry(
 ) -> str:
     """Create an expense entry. Returns a confirmation or error message."""
     # Validate category (lenient: case-insensitive / unique partial match)
-    category, cat_matches = _resolve_by_name(Category.objects.filter(user=user), category_name)
+    category, cat_matches = _resolve_by_name(
+        Category.objects.for_household(scope.household), category_name
+    )
     if category is None:
         if len(cat_matches) > 1:
             return (
                 f"Erro: categoria '{category_name}' é ambígua. "
                 f"Você quis dizer: {', '.join(cat_matches)}?"
             )
-        available = ", ".join(list_categories(user))
+        available = ", ".join(list_categories(scope))
         return f"Erro: categoria '{category_name}' não encontrada. Disponíveis: {available}"
 
     # Validate payment method (lenient resolution)
     payment_method, pm_matches = _resolve_by_name(
-        PaymentMethod.objects.filter(user=user, is_active=True), payment_method_name
+        PaymentMethod.objects.for_household(scope.household).filter(is_active=True),
+        payment_method_name,
     )
     if payment_method is None:
         if len(pm_matches) > 1:
@@ -106,7 +114,7 @@ def create_entry(
                 f"Erro: forma de pagamento '{payment_method_name}' é ambígua. "
                 f"Você quis dizer: {', '.join(pm_matches)}?"
             )
-        available = ", ".join(list_payment_methods(user))
+        available = ", ".join(list_payment_methods(scope))
         return (
             f"Erro: forma de pagamento '{payment_method_name}' não encontrada. "
             f"Disponíveis: {available}"
@@ -126,7 +134,9 @@ def create_entry(
 
     # Create entry
     entry = Entry.objects.create(
-        user=user,
+        user=scope.user,  # still NOT NULL until phase 4
+        household=scope.household,
+        created_by=scope.user,
         date=entry_date,
         amount=amount,
         description=description,
@@ -141,18 +151,20 @@ def create_entry(
     )
 
 
-def _resolve_entry_by_prefix(user, entry_id: str):
+def _resolve_entry_by_prefix(scope, entry_id: str):
     raw = (entry_id or "").strip().replace("-", "").lower()
     if not raw:
         return []
     return [
-        e for e in Entry.objects.filter(user=user) if str(e.id).replace("-", "").startswith(raw)
+        e
+        for e in Entry.objects.for_household(scope.household)
+        if str(e.id).replace("-", "").startswith(raw)
     ]
 
 
-def list_recent_entries(user, limit: int = 10) -> str:
+def list_recent_entries(scope, limit: int = 10) -> str:
     qs = (
-        Entry.objects.filter(user=user)
+        Entry.objects.for_household(scope.household)
         .select_related("category", "payment_method")
         .order_by("-created_at")[:limit]
     )
@@ -170,7 +182,7 @@ def list_recent_entries(user, limit: int = 10) -> str:
 
 
 def update_entry(
-    user,
+    scope,
     entry_id,
     date_str=None,
     amount_str=None,
@@ -178,24 +190,27 @@ def update_entry(
     category_name=None,
     payment_method_name=None,
 ) -> str:
-    matches = _resolve_entry_by_prefix(user, entry_id)
+    matches = _resolve_entry_by_prefix(scope, entry_id)
     if not matches:
         return f"Erro: lançamento '{entry_id}' não encontrado."
     if len(matches) > 1:
         return f"Erro: id '{entry_id}' é ambíguo ({len(matches)} lançamentos). Dê mais dígitos."
     entry = matches[0]
     if category_name:
-        category, m = _resolve_by_name(Category.objects.filter(user=user), category_name)
+        category, m = _resolve_by_name(
+            Category.objects.for_household(scope.household), category_name
+        )
         if category is None:
-            avail = ", ".join(list_categories(user))
+            avail = ", ".join(list_categories(scope))
             return f"Erro: categoria '{category_name}' não encontrada. Disponíveis: {avail}"
         entry.category = category
     if payment_method_name:
         pm, m = _resolve_by_name(
-            PaymentMethod.objects.filter(user=user, is_active=True), payment_method_name
+            PaymentMethod.objects.for_household(scope.household).filter(is_active=True),
+            payment_method_name,
         )
         if pm is None:
-            avail = ", ".join(list_payment_methods(user))
+            avail = ", ".join(list_payment_methods(scope))
             return (
                 f"Erro: forma de pagamento '{payment_method_name}' não encontrada. "
                 f"Disponíveis: {avail}"
@@ -221,8 +236,8 @@ def update_entry(
     )
 
 
-def delete_entry(user, entry_id) -> str:
-    matches = _resolve_entry_by_prefix(user, entry_id)
+def delete_entry(scope, entry_id) -> str:
+    matches = _resolve_entry_by_prefix(scope, entry_id)
     if not matches:
         return f"Erro: lançamento '{entry_id}' não encontrado."
     if len(matches) > 1:
@@ -233,9 +248,10 @@ def delete_entry(user, entry_id) -> str:
     return f"Excluído: {desc} — R$ {amt}."
 
 
-def add_receipt_item(user, description, line_total, category="") -> str:
+def add_receipt_item(scope, description, line_total, category="") -> str:
     draft = (
-        ReceiptDraft.objects.filter(user=user, status=ReceiptDraftStatus.PENDING)
+        ReceiptDraft.objects.for_household(scope.household)
+        .filter(status=ReceiptDraftStatus.PENDING)
         .order_by("-created_at")
         .first()
     )
@@ -327,16 +343,16 @@ def _prorate_discount(category_sums: dict[str, Decimal], discount: Decimal) -> d
     return allocated
 
 
-def _apply_category_memory(user, items) -> None:
-    """Override each item's category from the user's learned category rules.
+def _apply_category_memory(scope, items) -> None:
+    """Override each item's category from the household's learned category rules.
 
     NF item names are abbreviated (e.g. "ENERG MONSTER"), so a rule's trigger is
     matched as a case-insensitive substring of the item description. When several
     rules match one item, the longest (most specific) trigger wins. Mutates
     ``items`` in place; items with no matching rule keep the vision category.
-    Rules are the user's ``MemoryRule`` rows with ``field="category"``.
+    Rules are the household's ``MemoryRule`` rows with ``field="category"``.
     """
-    rules = list(MemoryRule.objects.filter(user=user, field="category"))
+    rules = list(MemoryRule.objects.for_household(scope.household).filter(field="category"))
     if not rules:
         return
     # Longest trigger first → most specific match wins.
@@ -406,7 +422,7 @@ def _strip_store_prefix(summary: str, store: str) -> str:
 
 
 def _resolve_receipt_plan(
-    user,
+    scope,
     draft,
     items_by_category=None,
     payment_method_name="",
@@ -424,7 +440,7 @@ def _resolve_receipt_plan(
         return None, "Erro: o recibo pendente não tem itens."
 
     if items_by_category is None:
-        _apply_category_memory(user, items)
+        _apply_category_memory(scope, items)
         derived = _items_by_category_from_items(items)
         if isinstance(derived, str):
             return None, derived
@@ -450,10 +466,10 @@ def _resolve_receipt_plan(
 
     pm_name = (payment_method_name or "").strip() or str(payload.get("payment_hint") or "").strip()
     payment_method, pm_matches = _resolve_by_name(
-        PaymentMethod.objects.filter(user=user, is_active=True), pm_name
+        PaymentMethod.objects.for_household(scope.household).filter(is_active=True), pm_name
     )
     if payment_method is None:
-        available = ", ".join(list_payment_methods(user))
+        available = ", ".join(list_payment_methods(scope))
         if len(pm_matches) > 1:
             return None, (
                 f"Forma de pagamento '{pm_name}' é ambígua. Qual? {', '.join(pm_matches)}"
@@ -471,14 +487,16 @@ def _resolve_receipt_plan(
     resolved: dict[str, object] = {}
     category_sums: dict[str, Decimal] = {}
     for cat_name, idxs in items_by_category.items():
-        category, cat_matches = _resolve_by_name(Category.objects.filter(user=user), cat_name)
+        category, cat_matches = _resolve_by_name(
+            Category.objects.for_household(scope.household), cat_name
+        )
         if category is None:
             if len(cat_matches) > 1:
                 return None, (
                     f"Erro: categoria '{cat_name}' é ambígua. "
                     f"Você quis dizer: {', '.join(cat_matches)}?"
                 )
-            available = ", ".join(list_categories(user))
+            available = ", ".join(list_categories(scope))
             return None, (f"Erro: categoria '{cat_name}' não encontrada. Disponíveis: {available}")
         try:
             subtotal = sum(
@@ -544,7 +562,7 @@ def _resolve_receipt_plan(
 
 
 def propose_receipt(
-    user, items_by_category=None, payment_method_name="", summaries=None, store_name=""
+    scope, items_by_category=None, payment_method_name="", summaries=None, store_name=""
 ) -> str:
     """Plan (não grava) o recibo de FOTO pendente: valida, rateia e SALVA o plano
     no draft. Mostre a tabela e PEÇA confirmação; só grava no commit.
@@ -552,14 +570,15 @@ def propose_receipt(
     ``store_name`` sobrescreve a loja lida (ex.: a foto é de um pedido de
     marketplace sem cabeçalho — passe "Mercado Livre"); fica persistido no draft."""
     draft = (
-        ReceiptDraft.objects.filter(user=user, status=ReceiptDraftStatus.PENDING)
+        ReceiptDraft.objects.for_household(scope.household)
+        .filter(status=ReceiptDraftStatus.PENDING)
         .order_by("-created_at")
         .first()
     )
     if draft is None:
         return "Não há recibo (foto) pendente para preparar."
     plan, err = _resolve_receipt_plan(
-        user, draft, items_by_category, payment_method_name, summaries, store_name
+        scope, draft, items_by_category, payment_method_name, summaries, store_name
     )
     if err:
         return err
@@ -572,10 +591,11 @@ def propose_receipt(
     return f"{plan['table']}\n\nConfirma?"
 
 
-def commit_receipt(user) -> str:
+def commit_receipt(scope) -> str:
     """Grava (uma vez) o recibo PENDENTE a partir do plano salvo. Determinístico."""
     draft = (
-        ReceiptDraft.objects.filter(user=user, status=ReceiptDraftStatus.PENDING)
+        ReceiptDraft.objects.for_household(scope.household)
+        .filter(status=ReceiptDraftStatus.PENDING)
         .order_by("-created_at")
         .first()
     )
@@ -595,7 +615,9 @@ def commit_receipt(user) -> str:
             # computar o billing_month a partir de date+payment_method (evita o
             # bug histórico de billing_month congelado).
             entry = Entry.objects.create(
-                user=user,
+                user=scope.user,  # still NOT NULL until phase 4
+                household=scope.household,
+                created_by=scope.user,
                 date=entry_date,
                 amount=Decimal(line["amount"]),
                 description=line["description"],
@@ -608,9 +630,9 @@ def commit_receipt(user) -> str:
         # Higiene: descarta quaisquer OUTROS drafts pendentes órfãos do usuário
         # (de tentativas abandonadas) para que não sejam ressuscitados depois —
         # bug real do frete pós-commit, que regravou em massa um draft antigo.
-        ReceiptDraft.objects.filter(user=user, status=ReceiptDraftStatus.PENDING).exclude(
-            pk=draft.pk
-        ).update(status=ReceiptDraftStatus.DISCARDED)
+        ReceiptDraft.objects.for_household(scope.household).filter(
+            status=ReceiptDraftStatus.PENDING
+        ).exclude(pk=draft.pk).update(status=ReceiptDraftStatus.DISCARDED)
 
     total = sum((amt for _, amt in created), Decimal("0"))
     parts = "; ".join(f"{name} R$ {amt:.2f}" for name, amt in created)
@@ -620,10 +642,11 @@ def commit_receipt(user) -> str:
     )
 
 
-def discard_receipt(user) -> str:
+def discard_receipt(scope) -> str:
     """Descarta o recibo (foto) PENDENTE mais recente sem gravar."""
     draft = (
-        ReceiptDraft.objects.filter(user=user, status=ReceiptDraftStatus.PENDING)
+        ReceiptDraft.objects.for_household(scope.household)
+        .filter(status=ReceiptDraftStatus.PENDING)
         .order_by("-created_at")
         .first()
     )
@@ -634,15 +657,17 @@ def discard_receipt(user) -> str:
     return "Recibo descartado. Nada foi registrado."
 
 
-def discard_pending_receipts(user) -> int:
+def discard_pending_receipts(scope) -> int:
     """Descarta TODOS os recibos pendentes do usuário sem gravar.
 
     Higiene: garante no máximo UM draft pendente por vez. Chamado ao chegar uma
     nova foto (abandona tentativas anteriores) para que drafts órfãos não sejam
     ressuscitados depois. Retorna quantos foram descartados.
     """
-    return ReceiptDraft.objects.filter(user=user, status=ReceiptDraftStatus.PENDING).update(
-        status=ReceiptDraftStatus.DISCARDED
+    return (
+        ReceiptDraft.objects.for_household(scope.household)
+        .filter(status=ReceiptDraftStatus.PENDING)
+        .update(status=ReceiptDraftStatus.DISCARDED)
     )
 
 
@@ -660,7 +685,7 @@ def _items_total(items) -> Decimal:
     return sum((_to_decimal(i.get("line_total")) or Decimal("0") for i in items), Decimal("0"))
 
 
-def _plan_entries_alive(user, draft) -> bool:
+def _plan_entries_alive(scope, draft) -> bool:
     """True if this registered draft's entries still exist (a real duplicate).
 
     ``commit_receipt`` creates one Entry per plan line with the plan's date,
@@ -683,17 +708,20 @@ def _plan_entries_alive(user, draft) -> bool:
         amount = _to_decimal(line.get("amount"))
         if amount is None:
             continue
-        if Entry.objects.filter(
-            user=user,
-            date=entry_date,
-            payment_method_id=pm_id,
-            amount=amount,
-        ).exists():
+        if (
+            Entry.objects.for_household(scope.household)
+            .filter(
+                date=entry_date,
+                payment_method_id=pm_id,
+                amount=amount,
+            )
+            .exists()
+        ):
             return True
     return False
 
 
-def find_registered_duplicate(user, payload, within_hours: int = _DUP_WINDOW_HOURS):
+def find_registered_duplicate(scope, payload, within_hours: int = _DUP_WINDOW_HOURS):
     """Retorna um ReceiptDraft já REGISTRADO que parece ser o MESMO recibo de
     ``payload`` (loja + valor pago, ou loja + nº de itens e soma das linhas),
     dentro da janela recente. Serve para não re-registrar quando o usuário
@@ -710,16 +738,18 @@ def find_registered_duplicate(user, payload, within_hours: int = _DUP_WINDOW_HOU
     paid = _to_decimal(payload.get("amount_paid"))
     items_total = _items_total(items)
     cutoff = timezone.now() - timedelta(hours=within_hours)
-    candidates = ReceiptDraft.objects.filter(
-        user=user, status=ReceiptDraftStatus.REGISTERED, created_at__gte=cutoff
-    ).order_by("-created_at")[:20]
+    candidates = (
+        ReceiptDraft.objects.for_household(scope.household)
+        .filter(status=ReceiptDraftStatus.REGISTERED, created_at__gte=cutoff)
+        .order_by("-created_at")[:20]
+    )
     for draft in candidates:
         p = draft.payload or {}
         if (p.get("store") or "").strip().lower() != store:
             continue
         cpaid = _to_decimal(p.get("amount_paid"))
         if paid is not None and cpaid is not None:
-            if paid == cpaid and _plan_entries_alive(user, draft):
+            if paid == cpaid and _plan_entries_alive(scope, draft):
                 return draft
             continue
         citems = p.get("items") or []
@@ -728,13 +758,13 @@ def find_registered_duplicate(user, payload, within_hours: int = _DUP_WINDOW_HOU
             len(citems) == n
             and items_total > 0
             and ctotal == items_total
-            and _plan_entries_alive(user, draft)
+            and _plan_entries_alive(scope, draft)
         ):
             return draft
     return None
 
 
-def build_duplicate_receipt_directive(user, payload, dup) -> str:
+def build_duplicate_receipt_directive(scope, payload, dup) -> str:
     """Diretiva quando uma foto reenviada bate com um recibo JÁ REGISTRADO.
 
     Em vez de abrir um novo fluxo de commit (que gerava a duplicata quando o
@@ -758,7 +788,7 @@ def build_duplicate_receipt_directive(user, payload, dup) -> str:
     )
 
 
-def build_receipt_context(user) -> str:
+def build_receipt_context(scope) -> str:
     """Bloco de contexto do recibo pendente mais recente do usuário (ou "").
 
     Usado na delegação orquestrador→registrador para que o turno de correção
@@ -766,7 +796,8 @@ def build_receipt_context(user) -> str:
     registrador roda cego e não consegue ratear.
     """
     draft = (
-        ReceiptDraft.objects.filter(user=user, status=ReceiptDraftStatus.PENDING)
+        ReceiptDraft.objects.for_household(scope.household)
+        .filter(status=ReceiptDraftStatus.PENDING)
         .order_by("-created_at")
         .first()
     )
@@ -797,7 +828,7 @@ def build_receipt_context(user) -> str:
     )
 
 
-def build_pending_receipt_directive(user) -> str:
+def build_pending_receipt_directive(scope) -> str:
     """Diretiva para o ASSISTENTE quando há um recibo de foto PENDENTE.
 
     O turno da foto mostra a tabela e pergunta "Confirma?"; a confirmação do
@@ -808,7 +839,8 @@ def build_pending_receipt_directive(user) -> str:
     proíbe afirmar registro sem o resultado da ferramenta.
     """
     draft = (
-        ReceiptDraft.objects.filter(user=user, status=ReceiptDraftStatus.PENDING)
+        ReceiptDraft.objects.for_household(scope.household)
+        .filter(status=ReceiptDraftStatus.PENDING)
         .order_by("-created_at")
         .first()
     )
@@ -818,7 +850,7 @@ def build_pending_receipt_directive(user) -> str:
     store = str(payload.get("store") or "recibo").strip()
     paid = payload.get("amount_paid")
     paid_str = paid if paid is not None else "?"
-    context = build_receipt_context(user)
+    context = build_receipt_context(scope)
     base = (
         "⚠️ HÁ UM RECIBO DE FOTO PENDENTE aguardando confirmação para ser "
         f"registrado (loja: {store}, valor pago: {paid_str}). Trate a mensagem do "
@@ -871,17 +903,19 @@ def _billing_month(year: int, month: int) -> "date | str":
         return f"Erro: ano/mês inválido ({year}/{month})."
 
 
-def query_expenses(user, year: int, month: int, category_name: str | None = None) -> str:
+def query_expenses(scope, year: int, month: int, category_name: str | None = None) -> str:
     """Query total expenses for a month, optionally filtered by category."""
     bm = _billing_month(year, month)
     if isinstance(bm, str):
         return bm
     billing_month = bm
-    qs = Entry.objects.filter(user=user, billing_month=billing_month, amount__gt=0)
+    qs = Entry.objects.for_household(scope.household).filter(
+        billing_month=billing_month, amount__gt=0
+    )
 
     if category_name:
         try:
-            category = Category.objects.get(user=user, name=category_name)
+            category = Category.objects.for_household(scope.household).get(name=category_name)
         except Category.DoesNotExist:
             return f"Categoria '{category_name}' não encontrada."
         qs = qs.filter(category=category)
@@ -899,18 +933,18 @@ def query_expenses(user, year: int, month: int, category_name: str | None = None
     return f"Em {month:02d}/{year}, você gastou R$ {total:.2f} em {count} entradas."
 
 
-def query_balance(user, year: int, month: int) -> str:
+def query_balance(scope, year: int, month: int) -> str:
     """Query monthly balance: income, expenses, returns."""
     bm = _billing_month(year, month)
     if isinstance(bm, str):
         return bm
     billing_month = bm
 
-    income = Income.objects.filter(user=user, month=billing_month).aggregate(total=Sum("amount"))[
-        "total"
-    ] or Decimal("0")
+    income = Income.objects.for_household(scope.household).filter(month=billing_month).aggregate(
+        total=Sum("amount")
+    )["total"] or Decimal("0")
 
-    entries = Entry.objects.filter(user=user, billing_month=billing_month)
+    entries = Entry.objects.for_household(scope.household).filter(billing_month=billing_month)
     expenses = entries.filter(amount__gt=0).aggregate(total=Sum("amount"))["total"] or Decimal("0")
     returns = abs(
         entries.filter(amount__lt=0).aggregate(total=Sum("amount"))["total"] or Decimal("0")
@@ -926,7 +960,7 @@ def query_balance(user, year: int, month: int) -> str:
     )
 
 
-def query_budget_status(user, year: int, month: int) -> str:
+def query_budget_status(scope, year: int, month: int) -> str:
     """List categories that exceeded or are near their budget ceiling."""
     bm = _billing_month(year, month)
     if isinstance(bm, str):
@@ -934,7 +968,8 @@ def query_budget_status(user, year: int, month: int) -> str:
     billing_month = bm
 
     category_totals = (
-        Entry.objects.filter(user=user, billing_month=billing_month, amount__gt=0)
+        Entry.objects.for_household(scope.household)
+        .filter(billing_month=billing_month, amount__gt=0)
         .values("category__name", "category__budget_ceiling")
         .annotate(total=Sum("amount"))
     )
@@ -975,9 +1010,9 @@ def query_budget_status(user, year: int, month: int) -> str:
     return "\n".join(lines)
 
 
-def query_installments(user) -> str:
+def query_installments(scope) -> str:
     """List active installment plans."""
-    plans = InstallmentPlan.objects.filter(user=user).order_by("-date")
+    plans = InstallmentPlan.objects.for_household(scope.household).order_by("-date")
 
     if not plans.exists():
         return "Nenhum parcelamento ativo."
@@ -1001,9 +1036,9 @@ def query_installments(user) -> str:
     return "\n".join(lines)
 
 
-def create_category(user, name: str, budget_ceiling: str) -> str:
+def create_category(scope, name: str, budget_ceiling: str) -> str:
     """Create a new expense category."""
-    if Category.objects.filter(user=user, name=name).exists():
+    if Category.objects.for_household(scope.household).filter(name=name).exists():
         return f"Erro: categoria '{name}' já existe."
 
     try:
@@ -1011,14 +1046,20 @@ def create_category(user, name: str, budget_ceiling: str) -> str:
     except InvalidOperation:
         return f"Erro: valor de teto inválido '{budget_ceiling}'."
 
-    Category.objects.create(user=user, name=name, budget_ceiling=ceiling)
+    Category.objects.create(
+        user=scope.user,  # still NOT NULL until phase 4
+        household=scope.household,
+        created_by=scope.user,
+        name=name,
+        budget_ceiling=ceiling,
+    )
     return f"Categoria '{name}' criada com teto de R$ {ceiling:.2f}."
 
 
-def update_category_budget(user, category_name: str, new_ceiling: str) -> str:
+def update_category_budget(scope, category_name: str, new_ceiling: str) -> str:
     """Update the budget ceiling of an existing category."""
     try:
-        category = Category.objects.get(user=user, name=category_name)
+        category = Category.objects.for_household(scope.household).get(name=category_name)
     except Category.DoesNotExist:
         return f"Erro: categoria '{category_name}' não encontrada."
 
@@ -1033,9 +1074,9 @@ def update_category_budget(user, category_name: str, new_ceiling: str) -> str:
     return f"Teto de {category_name} atualizado de R$ {old_ceiling:.2f} para R$ {ceiling:.2f}."
 
 
-def create_payment_method(user, name: str, pm_type: str, closing_day: str | None = None) -> str:
+def create_payment_method(scope, name: str, pm_type: str, closing_day: str | None = None) -> str:
     """Create a new payment method."""
-    if PaymentMethod.objects.filter(user=user, name=name).exists():
+    if PaymentMethod.objects.for_household(scope.household).filter(name=name).exists():
         return f"Erro: forma de pagamento '{name}' já existe."
 
     valid_types = [choice.value for choice in PaymentType]
@@ -1049,12 +1090,19 @@ def create_payment_method(user, name: str, pm_type: str, closing_day: str | None
         except ValueError:
             return f"Erro: dia de fechamento inválido '{closing_day}'."
 
-    PaymentMethod.objects.create(user=user, name=name, type=pm_type, closing_day=closing)
+    PaymentMethod.objects.create(
+        user=scope.user,  # still NOT NULL until phase 4
+        household=scope.household,
+        created_by=scope.user,
+        name=name,
+        type=pm_type,
+        closing_day=closing,
+    )
     closing_info = f" (fechamento dia {closing})" if closing else ""
     return f"Forma de pagamento '{name}' criada{closing_info}."
 
 
-def update_income(user, name: str, amount: str, month_str: str) -> str:
+def update_income(scope, name: str, amount: str, month_str: str) -> str:
     """Create or update income for a specific month."""
     try:
         amount_val = Decimal(amount)
@@ -1067,24 +1115,30 @@ def update_income(user, name: str, amount: str, month_str: str) -> str:
         return f"Erro: data inválida '{month_str}'. Use formato AAAA-MM-DD."
 
     income, created = Income.objects.update_or_create(
-        user=user,
+        household=scope.household,
         name=name,
         month=month,
-        defaults={"amount": amount_val},
+        defaults={
+            "amount": amount_val,
+            "user": scope.user,  # still NOT NULL until phase 4
+            "created_by": scope.user,
+        },
     )
     action = "criada" if created else "atualizada"
     return f"Renda '{name}' {action}: R$ {amount_val:.2f} em {month:%m/%Y}."
 
 
-def list_systemic_expenses(user) -> list[str]:
-    """List active systemic expense names and default amounts for the user."""
+def list_systemic_expenses(scope) -> list[str]:
+    """List active systemic expense names and default amounts for the household."""
     return [
         f"{s.name} (padrão R$ {s.default_amount:.2f})"
-        for s in SystemicExpense.objects.filter(user=user, is_active=True).order_by("name")
+        for s in SystemicExpense.objects.for_household(scope.household)
+        .filter(is_active=True)
+        .order_by("name")
     ]
 
 
-def set_systemic_amount(user, name: str, amount_str: str, month_str: str) -> str:
+def set_systemic_amount(scope, name: str, amount_str: str, month_str: str) -> str:
     """Set the amount of a systemic expense for a specific month."""
     try:
         amount_val = Decimal(amount_str)
@@ -1096,10 +1150,15 @@ def set_systemic_amount(user, name: str, amount_str: str, month_str: str) -> str
     except ValueError:
         return f"Erro: data inválida '{month_str}'. Use formato AAAA-MM-DD."
 
-    s = SystemicExpense.objects.filter(user=user, is_active=True, name__iexact=name).first()
+    s = (
+        SystemicExpense.objects.for_household(scope.household)
+        .filter(is_active=True, name__iexact=name)
+        .first()
+    )
     if s is None:
         available = ", ".join(
-            SystemicExpense.objects.filter(user=user, is_active=True)
+            SystemicExpense.objects.for_household(scope.household)
+            .filter(is_active=True)
             .order_by("name")
             .values_list("name", flat=True)
         )
@@ -1108,12 +1167,15 @@ def set_systemic_amount(user, name: str, amount_str: str, month_str: str) -> str
             f"Disponíveis: {available}. (Nenhuma alteração feita.)"
         )
 
-    existing = Entry.objects.filter(
-        user=user,
-        systemic_expense=s,
-        billing_month=month,
-        entry_type=EntryType.SYSTEMIC,
-    ).first()
+    existing = (
+        Entry.objects.for_household(scope.household)
+        .filter(
+            systemic_expense=s,
+            billing_month=month,
+            entry_type=EntryType.SYSTEMIC,
+        )
+        .first()
+    )
 
     if existing:
         existing.amount = amount_val
@@ -1127,9 +1189,9 @@ def set_systemic_amount(user, name: str, amount_str: str, month_str: str) -> str
 VALID_MEMORY_FIELDS = {"category", "payment_method", "description"}
 
 
-def lookup_memory(user, message: str) -> str:
+def lookup_memory(scope, message: str) -> str:
     """Look up memory rules matching the user's message."""
-    rules = find_matching_rules(user, message)
+    rules = find_matching_rules(scope, message)
     if not rules:
         return "Nenhuma regra de memória encontrada."
 
@@ -1146,9 +1208,9 @@ def lookup_memory(user, message: str) -> str:
     return "\n".join(lines)
 
 
-async def lookup_memory_async(user, message: str) -> str:
+async def lookup_memory_async(scope, message: str) -> str:
     """Look up memory rules matching the user's message, with semantic fallback."""
-    rules = await _sync_to_async(find_matching_rules)(user, message)
+    rules = await _sync_to_async(find_matching_rules)(scope, message)
     if rules:
         lines = ["Regras de memória encontradas:"]
         for rule in rules:
@@ -1164,7 +1226,7 @@ async def lookup_memory_async(user, message: str) -> str:
     # Fallback: semantic search
     query_vector = await get_embedding(message)
     if query_vector:
-        matches = await _sync_to_async(find_semantic_matches)(user, query_vector)
+        matches = await _sync_to_async(find_semantic_matches)(scope, query_vector)
         if matches:
             lines = ["Memórias similares encontradas (busca semântica):"]
             for match in matches:
@@ -1177,29 +1239,31 @@ async def lookup_memory_async(user, message: str) -> str:
     return "Nenhuma regra de memória encontrada."
 
 
-def create_memory_rule(user, trigger: str, field: str, value: str) -> str:
+def create_memory_rule(scope, trigger: str, field: str, value: str) -> str:
     """Create or update a memory rule from user correction."""
     if field not in VALID_MEMORY_FIELDS:
         valid = ", ".join(sorted(VALID_MEMORY_FIELDS))
         return f"Erro: campo '{field}' inválido. Válidos: {valid}."
 
     rule, created = MemoryRule.objects.update_or_create(
-        user=user,
+        household=scope.household,
         trigger=trigger.lower(),
         field=field,
         defaults={
             "value": value,
             "confidence": 1.0,
             "source": MemorySource.USER_CORRECTION,
+            "user": scope.user,  # still NOT NULL until phase 4
+            "created_by": scope.user,
         },
     )
     action = "criada" if created else "atualizada"
     return f"Regra de memória {action}: '{trigger}' → {field}='{value}'."
 
 
-def list_memory_rules(user) -> str:
-    """List all memory rules for the user."""
-    rules = MemoryRule.objects.filter(user=user).order_by("trigger", "field")
+def list_memory_rules(scope) -> str:
+    """List all memory rules for the household."""
+    rules = MemoryRule.objects.for_household(scope.household).order_by("trigger", "field")
     if not rules.exists():
         return "Nenhuma regra de memória cadastrada."
 

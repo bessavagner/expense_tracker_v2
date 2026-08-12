@@ -75,11 +75,11 @@ def _drogasil_draft(user):
     )
 
 
-def test_net_lines_do_not_double_subtract_discount(seeded_user):
+def test_net_lines_do_not_double_subtract_discount(seeded_user, seeded_scope):
     """Linhas líquidas + discount impresso → plano bate com valor pago (118,86),
     NÃO 91,26."""
     _drogasil_draft(seeded_user)
-    propose_receipt(seeded_user, payment_method_name="Pix")
+    propose_receipt(seeded_scope, payment_method_name="Pix")
     plan = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload["plan"]
     assert Decimal(plan["total"]) == Decimal("118.86")
     # Alimentação = 3×6,99 = 20,97 (não 16,10); Farmácia = 57,99+39,90 = 97,89
@@ -88,15 +88,15 @@ def test_net_lines_do_not_double_subtract_discount(seeded_user):
     assert by_cat["Farmácia"] == Decimal("97.89")
 
 
-def test_net_lines_commit_totals_paid(seeded_user):
+def test_net_lines_commit_totals_paid(seeded_user, seeded_scope):
     _drogasil_draft(seeded_user)
-    propose_receipt(seeded_user, payment_method_name="Pix")
-    commit_receipt(seeded_user)
+    propose_receipt(seeded_scope, payment_method_name="Pix")
+    commit_receipt(seeded_scope)
     total = sum((e.amount for e in Entry.objects.filter(user=seeded_user)), Decimal("0"))
     assert total == Decimal("118.86")
 
 
-def test_gross_lines_still_prorate_discount(seeded_user):
+def test_gross_lines_still_prorate_discount(seeded_user, seeded_scope):
     """Quando as linhas são BRUTAS e o desconto leva ao valor pago, o rateio
     continua válido (recibo PAGUE MENOS: 217,32 − 61,42 = 155,90)."""
     ReceiptDraft.objects.create(
@@ -115,12 +115,12 @@ def test_gross_lines_still_prorate_discount(seeded_user):
         },
         status=ReceiptDraftStatus.PENDING,
     )
-    propose_receipt(seeded_user, payment_method_name="Pix")
+    propose_receipt(seeded_scope, payment_method_name="Pix")
     plan = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload["plan"]
     assert Decimal(plan["total"]) == Decimal("155.90")
 
 
-def test_no_amount_paid_falls_back_to_printed_discount(seeded_user):
+def test_no_amount_paid_falls_back_to_printed_discount(seeded_user, seeded_scope):
     """Sem valor pago, usa o desconto impresso (comportamento anterior)."""
     ReceiptDraft.objects.create(
         user=seeded_user,
@@ -136,7 +136,7 @@ def test_no_amount_paid_falls_back_to_printed_discount(seeded_user):
         },
         status=ReceiptDraftStatus.PENDING,
     )
-    propose_receipt(seeded_user, payment_method_name="Pix")
+    propose_receipt(seeded_scope, payment_method_name="Pix")
     plan = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload["plan"]
     assert Decimal(plan["total"]) == Decimal("90.00")  # 100 - 10 printed discount
 
@@ -145,6 +145,7 @@ def test_no_amount_paid_falls_back_to_printed_discount(seeded_user):
 
 
 def _ext(items, discount, paid):
+
     return ReceiptExtraction(
         items=[ReceiptItem(description="x", line_total=Decimal(v)) for v in items],
         discount=Decimal(discount) if discount is not None else None,
@@ -153,18 +154,21 @@ def _ext(items, discount, paid):
 
 
 def test_consistency_net_receipt_is_consistent():
+
     # Drogasil: linhas líquidas somam o valor pago; discount impresso 27,60
     ext = _ext(["6.99", "57.99", "6.99", "39.90", "6.99"], "27.60", "118.86")
     assert receipt_is_consistent(ext) is True
 
 
 def test_consistency_gross_receipt_is_consistent():
+
     # linhas brutas; a diferença bate com o desconto impresso
     ext = _ext(["160.00", "57.32"], "61.42", "155.90")
     assert receipt_is_consistent(ext) is True
 
 
 def test_consistency_missing_item_flagged():
+
     # soma das linhas MENOR que o valor pago → leitura incompleta
     ext = _ext(["10.00", "20.00"], None, "118.86")
     assert receipt_is_consistent(ext) is False

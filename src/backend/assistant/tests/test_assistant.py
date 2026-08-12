@@ -11,10 +11,12 @@ from assistant.agents.assistant import agents_override, assistant_agent
 
 
 def _tools(agent):
+
     return set(agent._function_toolset.tools.keys())
 
 
 def test_agent_exposes_full_toolset():
+
     t = _tools(assistant_agent)
     expected = {
         # write
@@ -60,6 +62,7 @@ def test_agent_exposes_full_toolset():
 
 
 def test_no_delegation_tools():
+
     t = _tools(assistant_agent)
     assert not any(name.startswith("delegate_") for name in t)
 
@@ -68,6 +71,7 @@ def test_no_delegation_tools():
 class TestRuns:
     @pytest.mark.anyio
     async def test_runs_under_testmodel(self, seeded_user):
+
         with agents_override(TestModel()):
             result = await assistant_agent.run("gastei 50 no cosmos", deps=seeded_user)
             assert result.output
@@ -82,6 +86,7 @@ class TestPendingReceiptDirective:
     """
 
     def _make_pending(self, user):
+
         from assistant.models import ReceiptDraft, ReceiptDraftStatus
 
         return ReceiptDraft.objects.create(
@@ -94,22 +99,22 @@ class TestPendingReceiptDirective:
             status=ReceiptDraftStatus.PENDING,
         )
 
-    def test_directive_present_when_draft_pending(self, user):
+    def test_directive_present_when_draft_pending(self, user, scope):
         from assistant.agents.tools import build_pending_receipt_directive
 
         self._make_pending(user)
-        out = build_pending_receipt_directive(user)
+        out = build_pending_receipt_directive(scope)
         assert "commit_receipt" in out
         assert "MATEUS SUPERMERCADOS" in out
         assert "NUNCA diga que registrou" in out
         assert "delegate_registro" not in out
 
-    def test_directive_empty_when_no_pending(self, user):
+    def test_directive_empty_when_no_pending(self, user, scope):
         from assistant.agents.tools import build_pending_receipt_directive
 
-        assert build_pending_receipt_directive(user) == ""
+        assert build_pending_receipt_directive(scope) == ""
 
-    def test_directive_empty_when_already_registered(self, user):
+    def test_directive_empty_when_already_registered(self, user, scope):
         from assistant.agents.tools import build_pending_receipt_directive
         from assistant.models import ReceiptDraft, ReceiptDraftStatus
 
@@ -118,4 +123,4 @@ class TestPendingReceiptDirective:
             payload={"store": "X", "items": []},
             status=ReceiptDraftStatus.REGISTERED,
         )
-        assert build_pending_receipt_directive(user) == ""
+        assert build_pending_receipt_directive(scope) == ""

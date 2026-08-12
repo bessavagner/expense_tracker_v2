@@ -9,6 +9,7 @@ pytestmark = pytest.mark.django_db
 
 
 def test_extraction_prompt_asks_for_readable_summaries():
+
     ext = ReceiptExtraction(
         store="Cosmos",
         amount_paid="13.00",
@@ -20,7 +21,7 @@ def test_extraction_prompt_asks_for_readable_summaries():
     assert "resumo" in low or "legível" in low or "legivel" in low
 
 
-def test_pending_directive_asks_summaries_and_learns_category(seeded_user):
+def test_pending_directive_asks_summaries_and_learns_category(seeded_user, seeded_scope):
     ReceiptDraft.objects.create(
         user=seeded_user,
         status=ReceiptDraftStatus.PENDING,
@@ -30,7 +31,7 @@ def test_pending_directive_asks_summaries_and_learns_category(seeded_user):
             "items": [{"description": "ENERG MONSTER", "line_total": "10.00"}],
         },
     )
-    out = build_pending_receipt_directive(seeded_user)
+    out = build_pending_receipt_directive(seeded_scope)
     low = out.lower()
     # readable summaries requested
     assert "summaries" in out and ("resumo" in low or "legível" in low or "legivel" in low)
@@ -42,11 +43,13 @@ def test_pending_directive_asks_summaries_and_learns_category(seeded_user):
 
 
 def test_assistant_system_prompt_asks_for_summaries():
+
     assert "summaries" in ASSISTANT_PROMPT
     assert "não passe summaries" not in ASSISTANT_PROMPT
 
 
 def test_extraction_needs_review_head_no_store_name():
+
     ext = ReceiptExtraction(
         store="Cosmos",
         amount_paid="13.00",
@@ -58,7 +61,7 @@ def test_extraction_needs_review_head_no_store_name():
     assert "não inclua o nome da loja" in low or "nome da loja" in low
 
 
-def test_pending_directive_forbids_hand_typed_table(seeded_user):
+def test_pending_directive_forbids_hand_typed_table(seeded_user, seeded_scope):
     """Bug real (Mercado Livre 2026-07-15): o modelo digitou uma tabela com
     categorias inventadas ("Vestuário", "Eletrônicos" — nomes que não existem
     nas categorias do usuário) e sem coluna de valor, em vez de mostrar o texto
@@ -74,13 +77,13 @@ def test_pending_directive_forbids_hand_typed_table(seeded_user):
             "items": [{"description": "Bermuda", "line_total": "66.09"}],
         },
     )
-    out = build_pending_receipt_directive(seeded_user)
+    out = build_pending_receipt_directive(seeded_scope)
     low = out.lower()
     assert "nunca" in low and ("digite" in low or "monte" in low or "invente a tabela" in low)
     assert "literal" in low or "exatamente o texto" in low
 
 
-def test_pending_directive_payment_method_is_sticky(seeded_user):
+def test_pending_directive_payment_method_is_sticky(seeded_user, seeded_scope):
     """Bug real: o bot perguntou a forma de pagamento 3 vezes no mesmo recibo,
     mesmo já resolvida (legenda da foto + resposta explícita do usuário)."""
     ReceiptDraft.objects.create(
@@ -92,7 +95,7 @@ def test_pending_directive_payment_method_is_sticky(seeded_user):
             "items": [{"description": "Bermuda", "line_total": "66.09"}],
         },
     )
-    out = build_pending_receipt_directive(seeded_user)
+    out = build_pending_receipt_directive(seeded_scope)
     low = out.lower()
     assert "já foi resolvida" in low or "já resolvida" in low or "já informou" in low
     assert "nunca pergunte de novo" in low or "não pergunte de novo" in low

@@ -7,7 +7,7 @@ from assistant.models import MemoryRule
 
 @pytest.mark.django_db
 class TestLookupMemory:
-    def test_returns_matching_rules_formatted(self, user):
+    def test_returns_matching_rules_formatted(self, user, scope):
         baker.make(
             "assistant.MemoryRule",
             user=user,
@@ -17,12 +17,12 @@ class TestLookupMemory:
             confidence=1.0,
             source="user_correction",
         )
-        result = lookup_memory(user, "gastei 50 no cosmos")
+        result = lookup_memory(scope, "gastei 50 no cosmos")
         assert "category" in result
         assert "Alimentação" in result
         assert "auto-aplicar" in result
 
-    def test_returns_confirm_tier(self, user):
+    def test_returns_confirm_tier(self, user, scope):
         baker.make(
             "assistant.MemoryRule",
             user=user,
@@ -32,10 +32,10 @@ class TestLookupMemory:
             confidence=0.8,
             source="inferred",
         )
-        result = lookup_memory(user, "fui no posto")
+        result = lookup_memory(scope, "fui no posto")
         assert "sugerir" in result
 
-    def test_returns_ask_tier(self, user):
+    def test_returns_ask_tier(self, user, scope):
         baker.make(
             "assistant.MemoryRule",
             user=user,
@@ -45,14 +45,14 @@ class TestLookupMemory:
             confidence=0.5,
             source="inferred",
         )
-        result = lookup_memory(user, "comprei na loja")
+        result = lookup_memory(scope, "comprei na loja")
         assert "perguntar" in result
 
-    def test_no_matches_returns_message(self, user):
-        result = lookup_memory(user, "almocei no restaurante")
+    def test_no_matches_returns_message(self, user, scope):
+        result = lookup_memory(scope, "almocei no restaurante")
         assert "nenhuma" in result.lower()
 
-    def test_multiple_rules_all_listed(self, user):
+    def test_multiple_rules_all_listed(self, user, scope):
         baker.make(
             "assistant.MemoryRule",
             user=user,
@@ -71,22 +71,22 @@ class TestLookupMemory:
             confidence=0.8,
             source="inferred",
         )
-        result = lookup_memory(user, "gastei no cosmos")
+        result = lookup_memory(scope, "gastei no cosmos")
         assert "category" in result
         assert "payment_method" in result
 
 
 @pytest.mark.django_db
 class TestCreateMemoryRule:
-    def test_creates_new_rule(self, user):
-        result = create_memory_rule(user, "cosmos", "category", "Alimentação")
+    def test_creates_new_rule(self, user, scope):
+        result = create_memory_rule(scope, "cosmos", "category", "Alimentação")
         assert "criada" in result.lower() or "salva" in result.lower()
         rule = MemoryRule.objects.get(user=user, trigger="cosmos", field="category")
         assert rule.value == "Alimentação"
         assert rule.confidence == 1.0
         assert rule.source == "user_correction"
 
-    def test_upserts_existing_rule(self, user):
+    def test_upserts_existing_rule(self, user, scope):
         baker.make(
             "assistant.MemoryRule",
             user=user,
@@ -96,7 +96,7 @@ class TestCreateMemoryRule:
             confidence=0.5,
             source="inferred",
         )
-        result = create_memory_rule(user, "cosmos", "category", "Lanche")
+        result = create_memory_rule(scope, "cosmos", "category", "Lanche")
         assert "atualizada" in result.lower()
         rule = MemoryRule.objects.get(user=user, trigger="cosmos", field="category")
         assert rule.value == "Lanche"
@@ -104,14 +104,14 @@ class TestCreateMemoryRule:
         assert rule.source == "user_correction"
         assert MemoryRule.objects.filter(user=user, trigger="cosmos", field="category").count() == 1
 
-    def test_invalid_field_returns_error(self, user):
-        result = create_memory_rule(user, "cosmos", "invalid_field", "value")
+    def test_invalid_field_returns_error(self, user, scope):
+        result = create_memory_rule(scope, "cosmos", "invalid_field", "value")
         assert "erro" in result.lower()
 
 
 @pytest.mark.django_db
 class TestListMemoryRules:
-    def test_lists_user_rules(self, user):
+    def test_lists_user_rules(self, user, scope):
         baker.make(
             "assistant.MemoryRule",
             user=user,
@@ -126,15 +126,15 @@ class TestListMemoryRules:
             field="category",
             value="Transporte",
         )
-        result = list_memory_rules(user)
+        result = list_memory_rules(scope)
         assert "cosmos" in result
         assert "posto" in result
 
-    def test_empty_returns_message(self, user):
-        result = list_memory_rules(user)
+    def test_empty_returns_message(self, user, scope):
+        result = list_memory_rules(scope)
         assert "nenhuma" in result.lower()
 
-    def test_excludes_other_users(self, user):
+    def test_excludes_other_users(self, user, scope):
         other = baker.make("core.CustomUser")
         baker.make(
             "assistant.MemoryRule",
@@ -143,5 +143,5 @@ class TestListMemoryRules:
             field="category",
             value="Alimentação",
         )
-        result = list_memory_rules(user)
+        result = list_memory_rules(scope)
         assert "nenhuma" in result.lower()
