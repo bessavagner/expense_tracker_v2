@@ -3,8 +3,10 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from accounts.models import AuthoredHouseholdModel
 
-class Budget(models.Model):
+
+class Budget(AuthoredHouseholdModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -26,6 +28,11 @@ class Budget(models.Model):
         verbose_name_plural = "orçamentos"
         unique_together = ("user", "name")
         ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["household", "name"], name="unique_budget_per_household"
+            ),
+        ]
 
     def __str__(self):
         return self.name

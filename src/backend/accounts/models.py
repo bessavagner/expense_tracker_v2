@@ -68,3 +68,71 @@ class Membership(models.Model):
 
     def __str__(self):
         return f"{self.user} @ {self.household} ({self.role})"
+
+
+class HouseholdOwnedModel(models.Model):
+    """A domain row that belongs to a household.
+
+    Abstract on purpose: re-tenanting a model is a change to its base class,
+    so there is exactly one definition of the tenant column and phase 4 can
+    enumerate the models instead of trusting a hand-maintained list.
+
+    ``household`` is nullable through E04 phases 2 and 3 because the rows that
+    exist today have no household until the back-fill runs, and because every
+    not-yet-converted write site still sets only ``user``. Phase 4 makes it
+    NOT NULL once every write path sets it explicitly — that is the point at
+    which the database itself starts enforcing tenancy.
+    """
+
+    household = models.ForeignKey(
+        "accounts.Household",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="%(app_label)s_%(class)s",
+    )
+
+    objects = HouseholdScopedManager()
+
+    class Meta:
+        abstract = True
+
+
+class AuthoredHouseholdModel(HouseholdOwnedModel):
+    """A household row a person wrote.
+
+    ``created_by`` is not decoration — it delivers review finding M5 (no audit
+    trail) as a side effect of work we are doing anyway, and E17 surfaces it.
+
+    SET_NULL rather than CASCADE: when a member leaves or deletes their
+    account, the household's financial history must survive. That distinction
+    is the entire reason ``user`` splits into two columns instead of being
+    renamed.
+    """
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+
+    class Meta:
+        abstract = True
+
+
+def household_owned_models():
+    """Every concrete model carrying a household column.
+
+    Discovered, not listed. A model added later that inherits the base is
+    covered by phase 4's isolation test automatically; a model added later
+    that *forgets* to inherit it is caught by the same test's counterpart.
+    """
+    from django.apps import apps
+
+    return [
+        model
+        for model in apps.get_models()
+        if issubclass(model, HouseholdOwnedModel) and not model._meta.abstract
+    ]

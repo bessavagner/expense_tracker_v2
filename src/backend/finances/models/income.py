@@ -3,8 +3,10 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from accounts.models import AuthoredHouseholdModel
 
-class Income(models.Model):
+
+class Income(AuthoredHouseholdModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -30,6 +32,7 @@ class Income(models.Model):
         ordering = ["-month", "name"]
         indexes = [
             models.Index(fields=["user", "month"], name="income_user_month_idx"),
+            models.Index(fields=["household", "month"], name="income_hh_month_idx"),
         ]
 
     def __str__(self):

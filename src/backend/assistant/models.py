@@ -5,13 +5,15 @@ from django.db import models
 from django.utils import timezone
 from pgvector.django import HnswIndex, VectorField
 
+from accounts.models import AuthoredHouseholdModel, HouseholdOwnedModel
+
 
 class MessageRole(models.TextChoices):
     USER = "user", "Usuário"
     ASSISTANT = "assistant", "Assistente"
 
 
-class ChatMessage(models.Model):
+class ChatMessage(AuthoredHouseholdModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -35,6 +37,7 @@ class ChatMessage(models.Model):
             # newest-first (assistant/views.py, `_load_history`), which is the
             # opposite of Meta.ordering — hence the explicit descending index.
             models.Index(fields=["user", "-created_at"], name="chat_user_recent_idx"),
+            models.Index(fields=["household", "-created_at"], name="chat_hh_recent_idx"),
         ]
 
     def __str__(self):
@@ -47,7 +50,7 @@ class MemorySource(models.TextChoices):
     INFERRED = "inferred", "Inferido"
 
 
-class MemoryRule(models.Model):
+class MemoryRule(AuthoredHouseholdModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -66,6 +69,12 @@ class MemoryRule(models.Model):
         verbose_name = "regra de memória"
         verbose_name_plural = "regras de memória"
         unique_together = ("user", "trigger", "field")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["household", "trigger", "field"],
+                name="unique_memory_rule_per_household",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.trigger} → {self.field}={self.value}"
@@ -77,7 +86,7 @@ class ReceiptDraftStatus(models.TextChoices):
     DISCARDED = "discarded", "Descartado"
 
 
-class ReceiptDraft(models.Model):
+class ReceiptDraft(AuthoredHouseholdModel):
     """Recibo extraído de uma foto, persistido para sobreviver ao turno.
 
     Guardar a extração estruturada (itens + valores) permite que o turno de
@@ -121,6 +130,10 @@ class ReceiptDraft(models.Model):
                 fields=["user", "status", "-created_at"],
                 name="draft_user_status_recent_idx",
             ),
+            models.Index(
+                fields=["household", "status", "-created_at"],
+                name="draft_hh_status_recent_idx",
+            ),
         ]
 
     def __str__(self):
@@ -128,7 +141,7 @@ class ReceiptDraft(models.Model):
         return f"Recibo {store} ({self.status})"
 
 
-class MemoryEmbedding(models.Model):
+class MemoryEmbedding(HouseholdOwnedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -167,7 +180,7 @@ class AssistantUsageKind(models.TextChoices):
     IMAGE = "image", "Imagem"
 
 
-class AssistantUsageEvent(models.Model):
+class AssistantUsageEvent(HouseholdOwnedModel):
     """One admitted assistant turn.
 
     Written *before* the model call, so the counter records intent to spend
@@ -176,8 +189,10 @@ class AssistantUsageEvent(models.Model):
     magnitude cheaper per turn than a vision call, so only the image path earns a
     budget of its own.
 
-    E07 will extend this row with token counts and a household FK. Keep it
-    append-only and cheap to write.
+    E07 will extend this row with token counts. The household FK it wanted
+    landed in E04 phase 2; `user` stays as the acting member, since a quota is
+    charged to a household but attributed to a person. Keep it append-only and
+    cheap to write.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -196,6 +211,10 @@ class AssistantUsageEvent(models.Model):
             models.Index(
                 fields=["user", "kind", "-created_at"],
                 name="usage_user_kind_recent_idx",
+            ),
+            models.Index(
+                fields=["household", "kind", "-created_at"],
+                name="usage_hh_kind_recent_idx",
             ),
         ]
 

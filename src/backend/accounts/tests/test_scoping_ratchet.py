@@ -41,6 +41,17 @@ BASELINE = {
     "src/backend/finances/views/settings.py",
 }
 
+# Tenancy-transition tooling. Deliberately *not* in BASELINE, which may only
+# ever shrink: these files are not legacy leaks awaiting conversion, they read
+# by user because that is their job. `dump_ledger_totals` fingerprints the
+# ledger exactly as the pre-E04 code did, which is the only reason its
+# before/after comparison proves the migration lossless — scoping it by
+# household would compare two different questions. Phase 4 re-points it at
+# household in the same commit that drops the `user` columns.
+E04_TRANSITION_TOOLS = {
+    "src/backend/finances/management/commands/dump_ledger_totals.py",
+}
+
 PATTERN = re.compile(r"\.(filter|get|exclude)\([^)]*user=")
 
 
@@ -57,7 +68,7 @@ def _files_scoping_by_user():
 
 
 def test_no_new_file_scopes_a_domain_query_by_user():
-    regressions = sorted(_files_scoping_by_user() - BASELINE)
+    regressions = sorted(_files_scoping_by_user() - BASELINE - E04_TRANSITION_TOOLS)
     assert not regressions, (
         "These files scope a domain query by user=. Use the household-scoped "
         f"manager (accounts.scoping) instead: {regressions}"
@@ -69,3 +80,13 @@ def test_baseline_has_no_stale_entries():
     stops ratcheting."""
     stale = sorted(BASELINE - _files_scoping_by_user())
     assert not stale, f"These files no longer scope by user — remove them from BASELINE: {stale}"
+
+
+def test_transition_tools_still_need_their_exemption():
+    """The escape hatch rots shut. A transition tool that no longer scopes by
+    user has been converted, and its entry must go — otherwise the set slowly
+    becomes a place to hide real leaks."""
+    stale = sorted(E04_TRANSITION_TOOLS - _files_scoping_by_user())
+    assert not stale, (
+        f"These no longer scope by user — remove them from E04_TRANSITION_TOOLS: {stale}"
+    )

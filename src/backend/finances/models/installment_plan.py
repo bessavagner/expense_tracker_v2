@@ -3,10 +3,11 @@ import uuid
 from django.conf import settings
 from django.db import models, transaction
 
+from accounts.models import AuthoredHouseholdModel
 from finances.services.billing import add_months, installment_billing_months
 
 
-class InstallmentPlan(models.Model):
+class InstallmentPlan(AuthoredHouseholdModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="installment_plans"
@@ -50,6 +51,10 @@ class InstallmentPlan(models.Model):
             entries.append(
                 Entry(
                     user=self.user,
+                    # bulk_create bypasses pre_save, so the E04 bridge cannot
+                    # reach these rows — the plan carries its own tenancy down.
+                    household=self.household,
+                    created_by=self.created_by or self.user,
                     date=self.date,
                     amount=amount,
                     description=f"{self.description} ({i + 1}/{self.num_installments})",
