@@ -9,12 +9,19 @@ from finances.models import Entry
 
 
 @pytest.fixture
-def template(user):
-    cat = baker.make("finances.Category", user=user)
-    pm = baker.make("finances.PaymentMethod", user=user, name="C6", type="credit_card")
+def template(user, household):
+    cat = baker.make("finances.Category", user=user, household=household)
+    pm = baker.make(
+        "finances.PaymentMethod",
+        user=user,
+        household=household,
+        name="C6",
+        type="credit_card",
+    )
     return baker.make(
         "finances.SystemicExpense",
         user=user,
+        household=household,
         name="Spotify - Amanda",
         category=cat,
         payment_method=pm,
@@ -35,10 +42,10 @@ def _data(template, **over):
 
 @pytest.mark.django_db
 class TestSystemicTemplateEditForm:
-    def test_no_recurrence_updates_template_only(self, user, template):
+    def test_no_recurrence_updates_template_only(self, household, template):
         june = template.create_monthly_entry(date(2026, 6, 1), amount=Decimal("11.90"))
 
-        form = SystemicTemplateEditForm(_data(template), instance=template, user=user)
+        form = SystemicTemplateEditForm(_data(template), instance=template, household=household)
         assert form.is_valid(), form.errors
         form.save()
 
@@ -47,7 +54,7 @@ class TestSystemicTemplateEditForm:
         assert template.default_amount == Decimal("23.90")
         assert june.amount == Decimal("11.90")  # month entries untouched
 
-    def test_recurrence_propagates_default_amount(self, user, template):
+    def test_recurrence_propagates_default_amount(self, household, template):
         june = template.create_monthly_entry(date(2026, 6, 1), amount=Decimal("11.90"))
 
         form = SystemicTemplateEditForm(
@@ -58,7 +65,7 @@ class TestSystemicTemplateEditForm:
                 recurrence_end="2026-08-01",
             ),
             instance=template,
-            user=user,
+            household=household,
         )
         assert form.is_valid(), form.errors
         form.save()

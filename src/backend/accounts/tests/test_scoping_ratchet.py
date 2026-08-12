@@ -26,7 +26,6 @@ BASELINE = {
     "src/backend/finances/views/consolidated.py",
     "src/backend/finances/views/importer.py",
     "src/backend/finances/views/projection.py",
-    "src/backend/finances/views/settings.py",
 }
 
 # Tenancy-transition tooling. Deliberately *not* in BASELINE, which may only

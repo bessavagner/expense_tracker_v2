@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.test import TestCase
 from model_bakery import baker
 
+from accounts.resolution import household_for_user
 from core.models import CustomUser
 from finances.models import Income
 
@@ -11,6 +12,7 @@ from finances.models import Income
 class TestIncomeGrouping(TestCase):
     def setUp(self):
         self.user = baker.make(CustomUser)
+        self.household = household_for_user(self.user)
         self.client.force_login(self.user)
 
     def _make(self, name, amount, month, recurring=False):
@@ -31,7 +33,7 @@ class TestIncomeGrouping(TestCase):
         self._make("Salário", "8000.00", date(2026, 3, 1), recurring=True)
         self._make("Freela", "500.00", date(2026, 2, 1))
 
-        groups = {g["name"]: g for g in income_groups(self.user)}
+        groups = {g["name"]: g for g in income_groups(self.household)}
         self.assertEqual(set(groups), {"Salário", "Freela"})
         sal = groups["Salário"]
         self.assertEqual(sal["count"], 3)
@@ -45,7 +47,7 @@ class TestIncomeGrouping(TestCase):
 
         self._make("Bônus", "1000.00", date(2026, 1, 1))
         self._make("Bônus", "1500.00", date(2026, 6, 1))
-        g = income_groups(self.user)[0]
+        g = income_groups(self.household)[0]
         self.assertIsNone(g["amount"])  # "vários"
         self.assertEqual(g["count"], 2)
 
@@ -62,6 +64,7 @@ class TestIncomeGrouping(TestCase):
 class TestIncomeGroupDelete(TestCase):
     def setUp(self):
         self.user = baker.make(CustomUser)
+        self.household = household_for_user(self.user)
         self.client.force_login(self.user)
 
     def test_deletes_all_rows_of_a_name(self):
@@ -72,11 +75,22 @@ class TestIncomeGroupDelete(TestCase):
         baker.make(Income, user=self.user, name="Freela", amount="500", month=date(2026, 1, 1))
         resp = self.client.post("/settings/income/group-delete/", {"name": "Salário"})
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(Income.objects.filter(user=self.user, name="Salário").count(), 0)
-        self.assertEqual(Income.objects.filter(user=self.user, name="Freela").count(), 1)
+        hh = self.household
+        self.assertEqual(Income.objects.for_household(hh).filter(name="Salário").count(), 0)
+        self.assertEqual(Income.objects.for_household(hh).filter(name="Freela").count(), 1)
 
-    def test_does_not_touch_other_users(self):
+    def test_does_not_touch_other_households(self):
         other = baker.make(CustomUser)
-        baker.make(Income, user=other, name="Salário", amount="8000", month=date(2026, 1, 1))
+        other_household = household_for_user(other)
+        baker.make(
+            Income,
+            user=other,
+            household=other_household,
+            name="Salário",
+            amount="8000",
+            month=date(2026, 1, 1),
+        )
         self.client.post("/settings/income/group-delete/", {"name": "Salário"})
-        self.assertEqual(Income.objects.filter(user=other, name="Salário").count(), 1)
+        self.assertEqual(
+            Income.objects.for_household(other_household).filter(name="Salário").count(), 1
+        )
