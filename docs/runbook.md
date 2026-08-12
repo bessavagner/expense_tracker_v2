@@ -604,12 +604,22 @@ long after 2026-08-12, update `FIXED_TODAY` in the command. `--months` is a
 *floor*, not a cap: the window always stretches to cover the newest entry or
 income, so the ledger's tail can never silently drop out of the comparison.
 
-**Rehearsing without Supabase credentials.** The same comparison runs against the
-local ledger copy: create a scratch database with
-`CREATE DATABASE ledger_rehearsal TEMPLATE expense_tracker;`, rewind it with
-`migrate finances 0012` and `migrate assistant 0009`, fingerprint, `migrate`
-forward, fingerprint, diff. Weaker evidence — the local copy may lag production —
-but it exercises the whole migration path on real records.
+**Rehearsing without Supabase credentials.** The same script runs against the
+local ledger copy. It is already migrated, so it needs rewinding first —
+`REWIND=1` does that (`migrate finances 0012`, `migrate assistant 0009`) before
+the BEFORE fingerprint:
+
+```bash
+PGHOST=172.17.0.1 PGPORT=5433 PGUSER=postgres PGPASSWORD=postgres \
+PGSSLMODE=prefer SOURCE_DB=expense_tracker REWIND=1 \
+  scripts/rehearse-e04-migration.sh
+```
+
+`172.17.0.1`, not `localhost`: `pg_dump` runs inside a container, where
+`localhost` is the container itself. `SOURCE_DB` names the database to dump —
+`postgres` on Supabase, `expense_tracker` locally. Weaker evidence than the real
+thing, since the local copy may lag production, but it exercises the whole
+migration path on real records.
 
 ---
 

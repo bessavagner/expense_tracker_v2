@@ -23,6 +23,7 @@ umask 077
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COPY="${COPY:-ledger_rehearsal}"
+SOURCE_DB="${SOURCE_DB:-postgres}"  # Supabase's database is `postgres`
 IMAGE="${IMAGE:-pgvector/pgvector:pg17}"
 CLIENT_IMAGE="${CLIENT_IMAGE:-postgres:17}"
 LOCAL_CONTAINER="${LOCAL_CONTAINER:-e04-rehearsal-$$}"
@@ -60,7 +61,7 @@ on_copy() {  # run manage.py against the local rehearsal copy
 }
 
 echo "==> dumping production, read-only (treat $DUMP as production data)"
-PGDATABASE=postgres prod_pg17 pg_dump --no-owner --no-acl -Fc -f "$DUMP"
+PGDATABASE="$SOURCE_DB" prod_pg17 pg_dump --no-owner --no-acl -Fc -f "$DUMP"
 
 echo "==> starting throwaway local Postgres ($IMAGE) as $COPY"
 docker run -d --name "$LOCAL_CONTAINER" \
@@ -76,6 +77,14 @@ echo "==> restoring into the local copy"
 local_pg17 psql -q -c "CREATE EXTENSION IF NOT EXISTS vector;"
 local_pg17 pg_restore -d "$COPY" --no-owner --no-acl "$DUMP" || \
   echo "   (pg_restore errors on Supabase's own schemas are expected — checking data instead)"
+
+if [[ "${REWIND:-0}" == "1" ]]; then
+  echo "==> rewinding the copy to pre-E04 (REWIND=1)"
+  # For rehearsing against a source that is ALREADY migrated — the local dev
+  # ledger, say. Production is still pre-E04, so it needs no rewind.
+  on_copy migrate finances 0012
+  on_copy migrate assistant 0009
+fi
 
 echo "==> BEFORE fingerprint"
 on_copy dump_ledger_totals --json > "$BEFORE"
