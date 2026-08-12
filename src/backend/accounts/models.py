@@ -3,6 +3,8 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from accounts.scoping import HouseholdScopedManager
+
 
 class Household(models.Model):
     """The tenant. A ledger belongs to a household, not to a person."""
@@ -48,6 +50,8 @@ class Membership(models.Model):
     # last owner deletes their account, and the active-household fallback picks
     # the oldest membership so it is deterministic across requests.
     created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = HouseholdScopedManager()
 
     class Meta:
         verbose_name = "vínculo"
