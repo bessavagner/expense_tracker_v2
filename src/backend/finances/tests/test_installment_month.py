@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.test import TestCase
 from model_bakery import baker
 
+from accounts.resolution import household_for_user
 from core.models import CustomUser
 from finances.models import Category, PaymentMethod
 from finances.models.installment_plan import InstallmentPlan
@@ -13,6 +14,8 @@ class TestInstallmentRowsForMonth(TestCase):
     def setUp(self):
         self.user = baker.make(CustomUser)
         self.other_user = baker.make(CustomUser)
+        self.household = household_for_user(self.user)
+        self.other_household = household_for_user(self.other_user)
         self.cat = baker.make(Category, user=self.user)
         self.pm = baker.make(PaymentMethod, user=self.user, type="pix")
 
@@ -39,7 +42,7 @@ class TestInstallmentRowsForMonth(TestCase):
 
         plan = self._make_plan("Notebook", num=6, amount=Decimal("100.00"))
         # Plan generates entries for Jan, Feb, Mar, Apr, May, Jun 2026
-        rows = installment_rows_for_month(self.user, 2026, 3)
+        rows = installment_rows_for_month(self.household, 2026, 3)
         self.assertEqual(len(rows), 1)
         row = rows[0]
         self.assertEqual(row["plan"], plan)
@@ -55,22 +58,22 @@ class TestInstallmentRowsForMonth(TestCase):
 
         self._make_plan("Notebook", num=3, amount=Decimal("100.00"))
         # Plan covers Jan, Feb, Mar 2026 — querying April should yield nothing
-        rows = installment_rows_for_month(self.user, 2026, 4)
+        rows = installment_rows_for_month(self.household, 2026, 4)
         self.assertEqual(rows, [])
 
-    def test_other_user_plans_excluded(self):
-        """Plans belonging to another user must not appear."""
+    def test_other_household_plans_excluded(self):
+        """Plans belonging to another household must not appear."""
         from finances.services.installment_month import installment_rows_for_month
 
         self._make_plan("Other notebook", num=6, amount=Decimal("50.00"), user=self.other_user)
-        rows = installment_rows_for_month(self.user, 2026, 3)
+        rows = installment_rows_for_month(self.household, 2026, 3)
         self.assertEqual(rows, [])
 
     def test_first_month_parcela_num_is_1(self):
         from finances.services.installment_month import installment_rows_for_month
 
         self._make_plan("TV", num=4, amount=Decimal("250.00"))
-        rows = installment_rows_for_month(self.user, 2026, 1)
+        rows = installment_rows_for_month(self.household, 2026, 1)
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["parcela_num"], 1)
         self.assertEqual(rows[0]["remaining"], Decimal("750.00"))
@@ -79,7 +82,7 @@ class TestInstallmentRowsForMonth(TestCase):
         from finances.services.installment_month import installment_rows_for_month
 
         self._make_plan("TV", num=3, amount=Decimal("100.00"))
-        rows = installment_rows_for_month(self.user, 2026, 3)
+        rows = installment_rows_for_month(self.household, 2026, 3)
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["parcela_num"], 3)
         self.assertEqual(rows[0]["remaining"], Decimal("0.00"))
@@ -89,7 +92,27 @@ class TestInstallmentRowsForMonth(TestCase):
 
         self._make_plan("Zebra", num=6, amount=Decimal("50.00"))
         self._make_plan("Alpha", num=6, amount=Decimal("80.00"))
-        rows = installment_rows_for_month(self.user, 2026, 2)
+        rows = installment_rows_for_month(self.household, 2026, 2)
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0]["plan"].description, "Alpha")
         self.assertEqual(rows[1]["plan"].description, "Zebra")
+
+    def test_installment_rows_exclude_other_households(self):
+        """The neighbour's plan must not reach this household's cockpit — asserted
+        from the far side, where the rows exist and are simply not ours."""
+        from finances.services.installment_month import installment_rows_for_month
+
+        self._make_plan(
+            "Geladeira do vizinho", num=12, amount=Decimal("100.00"), user=self.other_user
+        )
+
+        self.assertEqual(installment_rows_for_month(self.household, 2026, 3), [])
+        self.assertEqual(len(installment_rows_for_month(self.other_household, 2026, 3)), 1)
+
+    def test_installment_rows_of_no_household_are_empty(self):
+        """Fail closed: an unresolved tenant is never 'every plan'."""
+        from finances.services.installment_month import installment_rows_for_month
+
+        self._make_plan("Notebook", num=6, amount=Decimal("100.00"))
+
+        self.assertEqual(installment_rows_for_month(None, 2026, 3), [])
