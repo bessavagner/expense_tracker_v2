@@ -4,6 +4,8 @@ from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
+from accounts.models import AuthoredHouseholdModel
+
 
 class PaymentType(models.TextChoices):
     CASH = "cash", "Dinheiro"
@@ -11,7 +13,7 @@ class PaymentType(models.TextChoices):
     CREDIT_CARD = "credit_card", "Cartão de Crédito"
 
 
-class PaymentMethod(models.Model):
+class PaymentMethod(AuthoredHouseholdModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,

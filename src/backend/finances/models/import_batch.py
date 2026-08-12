@@ -3,8 +3,10 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from accounts.models import AuthoredHouseholdModel
 
-class ImportBatch(models.Model):
+
+class ImportBatch(AuthoredHouseholdModel):
     """One prepared CSV import, and the record that it has already run.
 
     Exists to make ``ImportExecuteView`` idempotent. The importer's steps are
