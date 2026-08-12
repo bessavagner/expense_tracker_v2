@@ -72,6 +72,30 @@ def test_created_by_survives_the_author_leaving_the_household():
     assert field.remote_field.on_delete is models.SET_NULL
 
 
+def test_registry_holds_exactly_the_thirteen_re_tenanted_models():
+    """A model that grows a household column without a decision, or loses one,
+    changes this number. That is the point — it should be a conversation, not
+    a silent diff."""
+    expected = {
+        "finances.Entry",
+        "finances.Income",
+        "finances.Category",
+        "finances.PaymentMethod",
+        "finances.Budget",
+        "finances.InstallmentPlan",
+        "finances.SystemicExpense",
+        "finances.ImportBatch",
+        "assistant.ChatMessage",
+        "assistant.MemoryRule",
+        "assistant.ReceiptDraft",
+        "assistant.MemoryEmbedding",
+        "assistant.AssistantUsageEvent",
+    }
+    actual = {m._meta.label for m in household_owned_models()}
+
+    assert actual == expected
+
+
 def test_household_deletion_takes_its_rows_with_it(user):
     from finances.models import Entry
 

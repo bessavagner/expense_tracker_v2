@@ -5,13 +5,15 @@ from django.db import models
 from django.utils import timezone
 from pgvector.django import HnswIndex, VectorField
 
+from accounts.models import AuthoredHouseholdModel, HouseholdOwnedModel
+
 
 class MessageRole(models.TextChoices):
     USER = "user", "Usuário"
     ASSISTANT = "assistant", "Assistente"
 
 
-class ChatMessage(models.Model):
+class ChatMessage(AuthoredHouseholdModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -47,7 +49,7 @@ class MemorySource(models.TextChoices):
     INFERRED = "inferred", "Inferido"
 
 
-class MemoryRule(models.Model):
+class MemoryRule(AuthoredHouseholdModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -77,7 +79,7 @@ class ReceiptDraftStatus(models.TextChoices):
     DISCARDED = "discarded", "Descartado"
 
 
-class ReceiptDraft(models.Model):
+class ReceiptDraft(AuthoredHouseholdModel):
     """Recibo extraído de uma foto, persistido para sobreviver ao turno.
 
     Guardar a extração estruturada (itens + valores) permite que o turno de
@@ -128,7 +130,7 @@ class ReceiptDraft(models.Model):
         return f"Recibo {store} ({self.status})"
 
 
-class MemoryEmbedding(models.Model):
+class MemoryEmbedding(HouseholdOwnedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -167,7 +169,7 @@ class AssistantUsageKind(models.TextChoices):
     IMAGE = "image", "Imagem"
 
 
-class AssistantUsageEvent(models.Model):
+class AssistantUsageEvent(HouseholdOwnedModel):
     """One admitted assistant turn.
 
     Written *before* the model call, so the counter records intent to spend
@@ -176,8 +178,10 @@ class AssistantUsageEvent(models.Model):
     magnitude cheaper per turn than a vision call, so only the image path earns a
     budget of its own.
 
-    E07 will extend this row with token counts and a household FK. Keep it
-    append-only and cheap to write.
+    E07 will extend this row with token counts. The household FK it wanted
+    landed in E04 phase 2; `user` stays as the acting member, since a quota is
+    charged to a household but attributed to a person. Keep it append-only and
+    cheap to write.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
