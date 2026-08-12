@@ -113,7 +113,7 @@ class TestEntriesSummaryView:
         assert august["total_gastos"] == Decimal("200.00")
         assert august["total_lancado"] == Decimal("0")
 
-    def test_summary_reconciles_with_projection_current_month(self, logged_client, user):
+    def test_summary_reconciles_with_projection_current_month(self, logged_client, user, household):
         from django.db.models import Min
 
         from finances.models import Entry, Income
@@ -150,13 +150,13 @@ class TestEntriesSummaryView:
         if anchor > target:
             anchor = target
         n = (fy * 12 + fm) - (anchor.year * 12 + anchor.month) + 1
-        row = build_projection(user, anchor, n, today=today)[-1]
+        row = build_projection(household, anchor, n, today=today)[-1]
         assert summary["total_gastos"] == row["total"]
         assert summary["income"] == row["income"]
         assert summary["saldo_projetado"] == row["saldo_projetado"]
         assert summary["acumulado"] == row["acumulado"]
 
-    def test_summary_reconciles_with_projection_future_month(self, logged_client, user):
+    def test_summary_reconciles_with_projection_future_month(self, logged_client, user, household):
         from django.db.models import Min
 
         from finances.models import Entry, Income
@@ -194,7 +194,7 @@ class TestEntriesSummaryView:
         if anchor > target:
             anchor = target
         n = (fy * 12 + fm) - (anchor.year * 12 + anchor.month) + 1
-        row = build_projection(user, anchor, n, today=today)[-1]
+        row = build_projection(household, anchor, n, today=today)[-1]
         assert summary["total_gastos"] == row["total"]
         assert summary["income"] == row["income"]
         assert summary["saldo_projetado"] == row["saldo_projetado"]

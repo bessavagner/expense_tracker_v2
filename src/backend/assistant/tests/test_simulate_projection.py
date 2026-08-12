@@ -8,7 +8,7 @@ from finances.services.whatif import HypotheticalItem, HypoType, simulate_projec
 
 
 @pytest.mark.django_db
-def test_summary_reports_delta(user):
+def test_summary_reports_delta(user, household):
     baker.make("finances.Income", user=user, amount=Decimal("3000"), month=date(2026, 7, 1))
     items = [
         HypotheticalItem(
@@ -20,7 +20,7 @@ def test_summary_reports_delta(user):
         )
     ]
     out = simulate_projection_summary(
-        user, items, start=date(2026, 7, 1), months=1, today=date(2026, 6, 20)
+        household, items, start=date(2026, 7, 1), months=1, today=date(2026, 6, 20)
     )
     assert "1000" in out
     assert "2026-07" in out or "07/2026" in out

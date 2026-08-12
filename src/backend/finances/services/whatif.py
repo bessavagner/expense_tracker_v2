@@ -89,13 +89,13 @@ def expand_hypotheticals(
     return {k: _q(v) for k, v in deltas.items()}, ignored
 
 
-def simulate_projection_summary(user, items, start, months, today=None):
+def simulate_projection_summary(household, items, start, months, today=None):
     from finances.services.projection import build_projection  # avoid import cycle
 
-    base = build_projection(user, start, months, today=today)
+    base = build_projection(household, start, months, today=today)
     span = [r["month"] for r in base]
     overlay, ignored = expand_hypotheticals(items, span)
-    sim = build_projection(user, start, months, today=today, overlay=overlay)
+    sim = build_projection(household, start, months, today=today, overlay=overlay)
 
     lines = ["Simulação de cenário (acumulado base → simulado):"]
     worst = None
