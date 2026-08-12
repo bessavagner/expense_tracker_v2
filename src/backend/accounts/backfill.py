@@ -10,7 +10,7 @@ not move a row between households.
 """
 
 
-def backfill_household_columns(Membership, models_by_label, apps):  # noqa: N803
+def backfill_household_columns(Membership, models_by_label):  # noqa: N803
     """Fill ``household`` (and ``created_by`` where present) from ``user``.
 
     Returns ``{label: rows_filled}``. A user with no owner membership is

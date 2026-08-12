@@ -32,7 +32,6 @@ def _run():
     return backfill_household_columns(
         Membership,
         {"finances.Entry": django_apps.get_model("finances.Entry")},
-        django_apps,
     )
 
 

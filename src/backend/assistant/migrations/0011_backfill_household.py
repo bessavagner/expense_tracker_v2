@@ -21,7 +21,7 @@ LABELS = [
 def fill(apps, schema_editor):
     Membership = apps.get_model("accounts", "Membership")
     models_by_label = {label: apps.get_model(label) for label in LABELS}
-    backfill_household_columns(Membership, models_by_label, apps)
+    backfill_household_columns(Membership, models_by_label)
 
 
 def unfill(apps, schema_editor):
