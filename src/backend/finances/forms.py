@@ -47,13 +47,15 @@ class EntryForm(forms.ModelForm):
             ),
         }
 
-    def __init__(self, *args, user=None, **kwargs):
+    def __init__(self, *args, household=None, **kwargs):
         super().__init__(*args, **kwargs)
-        if user:
-            self.fields["category"].queryset = Category.objects.filter(user=user)
-            self.fields["payment_method"].queryset = PaymentMethod.objects.filter(
-                user=user, is_active=True
-            )
+        # No `if household:` guard: `for_household(None)` already returns none(),
+        # which is the fail-closed answer and strictly safer than the old
+        # behaviour of leaving the unfiltered default queryset in place.
+        self.fields["category"].queryset = Category.objects.for_household(household)
+        self.fields["payment_method"].queryset = PaymentMethod.objects.for_household(
+            household
+        ).filter(is_active=True)
 
 
 class InstallmentForm(forms.ModelForm):
@@ -98,13 +100,15 @@ class InstallmentForm(forms.ModelForm):
             ),
         }
 
-    def __init__(self, *args, user=None, **kwargs):
+    def __init__(self, *args, household=None, **kwargs):
         super().__init__(*args, **kwargs)
-        if user:
-            self.fields["category"].queryset = Category.objects.filter(user=user)
-            self.fields["payment_method"].queryset = PaymentMethod.objects.filter(
-                user=user, is_active=True
-            )
+        # No `if household:` guard: `for_household(None)` already returns none(),
+        # which is the fail-closed answer and strictly safer than the old
+        # behaviour of leaving the unfiltered default queryset in place.
+        self.fields["category"].queryset = Category.objects.for_household(household)
+        self.fields["payment_method"].queryset = PaymentMethod.objects.for_household(
+            household
+        ).filter(is_active=True)
         self.fields["num_installments"].validators.append(MinValueValidator(1))
 
 
@@ -170,7 +174,7 @@ class CockpitIncomeForm(forms.ModelForm):
             ),
         }
 
-    def save_for_user(self, user):
+    def save_for_household(self, household, created_by):
         """Create one Income per target month; returns the created list."""
         base = self.cleaned_data
         start = base["month"].replace(day=1)
@@ -183,7 +187,9 @@ class CockpitIncomeForm(forms.ModelForm):
         for m in months:
             created.append(
                 Income.objects.create(
-                    user=user,
+                    user=created_by,  # still NOT NULL until phase 4
+                    household=household,
+                    created_by=created_by,
                     name=base["name"],
                     amount=base["amount"],
                     month=m,
@@ -216,14 +222,19 @@ class SystemicExpenseForm(forms.ModelForm):
             ),
         }
 
-    def __init__(self, *args, user=None, **kwargs):
+    def __init__(self, *args, household=None, **kwargs):
         super().__init__(*args, **kwargs)
-        if user:
-            self.fields["category"].queryset = Category.objects.filter(user=user)
-            self.fields["payment_method"].queryset = PaymentMethod.objects.filter(
-                user=user, is_active=True
-            )
-            self.fields["payment_method"].required = False
+        # No `if household:` guard: `for_household(None)` already returns none(),
+        # which is the fail-closed answer and strictly safer than the old
+        # behaviour of leaving the unfiltered default queryset in place.
+        self.fields["category"].queryset = Category.objects.for_household(household)
+        self.fields["payment_method"].queryset = PaymentMethod.objects.for_household(
+            household
+        ).filter(is_active=True)
+        # Unconditional now. It sat inside the old `if user:` block by accident of
+        # indentation — the guard was about scoping, not about whether a payment
+        # method is mandatory on this form (it never is).
+        self.fields["payment_method"].required = False
 
 
 class SystemicEntryEditForm(forms.Form):
@@ -281,12 +292,16 @@ class SystemicEntryEditForm(forms.Form):
         ),
     )
 
-    def __init__(self, *args, entry=None, user=None, **kwargs):
+    def __init__(self, *args, entry=None, household=None, **kwargs):
         self.entry = entry
         super().__init__(*args, **kwargs)
-        cats = Category.objects.filter(user=user)
-        pms = PaymentMethod.objects.filter(user=user, is_active=True)
+        cats = Category.objects.for_household(household)
+        pms = PaymentMethod.objects.for_household(household).filter(is_active=True)
         if entry is not None:
+            # Unscoped single-pk unions, deliberately: they keep the entry's own
+            # (possibly deactivated) category and method selectable. The pk comes
+            # from an entry that was itself household-scoped, so this cannot
+            # reach another household — pinned by test_cockpit_pm_union.py.
             cats = cats | Category.objects.filter(pk=entry.category_id)
             pms = pms | PaymentMethod.objects.filter(pk=entry.payment_method_id)
         self.fields["category"].queryset = cats
@@ -416,9 +431,11 @@ class SystemicExpenseCreateForm(SystemicExpenseForm):
                 )
         return cleaned
 
-    def save_for_user(self, user):
+    def save_for_household(self, household, created_by):
         systemic = self.save(commit=False)
-        systemic.user = user
+        systemic.user = created_by  # still NOT NULL until phase 4
+        systemic.household = household
+        systemic.created_by = created_by
         systemic.save()
         launched = 0
         if self.cleaned_data.get("is_recurring"):
