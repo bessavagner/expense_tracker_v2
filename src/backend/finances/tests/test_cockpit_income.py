@@ -7,6 +7,7 @@ from django.test import TestCase
 from django.urls import reverse
 from model_bakery import baker
 
+from accounts.resolution import household_for_user
 from core.models import CustomUser
 from finances.models import Income
 
@@ -14,6 +15,7 @@ from finances.models import Income
 class TestCockpitIncomeForm(TestCase):
     def setUp(self):
         self.user = baker.make(CustomUser)
+        self.household = household_for_user(self.user)
 
     def test_repeat_until_december_creates_one_row_per_month(self):
         from finances.forms import CockpitIncomeForm
@@ -27,7 +29,7 @@ class TestCockpitIncomeForm(TestCase):
             }
         )
         self.assertTrue(form.is_valid(), form.errors)
-        created = form.save_for_user(self.user)
+        created = form.save_for_household(self.household, self.user)
         # Oct, Nov, Dec => 3 rows
         self.assertEqual(len(created), 3)
         months = sorted(i.month for i in created)
@@ -40,6 +42,7 @@ class TestCockpitIncomeForm(TestCase):
             )
         )
         self.assertTrue(all(i.user_id == self.user.id for i in created))
+        self.assertTrue(all(i.household_id == self.household.id for i in created))
 
     def test_without_repeat_creates_single_row(self):
         from finances.forms import CockpitIncomeForm
@@ -53,18 +56,19 @@ class TestCockpitIncomeForm(TestCase):
             }
         )
         self.assertTrue(form.is_valid(), form.errors)
-        created = form.save_for_user(self.user)
+        created = form.save_for_household(self.household, self.user)
         self.assertEqual(len(created), 1)
         self.assertEqual(created[0].month, date(2026, 10, 1))
-        self.assertEqual(Income.objects.filter(user=self.user).count(), 1)
+        self.assertEqual(Income.objects.for_household(self.household).count(), 1)
 
 
 @pytest.mark.django_db
-def test_income_panel_shows_income_with_non_first_day(client, user):
+def test_income_panel_shows_income_with_non_first_day(client, user, household):
     client.force_login(user)
     baker.make(
         "finances.Income",
         user=user,
+        household=household,
         name="Vencimento Especial",  # name absent from any form placeholder
         amount=Decimal("8655.00"),
         month=date(2026, 6, 18),  # dia ≠ 1 (registro legado corrompido)

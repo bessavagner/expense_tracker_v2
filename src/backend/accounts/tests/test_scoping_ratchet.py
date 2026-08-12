@@ -23,7 +23,6 @@ BASELINE = {
     "src/backend/finances/management/commands/import_csv.py",
     "src/backend/finances/management/commands/seed_qa_data.py",
     "src/backend/finances/management/commands/transfer_entries.py",
-    "src/backend/finances/views/cockpit.py",
     "src/backend/finances/views/consolidated.py",
     "src/backend/finances/views/importer.py",
     "src/backend/finances/views/projection.py",

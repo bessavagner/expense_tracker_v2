@@ -27,9 +27,9 @@ from finances.views.mixins import HtmxLoginRequiredMixin
 
 def _income_context(request, year, month):
     incomes = list(
-        Income.objects.filter(user=request.user, month__year=year, month__month=month).order_by(
-            "name"
-        )
+        Income.objects.for_request(request)
+        .filter(month__year=year, month__month=month)
+        .order_by("name")
     )
     income_month_total = sum((i.amount for i in incomes), Decimal("0"))
     return {
@@ -60,7 +60,7 @@ class CockpitIncomeCreateView(HtmxLoginRequiredMixin, View):
     def post(self, request, year, month):
         form = CockpitIncomeForm(request.POST)
         if form.is_valid():
-            form.save_for_user(request.user)
+            form.save_for_household(request.household, request.user)
             return _render_income_section(request, int(year), int(month), toast="Renda salva!")
         ctx = _income_context(request, int(year), int(month))
         ctx["income_form"] = form
@@ -69,7 +69,7 @@ class CockpitIncomeCreateView(HtmxLoginRequiredMixin, View):
 
 class CockpitIncomeDeleteView(HtmxLoginRequiredMixin, View):
     def delete(self, request, year, month, pk):
-        inc = Income.objects.filter(user=request.user, pk=pk).first()
+        inc = Income.objects.for_request(request).filter(pk=pk).first()
         if not inc:
             raise Http404
         inc.delete()
@@ -80,7 +80,7 @@ class CockpitIncomeEditModalView(HtmxLoginRequiredMixin, View):
     """Edit a single Income inside the shared #entry-modal."""
 
     def _income(self, request, pk):
-        inc = Income.objects.filter(user=request.user, pk=pk).first()
+        inc = Income.objects.for_request(request).filter(pk=pk).first()
         if not inc:
             raise Http404
         return inc
@@ -138,7 +138,7 @@ def _systemic_context(request, year, month):
     return {
         "current_year": year,
         "current_month": month,
-        "systemic_rows": systemic_rows_for_month(request.user, year, month),
+        "systemic_rows": systemic_rows_for_month(request.household, year, month),
     }
 
 
@@ -171,13 +171,15 @@ class CockpitSystemicPostView(HtmxLoginRequiredMixin, View):
 
     def post(self, request, year, month, pk):
         y, m = int(year), int(month)
-        systemic = SystemicExpense.objects.filter(user=request.user, pk=pk).first()
+        systemic = SystemicExpense.objects.for_request(request).filter(pk=pk).first()
         if not systemic:
             raise Http404
         billing_month = date(y, m, 1)
-        entry = Entry.objects.filter(
-            user=request.user, systemic_expense=systemic, billing_month=billing_month
-        ).first()
+        entry = (
+            Entry.objects.for_request(request)
+            .filter(systemic_expense=systemic, billing_month=billing_month)
+            .first()
+        )
         amount = request.POST.get("amount")
         if entry is None:
             value = _parse_amount(amount, systemic.default_amount)
@@ -197,11 +199,11 @@ class CockpitSystemicDeleteView(HtmxLoginRequiredMixin, View):
 
     def delete(self, request, year, month, pk):
         y, m = int(year), int(month)
-        systemic = SystemicExpense.objects.filter(user=request.user, pk=pk).first()
+        systemic = SystemicExpense.objects.for_request(request).filter(pk=pk).first()
         if not systemic:
             raise Http404
-        Entry.objects.filter(
-            user=request.user, systemic_expense=systemic, billing_month=date(y, m, 1)
+        Entry.objects.for_request(request).filter(
+            systemic_expense=systemic, billing_month=date(y, m, 1)
         ).delete()
         return _render_systemic_section(request, y, m, toast=f"{systemic.name}: não ocorreu")
 
@@ -211,10 +213,12 @@ class CockpitSystemicCreateView(HtmxLoginRequiredMixin, View):
 
     def post(self, request, year, month):
         y, m = int(year), int(month)
-        form = SystemicExpenseForm(request.POST, user=request.user)
+        form = SystemicExpenseForm(request.POST, household=request.household)
         if form.is_valid():
             systemic = form.save(commit=False)
-            systemic.user = request.user
+            systemic.user = request.user  # still NOT NULL until phase 4
+            systemic.household = request.household
+            systemic.created_by = request.user
             systemic.save()
             return _render_systemic_section(request, y, m, toast=f"{systemic.name} adicionado!")
         ctx = _systemic_context(request, y, m)
@@ -241,11 +245,14 @@ class CockpitSystemicEditModalView(HtmxLoginRequiredMixin, View):
     """
 
     def _entry(self, request, year, month, pk):
-        entry = Entry.objects.filter(
-            user=request.user,
-            systemic_expense_id=pk,
-            billing_month=date(int(year), int(month), 1),
-        ).first()
+        entry = (
+            Entry.objects.for_request(request)
+            .filter(
+                systemic_expense_id=pk,
+                billing_month=date(int(year), int(month), 1),
+            )
+            .first()
+        )
         if not entry:
             raise Http404
         return entry
@@ -261,7 +268,7 @@ class CockpitSystemicEditModalView(HtmxLoginRequiredMixin, View):
 
     def get(self, request, year, month, pk):
         entry = self._entry(request, year, month, pk)
-        form = SystemicEntryEditForm(entry=entry, user=request.user)
+        form = SystemicEntryEditForm(entry=entry, household=request.household)
         html = render_to_string(
             "partials/_modal_edit_form.html",
             self._modal_context(year, month, pk, form),
@@ -271,7 +278,7 @@ class CockpitSystemicEditModalView(HtmxLoginRequiredMixin, View):
 
     def post(self, request, year, month, pk):
         entry = self._entry(request, year, month, pk)
-        form = SystemicEntryEditForm(request.POST, entry=entry, user=request.user)
+        form = SystemicEntryEditForm(request.POST, entry=entry, household=request.household)
         if form.is_valid():
             form.save()
             html = render_to_string(
@@ -300,9 +307,11 @@ class CockpitSystemicEditModalView(HtmxLoginRequiredMixin, View):
 
 def _vencimentos_context(request, year, month):
     billing_month = date(year, month, 1)
-    cards = PaymentMethod.objects.filter(
-        user=request.user, type=PaymentType.CREDIT_CARD, is_active=True
-    ).order_by("name")
+    cards = (
+        PaymentMethod.objects.for_request(request)
+        .filter(type=PaymentType.CREDIT_CARD, is_active=True)
+        .order_by("name")
+    )
     rows = []
     for pm in cards:
         override = PaymentMethodClosingDay.objects.filter(
@@ -338,7 +347,7 @@ class CockpitVencimentosSectionView(HtmxLoginRequiredMixin, View):
 class CockpitVencimentoSetView(HtmxLoginRequiredMixin, View):
     def post(self, request, year, month, pk):
         y, m = int(year), int(month)
-        pm = PaymentMethod.objects.filter(user=request.user, pk=pk).first()
+        pm = PaymentMethod.objects.for_request(request).filter(pk=pk).first()
         if not pm:
             raise Http404
         billing_month = date(y, m, 1)
@@ -370,7 +379,7 @@ class CockpitParcelamentosSectionView(HtmxLoginRequiredMixin, View):
         ctx = {
             "current_year": y,
             "current_month": m,
-            "parcelamento_rows": installment_rows_for_month(request.user, y, m),
+            "parcelamento_rows": installment_rows_for_month(request.household, y, m),
         }
         html = render_to_string("cockpit/_parcelamentos_section.html", ctx, request=request)
         return HttpResponse(html)
@@ -380,7 +389,7 @@ def _render_parcelamentos_section(request, year, month):
     ctx = {
         "current_year": year,
         "current_month": month,
-        "parcelamento_rows": installment_rows_for_month(request.user, year, month),
+        "parcelamento_rows": installment_rows_for_month(request.household, year, month),
     }
     return render_to_string("cockpit/_parcelamentos_section.html", ctx, request=request)
 
@@ -393,9 +402,11 @@ class CockpitParcelamentoEditModalView(HtmxLoginRequiredMixin, View):
     """
 
     def _entry(self, request, entry_pk):
-        entry = Entry.objects.filter(
-            user=request.user, pk=entry_pk, entry_type=EntryType.INSTALLMENT
-        ).first()
+        entry = (
+            Entry.objects.for_request(request)
+            .filter(pk=entry_pk, entry_type=EntryType.INSTALLMENT)
+            .first()
+        )
         if not entry:
             raise Http404
         return entry
@@ -413,7 +424,7 @@ class CockpitParcelamentoEditModalView(HtmxLoginRequiredMixin, View):
 
     def get(self, request, year, month, entry_pk):
         entry = self._entry(request, entry_pk)
-        form = EntryForm(instance=entry, user=request.user)
+        form = EntryForm(instance=entry, household=request.household)
         _patch_entry_querysets(form, entry)
         html = render_to_string(
             "partials/_modal_edit_form.html",
@@ -424,7 +435,7 @@ class CockpitParcelamentoEditModalView(HtmxLoginRequiredMixin, View):
 
     def post(self, request, year, month, entry_pk):
         entry = self._entry(request, entry_pk)
-        form = EntryForm(request.POST, instance=entry, user=request.user)
+        form = EntryForm(request.POST, instance=entry, household=request.household)
         _patch_entry_querysets(form, entry)
         if form.is_valid():
             form.save()
@@ -452,7 +463,8 @@ class CockpitParcelamentoManageView(HtmxLoginRequiredMixin, View):
 
     def _entry(self, request, entry_pk):
         entry = (
-            Entry.objects.filter(user=request.user, pk=entry_pk, entry_type=EntryType.INSTALLMENT)
+            Entry.objects.for_request(request)
+            .filter(pk=entry_pk, entry_type=EntryType.INSTALLMENT)
             .select_related("installment_plan")
             .first()
         )
@@ -471,10 +483,10 @@ class CockpitParcelamentoManageView(HtmxLoginRequiredMixin, View):
     def _modal(self, request, year, month, entry, plan_form=None, entry_form=None):
         plan = entry.installment_plan
         if plan_form is None:
-            plan_form = InstallmentForm(instance=plan, user=request.user)
+            plan_form = InstallmentForm(instance=plan, household=request.household)
             self._patch_plan_querysets(plan_form, plan)
         if entry_form is None:
-            entry_form = EntryForm(instance=entry, user=request.user)
+            entry_form = EntryForm(instance=entry, household=request.household)
             _patch_entry_querysets(entry_form, entry)
         ctx = {
             "plan": plan,
@@ -519,7 +531,7 @@ class CockpitParcelamentoManageView(HtmxLoginRequiredMixin, View):
             return self._section_response(request, year, month, "Parcelas deslocadas!")
 
         if action == "edit_plan":
-            form = InstallmentForm(request.POST, instance=plan, user=request.user)
+            form = InstallmentForm(request.POST, instance=plan, household=request.household)
             self._patch_plan_querysets(form, plan)
             if form.is_valid():
                 form.save()
