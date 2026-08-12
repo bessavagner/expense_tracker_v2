@@ -36,8 +36,24 @@ def _run():
     )
 
 
+def _make_unfilled_entry(user):
+    """A row as it exists in production before the back-fill: the bridge is a
+    phase 2 invention, so pre-E04 rows have no household at all.
+
+    A queryset ``.update()`` bypasses signals, which is exactly why it is the
+    right tool here — ``baker.make(household=None)`` would just be refilled by
+    the bridge before it ever reached the database.
+    """
+    from finances.models import Entry
+
+    entry = baker.make("finances.Entry", user=user)
+    Entry.objects.filter(pk=entry.pk).update(household=None, created_by=None)
+    entry.refresh_from_db()
+    return entry
+
+
 def test_backfill_sets_household_from_the_owner_membership(user, owned_household):
-    entry = baker.make("finances.Entry", user=user, household=None, created_by=None)
+    entry = _make_unfilled_entry(user)
 
     _run()
 
@@ -62,7 +78,11 @@ def test_backfill_leaves_already_filled_rows_alone(user, owned_household):
 def test_backfill_skips_a_user_with_no_membership(user):
     """Fails closed. A user with no household leaves their rows NULL rather
     than borrowing somebody's ledger — phase 4's NOT NULL will surface it."""
-    entry = baker.make("finances.Entry", user=user, household=None)
+    entry = _make_unfilled_entry(user)
+    # The bridge gave the writer a membership on the way in. Take it away
+    # again: the state this test is about is a *pre-E04* row whose user the
+    # seed migration never covered.
+    Membership.objects.filter(user=user).delete()
 
     _run()
 
@@ -71,7 +91,8 @@ def test_backfill_skips_a_user_with_no_membership(user):
 
 
 def test_backfill_reports_what_it_touched(user, owned_household):
-    baker.make("finances.Entry", user=user, household=None, _quantity=3)
+    for _ in range(3):
+        _make_unfilled_entry(user)
 
     counts = _run()
 

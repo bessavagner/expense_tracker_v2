@@ -35,8 +35,17 @@ def test_entry_scopes_through_the_household_manager(user):
 
 def test_entry_household_may_be_null_during_the_transition(user):
     """Phases 2 and 3 run with both columns and a partially-converted app.
-    NOT NULL arrives in phase 4, once every write path sets it."""
-    entry = baker.make("finances.Entry", user=user, household=None)
+    NOT NULL arrives in phase 4, once every write path sets it.
+
+    The write goes through a queryset ``.update()`` because the phase 2 bridge
+    refills any household a normal save leaves empty — so the only way to ask
+    the database whether the column still accepts NULL is to bypass signals.
+    """
+    from finances.models import Entry
+
+    entry = baker.make("finances.Entry", user=user)
+    Entry.objects.filter(pk=entry.pk).update(household=None)
+    entry.refresh_from_db()
 
     assert entry.household_id is None
 

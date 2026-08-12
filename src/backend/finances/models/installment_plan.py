@@ -51,6 +51,10 @@ class InstallmentPlan(AuthoredHouseholdModel):
             entries.append(
                 Entry(
                     user=self.user,
+                    # bulk_create bypasses pre_save, so the E04 bridge cannot
+                    # reach these rows — the plan carries its own tenancy down.
+                    household=self.household,
+                    created_by=self.created_by or self.user,
                     date=self.date,
                     amount=amount,
                     description=f"{self.description} ({i + 1}/{self.num_installments})",

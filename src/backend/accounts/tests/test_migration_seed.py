@@ -26,6 +26,18 @@ def test_seed_creates_one_household_and_an_owner_membership():
     assert membership.household.name == "Casa de bessavagner"
 
 
+def test_seed_clips_a_household_name_that_would_not_fit():
+    """A username may be 150 characters; Household.name holds 120. The name is
+    a label, not an identifier, so it gets clipped rather than blowing up the
+    insert with StringDataRightTruncation."""
+    user = baker.make(get_user_model(), username="v" * 150)
+
+    household = seed_household_for_user(Household, Membership, user)
+
+    assert len(household.name) == 120
+    assert household.name.startswith("Casa de vvv")
+
+
 def test_seed_is_idempotent():
     """Re-running must not create a second household — migrations get replayed
     on a rebuilt database more often than anyone expects."""

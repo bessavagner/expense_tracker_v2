@@ -16,6 +16,7 @@ from decimal import Decimal
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
+from accounts.bridge import household_for_writer
 from assistant.models import ChatMessage, MemoryEmbedding, MessageRole
 from core.models import CustomUser
 from finances.models import Category, Entry, EntryType, Income, PaymentMethod
@@ -95,6 +96,11 @@ class Command(BaseCommand):
     @transaction.atomic
     def _seed_user(self, rng, index, per_user, anchor):
         user = CustomUser.objects.create(username=f"perf_{index:04d}")
+        # Resolved once: every bulk_create below bypasses pre_save, so the E04
+        # bridge never sees these rows and the household has to be carried in
+        # by hand. Without it phase 4's NOT NULL breaks the perf harness at
+        # exactly the moment you want to re-measure the indexes.
+        household = household_for_writer(user)
         categories = [Category.objects.create(user=user, name=name) for name in CATEGORY_NAMES]
         pix = PaymentMethod.objects.create(user=user, name="Pix", type="pix")
         card = PaymentMethod.objects.create(
@@ -110,6 +116,8 @@ class Command(BaseCommand):
             entries.append(
                 Entry(
                     user=user,
+                    household=household,
+                    created_by=user,
                     date=entry_date,
                     amount=Decimal(rng.randrange(500, 40000)) / 100,
                     description=f"Lançamento sintético {rng.randrange(10**6)}",
@@ -131,6 +139,8 @@ class Command(BaseCommand):
             [
                 Income(
                     user=user,
+                    household=household,
+                    created_by=user,
                     name="Salário",
                     amount=Decimal("5000.00"),
                     month=_add_months(anchor, -back),
@@ -143,6 +153,8 @@ class Command(BaseCommand):
             [
                 ChatMessage(
                     user=user,
+                    household=household,
+                    created_by=user,
                     role=MessageRole.USER if turn % 2 == 0 else MessageRole.ASSISTANT,
                     content=f"mensagem sintética {turn}",
                 )
@@ -154,6 +166,7 @@ class Command(BaseCommand):
             [
                 MemoryEmbedding(
                     user=user,
+                    household=household,
                     text=f"regra sintética {slot}",
                     embedding=[rng.random() for _ in range(EMBEDDING_DIMENSIONS)],
                 )
