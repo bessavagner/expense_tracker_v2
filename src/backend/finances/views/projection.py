@@ -45,9 +45,9 @@ def _parse_start(request, today: date) -> date:
     return _default_start(today)
 
 
-def _data_anchor_year(user, today: date) -> int:
-    inc_min = Income.objects.filter(user=user).aggregate(m=Min("month"))["m"]
-    ent_min = Entry.objects.filter(user=user).aggregate(m=Min("billing_month"))["m"]
+def _data_anchor_year(household, today: date) -> int:
+    inc_min = Income.objects.for_household(household).aggregate(m=Min("month"))["m"]
+    ent_min = Entry.objects.for_household(household).aggregate(m=Min("billing_month"))["m"]
     candidates = [d for d in (inc_min, ent_min) if d is not None]
     return min(candidates).year if candidates else today.year
 
@@ -111,14 +111,16 @@ def build_projection_context(request):
     start = _parse_start(request, today)
     months = _parse_months(request.GET.get("months"))
 
-    first_year = min(_data_anchor_year(request.user, today), start.year)
+    first_year = min(_data_anchor_year(request.household, today), start.year)
     last_year = max(today.year, start.year)
 
     estimate = _parse_estimate(request)
     estimator = "ceiling" if estimate == "teto" else "median"
 
     items = _session_items(request)
-    rows = build_projection(request.user, start, months, today=today, diverse_estimator=estimator)
+    rows = build_projection(
+        request.household, start, months, today=today, diverse_estimator=estimator
+    )
     if items:
         span = [r["month"] for r in rows]
         overlay, _ = expand_hypotheticals(items, span)

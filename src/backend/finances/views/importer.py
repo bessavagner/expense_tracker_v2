@@ -141,12 +141,14 @@ class ImportMappingView(LoginRequiredMixin, View):
 
         # Find unmatched categories and payment methods
         user = request.user
+        household = request.household
         existing_categories = {
-            c.lower(): c for c in Category.objects.filter(user=user).values_list("name", flat=True)
+            c.lower(): c
+            for c in Category.objects.for_household(household).values_list("name", flat=True)
         }
         existing_pms = {
             p.lower(): p
-            for p in PaymentMethod.objects.filter(user=user).values_list("name", flat=True)
+            for p in PaymentMethod.objects.for_household(household).values_list("name", flat=True)
         }
 
         unmatched_categories = set()
@@ -171,15 +173,15 @@ class ImportMappingView(LoginRequiredMixin, View):
         dates = {row["date"] for _, row in candidates}
         if import_type == "installment":
             already_imported = set(
-                InstallmentPlan.objects.filter(user=user, date__in=dates).values_list(
-                    "date", "total_amount", "description"
-                )
+                InstallmentPlan.objects.for_household(household)
+                .filter(date__in=dates)
+                .values_list("date", "total_amount", "description")
             )
         else:
             already_imported = set(
-                Entry.objects.filter(user=user, date__in=dates).values_list(
-                    "date", "amount", "description"
-                )
+                Entry.objects.for_household(household)
+                .filter(date__in=dates)
+                .values_list("date", "amount", "description")
             )
         for i, row in candidates:
             key = (row["date"], Decimal(row[amount_field]), row["description"])
@@ -189,7 +191,12 @@ class ImportMappingView(LoginRequiredMixin, View):
 
         # Mint the batch here, where a ready-to-execute row list first exists.
         # Its id is what makes the execute step idempotent — see ImportBatch.
-        batch = ImportBatch.objects.create(user=user, import_type=import_type)
+        batch = ImportBatch.objects.create(
+            user=user,  # still NOT NULL until phase 4
+            household=household,
+            created_by=user,
+            import_type=import_type,
+        )
 
         # Store in session
         import_data["batch_id"] = str(batch.id)
@@ -219,9 +226,9 @@ class ImportPreviewView(LoginRequiredMixin, View):
         err_count = sum(1 for r in rows if r["status"] == "error")
 
         # Get existing categories/PMs for resolution dropdowns
-        categories = Category.objects.filter(user=request.user).order_by("name")
-        payment_methods = PaymentMethod.objects.filter(user=request.user, is_active=True).order_by(
-            "name"
+        categories = Category.objects.for_request(request).order_by("name")
+        payment_methods = (
+            PaymentMethod.objects.for_request(request).filter(is_active=True).order_by("name")
         )
 
         return render(
@@ -311,7 +318,7 @@ class ImportExecuteView(LoginRequiredMixin, View):
         # mid-import blocks here until the first commits, then reads the row
         # again and finds executed_at set.
         batch = (
-            ImportBatch.objects.select_for_update().filter(pk=batch_id, user=request.user).first()
+            ImportBatch.objects.for_request(request).select_for_update().filter(pk=batch_id).first()
         )
         if batch is None:
             return redirect("finances:import_upload")
@@ -327,14 +334,15 @@ class ImportExecuteView(LoginRequiredMixin, View):
         category_resolutions = import_data.get("category_resolutions", {})
         pm_resolutions = import_data.get("pm_resolutions", {})
         user = request.user
+        household = request.household
 
         # Build category and PM lookup maps (case-insensitive)
-        cat_map = {c.name.lower(): c for c in Category.objects.filter(user=user)}
+        cat_map = {c.name.lower(): c for c in Category.objects.for_household(household)}
         # Prefetched so resolve_closing_day (called twice per row — here and
         # again inside Entry.save) reads a cache instead of querying.
         pm_map = {
             p.name.lower(): p
-            for p in PaymentMethod.objects.filter(user=user).prefetch_related(
+            for p in PaymentMethod.objects.for_household(household).prefetch_related(
                 "monthly_closing_days"
             )
         }
@@ -342,12 +350,23 @@ class ImportExecuteView(LoginRequiredMixin, View):
         # Create new categories/PMs from resolutions
         for name, resolution in category_resolutions.items():
             if resolution == "__new__" and name.lower() not in cat_map:
-                new_cat = Category.objects.create(user=user, name=name)
+                new_cat = Category.objects.create(
+                    user=user,  # still NOT NULL until phase 4
+                    household=household,
+                    created_by=user,
+                    name=name,
+                )
                 cat_map[name.lower()] = new_cat
 
         for name, resolution in pm_resolutions.items():
             if resolution == "__new__" and name.lower() not in pm_map:
-                new_pm = PaymentMethod.objects.create(user=user, name=name, type="pix")
+                new_pm = PaymentMethod.objects.create(
+                    user=user,  # still NOT NULL until phase 4
+                    household=household,
+                    created_by=user,
+                    name=name,
+                    type="pix",
+                )
                 pm_map[name.lower()] = new_pm
 
         created_count = 0
@@ -369,7 +388,7 @@ class ImportExecuteView(LoginRequiredMixin, View):
             if not category and cat_name in category_resolutions:
                 res = category_resolutions[cat_name]
                 if res != "__new__":
-                    category = Category.objects.filter(user=user, pk=res).first()
+                    category = Category.objects.for_household(household).filter(pk=res).first()
             if not category:
                 error_count += 1
                 continue
@@ -379,7 +398,9 @@ class ImportExecuteView(LoginRequiredMixin, View):
             if not payment_method and pm_name in pm_resolutions:
                 res = pm_resolutions[pm_name]
                 if res != "__new__":
-                    payment_method = PaymentMethod.objects.filter(user=user, pk=res).first()
+                    payment_method = (
+                        PaymentMethod.objects.for_household(household).filter(pk=res).first()
+                    )
             if not payment_method:
                 error_count += 1
                 continue
@@ -388,7 +409,9 @@ class ImportExecuteView(LoginRequiredMixin, View):
                 if import_type == "installment":
                     entry_date = date.fromisoformat(row["date"])
                     plan = InstallmentPlan.objects.create(
-                        user=user,
+                        user=user,  # still NOT NULL until phase 4
+                        household=household,
+                        created_by=user,
                         date=entry_date,
                         description=row["description"],
                         category=category,
@@ -406,7 +429,9 @@ class ImportExecuteView(LoginRequiredMixin, View):
                         resolve_closing_day(payment_method, entry_date),
                     )
                     Entry.objects.create(
-                        user=user,
+                        user=user,  # still NOT NULL until phase 4
+                        household=household,
+                        created_by=user,
                         date=entry_date,
                         amount=Decimal(row["amount"]),
                         description=row["description"],

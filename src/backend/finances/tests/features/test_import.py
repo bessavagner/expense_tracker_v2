@@ -5,7 +5,8 @@ from django.test import Client
 from model_bakery import baker
 from pytest_bdd import given, scenario, then, when
 
-from finances.models import Entry, InstallmentPlan
+from accounts.resolution import household_for_user
+from finances.models import Entry, ImportBatch, InstallmentPlan
 
 
 @scenario("import.feature", "Import regular entries from CSV")
@@ -26,20 +27,25 @@ def ctx():
 @given("a logged-in user with seed data", target_fixture="ctx")
 def given_user_with_seed(db, ctx):
     user = baker.make("core.CustomUser")
+    # Resolved eagerly: the middleware reads `request.household` from a
+    # Membership, and a user without one makes every scoped queryset return
+    # none() — which would turn every assertion below into a vacuous pass.
+    household = household_for_user(user)
     client = Client()
     client.force_login(user)
-    baker.make("finances.Category", user=user, name="Álcool")
-    baker.make("finances.Category", user=user, name="Lanche")
-    baker.make("finances.Category", user=user, name="Roupa")
-    baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")
+    baker.make("finances.Category", user=user, household=household, name="Álcool")
+    baker.make("finances.Category", user=user, household=household, name="Lanche")
+    baker.make("finances.Category", user=user, household=household, name="Roupa")
+    baker.make("finances.PaymentMethod", user=user, household=household, name="Pix", type="pix")
     baker.make(
         "finances.PaymentMethod",
         user=user,
+        household=household,
         name="Crédito C6",
         type="credit_card",
         closing_day=25,
     )
-    ctx.update({"user": user, "client": client})
+    ctx.update({"user": user, "household": household, "client": client})
     return ctx
 
 
@@ -121,3 +127,24 @@ def then_1_plan(ctx):
 @then("2 installment entries should exist")
 def then_2_entries(ctx):
     assert Entry.objects.filter(user=ctx["user"], entry_type="installment").count() == 2
+
+
+@pytest.mark.django_db
+def test_import_batch_belongs_to_the_household(ctx):
+    """The importer writes rows; an ImportBatch with no household would be a
+    row the family cannot see. Drives the same wizard the scenarios above do."""
+    given_user_with_seed(None, ctx)
+    given_csv_regular(ctx)
+    when_upload_regular(ctx)
+    when_confirm_mapping(ctx)
+    when_execute(ctx)
+
+    batch = ImportBatch.objects.latest("created_at")
+
+    assert batch.household == ctx["household"]
+    assert batch.created_by == ctx["user"]
+    assert batch.created_count == 3
+
+    entry = Entry.objects.filter(entry_type="regular").first()
+    assert entry.household == ctx["household"]
+    assert entry.created_by == ctx["user"]

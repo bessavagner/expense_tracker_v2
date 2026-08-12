@@ -201,3 +201,19 @@ def test_overlay_simulation_builds_on_estimated():
     # Aug: -200 expense -> saldo -100; cumulative net 300 -> acumulado 1100+300=1400
     assert rows[1]["saldo_projetado_sim"] == Decimal("-100")
     assert rows[1]["acumulado_sim"] == Decimal("1400")
+
+
+@pytest.mark.django_db
+def test_projection_page_excludes_other_households(logged_client, other_user, other_household):
+    baker.make(
+        "finances.Income",
+        user=other_user,
+        household=other_household,
+        name="Salário do vizinho",
+        amount=Decimal("9999.00"),
+        month=date(2026, 3, 1),
+    )
+
+    body = logged_client.get(reverse("finances:projection")).content.decode()
+
+    assert "9999" not in body
