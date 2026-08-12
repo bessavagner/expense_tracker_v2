@@ -38,6 +38,9 @@ class PaymentMethod(AuthoredHouseholdModel):
         ordering = ["name"]
         constraints = [
             models.UniqueConstraint(fields=["user", "name"], name="unique_payment_method_per_user"),
+            models.UniqueConstraint(
+                fields=["household", "name"], name="unique_payment_method_per_household"
+            ),
         ]
 
     def __str__(self):

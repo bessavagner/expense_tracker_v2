@@ -68,6 +68,12 @@ class MemoryRule(AuthoredHouseholdModel):
         verbose_name = "regra de memória"
         verbose_name_plural = "regras de memória"
         unique_together = ("user", "trigger", "field")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["household", "trigger", "field"],
+                name="unique_memory_rule_per_household",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.trigger} → {self.field}={self.value}"

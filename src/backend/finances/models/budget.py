@@ -28,6 +28,11 @@ class Budget(AuthoredHouseholdModel):
         verbose_name_plural = "orçamentos"
         unique_together = ("user", "name")
         ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["household", "name"], name="unique_budget_per_household"
+            ),
+        ]
 
     def __str__(self):
         return self.name

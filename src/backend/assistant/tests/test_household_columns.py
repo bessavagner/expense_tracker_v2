@@ -87,3 +87,26 @@ def test_model_scopes_through_the_household_manager(label, user):
     baker.make(model, user=user, household=theirs, **extras)
 
     assert model.objects.for_household(ours).count() == 1
+
+
+def test_two_members_cannot_create_the_same_memory_rule_twice(user):
+    from django.db import IntegrityError
+
+    household = baker.make(Household)
+    amanda = baker.make("core.CustomUser", username="amanda")
+    baker.make(
+        "assistant.MemoryRule",
+        user=user,
+        household=household,
+        trigger="pague menos",
+        field="category",
+    )
+
+    with pytest.raises(IntegrityError):
+        baker.make(
+            "assistant.MemoryRule",
+            user=amanda,
+            household=household,
+            trigger="pague menos",
+            field="category",
+        )

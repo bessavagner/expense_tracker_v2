@@ -43,8 +43,15 @@ class Category(AuthoredHouseholdModel):
     class Meta:
         verbose_name = "categoria"
         verbose_name_plural = "categorias"
+        # Both hold during phases 2 and 3. The user constraint goes away in
+        # phase 4 with the column, and this becomes the only one.
         unique_together = ("user", "name")
         ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["household", "name"], name="unique_category_per_household"
+            ),
+        ]
 
     def __str__(self):
         return self.name
