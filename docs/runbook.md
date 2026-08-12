@@ -573,6 +573,23 @@ restores into a **throwaway local container** (`ledger_rehearsal`, bound to
 `127.0.0.1:55432`), fingerprints it, migrates it, fingerprints it again, and
 diffs. Nothing creates, migrates or drops a database on the production server.
 
+**The fingerprint command is pinned; the migrations are not.** The rehearsal
+varies the schema and holds the observer constant — so `dump_ledger_totals` runs
+from `FINGERPRINT_REF` (default `de143a1`, the phase-2 merge) in a temporary
+worktree, while `migrate` runs from your working tree. Phase 2 got away without
+this because its `dump_ledger_totals` read `user`, a column both sides of the
+migration have. Phase 3 points the acumulado at `build_projection(household,…)`,
+so a working-tree fingerprint can no longer read the pre-E04 schema `REWIND=1`
+produces, and the BEFORE run dies on:
+
+```
+django.db.utils.ProgrammingError: column finances_income.household_id does not exist
+```
+
+Phase 4 drops `user` and re-points the command — bump `FINGERPRINT_REF` in that
+same commit, or retire the script. Set `FINGERPRINT_REF=` (empty) to use the
+working tree, which is only safe without `REWIND=1`.
+
 The dump holds every row of the real ledger, so it is written to a `0700` temp
 directory that an `EXIT` trap removes on **any** exit — including the
 fingerprint-mismatch exit. The container goes with it. If the script is killed
@@ -628,6 +645,36 @@ PGSSLMODE=prefer SOURCE_DB=expense_tracker REWIND=1 \
 `postgres` on Supabase, `expense_tracker` locally. Weaker evidence than the real
 thing, since the local copy may lag production, but it exercises the whole
 migration path on real records.
+
+### Proving E04 phase 3 moved no money
+
+Phase 3 adds **no migration**. It re-points every read path from `filter(user=…)`
+to the household-scoped manager, so the question it has to answer is not "did the
+migration lose rows" but "does household scoping select the same rows user
+scoping did". That is a *code*-version comparison on one unchanging database, and
+the rehearsal above cannot express it.
+
+```bash
+POSTGRES_PORT=5433 scripts/verify-e04-phase3-money.sh          # vs main
+POSTGRES_PORT=5433 scripts/verify-e04-phase3-money.sh <ref>    # vs any baseline
+```
+
+It checks out the baseline ref into a temporary worktree, runs
+`dump_ledger_totals --json` from both it and your working tree against the same
+local ledger, and diffs. Read-only — the command only aggregates. Expect:
+
+```
+OK — counts, sums and acumulado identical across the re-scoping.
+```
+
+**A non-empty diff means a conversion bug**, not a migration bug: on a
+single-household ledger `for_household(household_for_user(u))` must select
+exactly what `filter(user=u)` used to. A changed `acumulado` with an unchanged
+`entry_sum` usually means one service is still scoping by the actor.
+
+Run it at both phase-3 gates (3a, after the Django surface converts; 3b, after
+the agent). Needs the pgvector container on `:5433` and a `.env`; the temporary
+worktree inherits your `.env` and is removed on exit.
 
 ---
 

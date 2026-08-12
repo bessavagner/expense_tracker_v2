@@ -16,12 +16,31 @@
 # Credentials come from libpq/Django env vars, never a URL: the production
 # password contains a space (docs/runbook.md, "Common failure #2").
 #
+# The fingerprint code is PINNED, the migrations are not. This experiment varies
+# the schema and holds the observer constant; running `dump_ledger_totals` from
+# the working tree would vary both at once. It went unnoticed through phase 2
+# only because that command was schema-agnostic then — it read `user`, a column
+# both sides of the migration have. Phase 3 points its acumulado at
+# `build_projection(household, ...)`, so the working-tree command can no longer
+# read the pre-E04 schema REWIND=1 produces, and the BEFORE fingerprint dies on
+# `column finances_income.household_id does not exist`.
+#
+# FINGERPRINT_REF therefore defaults to the phase-2 merge, the last commit whose
+# `dump_ledger_totals` reads a column every schema in this epic has. Phase 4
+# drops `user` and re-points the command; bump this ref in the same commit, or
+# delete the script if the epic no longer needs it.
+#
+# To prove phase 3 itself moved no money — a *code*-version question, not a
+# schema one — use scripts/verify-e04-phase3-money.sh instead.
+#
 # Required env: PGHOST PGPORT PGUSER PGPASSWORD PGSSLMODE
 # Usage: scripts/rehearse-e04-migration.sh
 set -euo pipefail
 umask 077
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# de143a1 = "Merge E04 phase 2 leftovers"; set to "" to use the working tree.
+FINGERPRINT_REF="${FINGERPRINT_REF-de143a1}"
 COPY="${COPY:-ledger_rehearsal}"
 SOURCE_DB="${SOURCE_DB:-postgres}"  # Supabase's database is `postgres`
 IMAGE="${IMAGE:-pgvector/pgvector:pg17}"
@@ -37,8 +56,11 @@ DUMP="$WORK/ledger-prod.dump"
 BEFORE="$WORK/e04-before.json"
 AFTER="$WORK/e04-after.json"
 
+FP_TREE="$ROOT"  # where the fingerprint command is run from; see FINGERPRINT_REF
+
 cleanup() {
   docker rm -f "$LOCAL_CONTAINER" >/dev/null 2>&1 || true
+  [[ "$FP_TREE" == "$ROOT" ]] || git -C "$ROOT" worktree remove --force "$FP_TREE" 2>/dev/null || true
   rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -53,15 +75,30 @@ local_pg17() {  # client inside the throwaway container (root, so it can read $D
     -e PGPASSWORD="$LOCAL_PASSWORD" -e PGDATABASE="$COPY" \
     "$LOCAL_CONTAINER" "$@"
 }
-on_copy() {  # run manage.py against the local rehearsal copy
+on_copy_at() {  # run manage.py from a given source tree, against the local copy
   # PGSSLMODE is exported for the production client and libpq would apply it
   # here too — Django sets host/port/user/password but not sslmode, so the
   # loopback connection would demand TLS the throwaway container has not got.
-  DATABASE_URL="" PGSSLMODE=disable \
-  POSTGRES_HOST=127.0.0.1 POSTGRES_PORT="$LOCAL_PORT" POSTGRES_USER=postgres \
-  POSTGRES_PASSWORD="$LOCAL_PASSWORD" POSTGRES_DB="$COPY" \
-    uv run python "$ROOT/src/backend/manage.py" "$@"
+  local tree="$1"; shift
+  ( cd "$tree" && \
+    DATABASE_URL="" PGSSLMODE=disable \
+    POSTGRES_HOST=127.0.0.1 POSTGRES_PORT="$LOCAL_PORT" POSTGRES_USER=postgres \
+    POSTGRES_PASSWORD="$LOCAL_PASSWORD" POSTGRES_DB="$COPY" \
+      uv run python src/backend/manage.py "$@" )
 }
+on_copy() {  # the migrations under test always come from the working tree
+  on_copy_at "$ROOT" "$@"
+}
+fingerprint() {  # ...but the observer is pinned, so only the schema varies
+  on_copy_at "$FP_TREE" dump_ledger_totals --json
+}
+
+if [[ -n "$FINGERPRINT_REF" ]]; then
+  echo "==> pinning the fingerprint command to $FINGERPRINT_REF"
+  FP_TREE="$WORK/fingerprint-code"
+  git -C "$ROOT" worktree add --detach "$FP_TREE" "$FINGERPRINT_REF" >/dev/null
+  cp "$ROOT/.env" "$FP_TREE/.env" 2>/dev/null || true
+fi
 
 echo "==> dumping production, read-only (treat $DUMP as production data)"
 PGDATABASE="$SOURCE_DB" prod_pg17 pg_dump --no-owner --no-acl -Fc -f "$DUMP"
@@ -90,14 +127,14 @@ if [[ "${REWIND:-0}" == "1" ]]; then
 fi
 
 echo "==> BEFORE fingerprint"
-on_copy dump_ledger_totals --json > "$BEFORE"
+fingerprint > "$BEFORE"
 python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print('  users:',len(d));[print(f\"  {u}: {v['entry_count']} entries, sum {v['entry_sum']}\") for u,v in d.items()]" "$BEFORE"
 
 echo "==> migrating the copy"
 on_copy migrate
 
 echo "==> AFTER fingerprint"
-on_copy dump_ledger_totals --json > "$AFTER"
+fingerprint > "$AFTER"
 
 echo "==> diff"
 if diff -u "$BEFORE" "$AFTER"; then
