@@ -562,9 +562,24 @@ export PGHOST=... PGPORT=5432 PGUSER=... PGPASSWORD='...' PGSSLMODE=require
 scripts/rehearse-e04-migration.sh
 ```
 
-The script dumps production read-only, restores into a scratch database
-(`ledger_rehearsal`, dropped again at the end), fingerprints it, migrates it,
-fingerprints it again, and diffs.
+Also needs `docker`: the script uses `postgres:17` for the dump (the system
+`pg_dump` is older than the server) and `pgvector/pgvector:pg17` for the copy.
+
+The script touches production exactly once, read-only, with `pg_dump`. It then
+restores into a **throwaway local container** (`ledger_rehearsal`, bound to
+`127.0.0.1:55432`), fingerprints it, migrates it, fingerprints it again, and
+diffs. Nothing creates, migrates or drops a database on the production server.
+
+The dump holds every row of the real ledger, so it is written to a `0700` temp
+directory that an `EXIT` trap removes on **any** exit — including the
+fingerprint-mismatch exit. The container goes with it. If the script is killed
+with `SIGKILL`, clean up by hand: `docker rm -f e04-rehearsal-<pid>` and
+`rm -rf /tmp/e04-rehearsal.*`.
+
+`pg_restore` errors on Supabase's own schemas (`auth`, `vault`, `graphql`) are
+expected and tolerated — vanilla Postgres has neither those extensions nor those
+roles. What matters is the `public` schema, which is where every Django table
+lives; the printed entry counts are the check that it arrived.
 
 Three outputs to check:
 
@@ -585,7 +600,9 @@ rehearse again.
 
 **The `--months` window and the pinned clock.** `dump_ledger_totals` pins `today`
 to a literal date so two runs days apart still compare; if the rehearsal happens
-long after 2026-08-12, update `FIXED_TODAY` in the command.
+long after 2026-08-12, update `FIXED_TODAY` in the command. `--months` is a
+*floor*, not a cap: the window always stretches to cover the newest entry or
+income, so the ledger's tail can never silently drop out of the comparison.
 
 **Rehearsing without Supabase credentials.** The same comparison runs against the
 local ledger copy: create a scratch database with
