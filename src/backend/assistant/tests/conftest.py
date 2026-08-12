@@ -10,19 +10,19 @@ from model_bakery import baker
 pydantic_ai.models.ALLOW_MODEL_REQUESTS = os.environ.get("RUN_LLM_TESTS") == "1"
 
 
-@pytest.fixture
-def user(db):
-    return baker.make("core.CustomUser", username="vagner")
+# `user`, `other_user`, `household` and `other_household` live in the root
+# `src/backend/conftest.py` — one definition, reachable from every app's tests.
 
 
 @pytest.fixture
-def other_user(db):
-    """A second tenant, for asserting that a query stays scoped to one user."""
-    return baker.make("core.CustomUser", username="amanda")
+def logged_client(user, household):
+    """A logged-in client whose user resolves to a household.
 
-
-@pytest.fixture
-def logged_client(user):
+    `household` is requested for its side effect: the middleware reads
+    `request.household` from a Membership, and a user without one makes every
+    scoped queryset return none() — which would turn "the neighbour's row is
+    absent" assertions into vacuous passes.
+    """
     client = Client()
     client.force_login(user)
     return client

@@ -18,7 +18,6 @@ BASELINE = {
     "src/backend/assistant/agents/memory.py",
     "src/backend/assistant/agents/tools.py",
     "src/backend/assistant/management/commands/seed_category_rules.py",
-    "src/backend/assistant/throttling.py",
     "src/backend/assistant/views.py",
     "src/backend/finances/api/views.py",
     "src/backend/finances/forms.py",
@@ -52,6 +51,15 @@ E04_TRANSITION_TOOLS = {
     "src/backend/finances/management/commands/dump_ledger_totals.py",
 }
 
+# Files where `user` is the ACTOR, not the tenant — permanently exempt.
+# `AssistantUsageEvent.user` is who spent the turn: rate limiting is
+# per-person, so two people in one household each get their own budget.
+# Phase 2 decided this and phase 4 does not drop `user` from that model.
+# This set is permanent; E04_TRANSITION_TOOLS is not.
+ACTOR_SCOPED = {
+    "src/backend/assistant/throttling.py",
+}
+
 PATTERN = re.compile(r"\.(filter|get|exclude)\([^)]*user=")
 
 
@@ -68,7 +76,7 @@ def _files_scoping_by_user():
 
 
 def test_no_new_file_scopes_a_domain_query_by_user():
-    regressions = sorted(_files_scoping_by_user() - BASELINE - E04_TRANSITION_TOOLS)
+    regressions = sorted(_files_scoping_by_user() - BASELINE - E04_TRANSITION_TOOLS - ACTOR_SCOPED)
     assert not regressions, (
         "These files scope a domain query by user=. Use the household-scoped "
         f"manager (accounts.scoping) instead: {regressions}"
@@ -90,3 +98,10 @@ def test_transition_tools_still_need_their_exemption():
     assert not stale, (
         f"These no longer scope by user — remove them from E04_TRANSITION_TOOLS: {stale}"
     )
+
+
+def test_actor_scoped_files_still_scope_by_user():
+    """If one of these stops scoping by user, the actor/tenant distinction has
+    been erased somewhere — check it was deliberate before deleting the entry."""
+    stale = sorted(ACTOR_SCOPED - _files_scoping_by_user())
+    assert not stale, f"No longer scope by user — remove from ACTOR_SCOPED: {stale}"

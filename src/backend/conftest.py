@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 
 import pytest
 import time_machine
+from model_bakery import baker
 
 from core.clock import parse_shift
 
@@ -32,3 +33,35 @@ def shifted_clock():
     destination = datetime.now(UTC) + parse_shift(raw)
     with time_machine.travel(destination, tick=True):
         yield
+
+
+@pytest.fixture
+def user(db):
+    return baker.make("core.CustomUser", username="vagner")
+
+
+@pytest.fixture
+def other_user(db):
+    """A second tenant, for asserting that a query stays scoped to one owner."""
+    return baker.make("core.CustomUser", username="amanda")
+
+
+@pytest.fixture
+def household(user):
+    """The household the `user` fixture writes into.
+
+    Requested eagerly by anything that exercises a household-scoped read: the
+    middleware resolves `request.household` from a Membership, and a user
+    without one makes every scoped queryset return none().
+    """
+    from accounts.resolution import household_for_user
+
+    return household_for_user(user)
+
+
+@pytest.fixture
+def other_household(other_user):
+    """A second tenant, for asserting a query stays inside one household."""
+    from accounts.resolution import household_for_user
+
+    return household_for_user(other_user)
