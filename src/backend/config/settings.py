@@ -228,6 +228,10 @@ ACCOUNT_PREVENT_ENUMERATION = True
 ACCOUNT_EMAIL_SUBJECT_PREFIX = ""
 ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION = True
 ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 3
+# No custom adapter. Marking an invited address verified has to happen
+# before `perform_login` decides whether the signup may proceed, and the
+# adapter's send-the-mail hooks all run after that decision — see
+# `accounts.signals.verify_invited_email`.
 ACCOUNT_ADAPTER = "allauth.account.adapter.DefaultAccountAdapter"
 # allauth ships its own login throttle (`10/m/ip, 5/300s/key`, cache-backed).
 # It is switched off because E01's lockout already answers this question, and

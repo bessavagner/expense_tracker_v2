@@ -25,6 +25,12 @@ from accounts.invitations import (
 from accounts.models import Invitation, Membership
 from accounts.permissions import OwnerRequiredMixin, is_owner
 
+#: Where the landing page leaves the token so signup can find it. The URL is
+#: the primary carrier (`?next=`); this is the backup for the case that URL
+#: cannot survive — a verification link opened later, a redirect chain that
+#: drops the query string.
+PENDING_INVITE_SESSION_KEY = "pending_invitation_token"
+
 
 class MembersView(LoginRequiredMixin, TemplateView):
     """Who is in this household, and who has been invited.
@@ -83,6 +89,7 @@ class InvitationAcceptView(View):
         invitation = invitation_for_token(token)
         if invitation is None or not invitation.is_pending:
             return render(request, "accounts/invite_invalid.html", status=404)
+        request.session[PENDING_INVITE_SESSION_KEY] = token
         return render(
             request,
             "accounts/invite_landing.html",
