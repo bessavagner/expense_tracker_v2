@@ -1025,7 +1025,7 @@ git commit -m "refactor(finances): the entries page reads the household's ledger
 - Consumes: `systemic_rows_for_month(household, ...)`, `installment_rows_for_month(household, ...)` (Task 4), `compute_entry_summary(household, ...)` (Task 6), the converted forms (Task 5).
 - Produces: no new public names.
 
-- [ ] **Step 1: Write the failing union test**
+- [x] **Step 1: Write the failing union test**
 
 Create `src/backend/finances/tests/test_cockpit_pm_union.py`:
 
@@ -1096,21 +1096,21 @@ def test_edit_modal_union_cannot_surface_a_foreign_payment_method(
 
 > Check the exact url name and its arguments in `finances/urls.py` before running — the modal route may take `(year, month, pk)` or just `(pk)`. Fix the `reverse()` call to match; do not change `urls.py`.
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/finances/tests/test_cockpit_pm_union.py -q`
 Expected: FAIL — the view still calls the forms with `user=`, which Task 5 removed.
 
-- [ ] **Step 3: Convert the module**
+- [x] **Step 3: Convert the module**
 
 Apply Shape B throughout. Leave both `_patch_*_querysets` helpers' union lines **exactly as they are** — `Category.objects.filter(pk=entry.category_id)` and `PaymentMethod.objects.filter(pk=entry.payment_method_id)` stay unscoped by design. Only the form construction above them changes to `household=request.household`.
 
-- [ ] **Step 4: Run the cockpit tests**
+- [x] **Step 4: Run the cockpit tests**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/finances/tests/ -k cockpit -q`
 Expected: PASS across all eight cockpit modules plus the new union test.
 
-- [ ] **Step 5: Strike the entry and commit**
+- [x] **Step 5: Strike the entry and commit**
 
 Remove `"src/backend/finances/views/cockpit.py"` from `BASELINE`, then:
 
@@ -1134,7 +1134,7 @@ git commit -m "refactor(finances): the cockpit reads the household, and the pm u
 - Consumes: `budget_spend_for_month(household, ...)`, `orphan_category_spend_for_month(household, ...)` (Task 3), the converted forms (Task 5).
 - Produces: the module-level helpers rename their first parameter — `_settings_context(household)`, `_income_groups(household)`, `_budget_rows(household)`. Confirm the actual names at lines 29, 63 and 455 before editing; the plan does not rename them beyond the parameter.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `src/backend/finances/tests/test_views_settings.py`:
 
@@ -1177,21 +1177,21 @@ def test_deleting_a_foreign_payment_method_404s(
 
 > Confirm the url names against `finances/urls.py`. If the delete view currently returns a re-rendered list rather than 404 for a missing pk, assert *that* behaviour plus `.exists()` — the invariant that matters is that the foreign row survives.
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/finances/tests/test_views_settings.py -q`
 Expected: FAIL — form kwarg errors from Task 5, and the neighbour's category rendering.
 
-- [ ] **Step 3: Convert the module**
+- [x] **Step 3: Convert the module**
 
 Shape B for all 38 sites. `SystemicExpenseForm(user=...)` → `SystemicExpenseForm(household=request.household)`; `form.save_for_user(request.user)` → `form.save_for_household(request.household, request.user)`. Creates keep `user=request.user` and gain `household=request.household, created_by=request.user`.
 
-- [ ] **Step 4: Run the settings tests**
+- [x] **Step 4: Run the settings tests**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/finances/tests/test_views_settings.py src/backend/finances/tests/test_settings_income_groups.py src/backend/finances/tests/test_category.py src/backend/finances/tests/test_budget_model.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Strike the entry and commit**
+- [x] **Step 5: Strike the entry and commit**
 
 Remove `"src/backend/finances/views/settings.py"` from `BASELINE`, then:
 
@@ -1217,7 +1217,7 @@ git commit -m "refactor(finances): settings reads and writes the household's cat
 - Consumes: `build_projection(household, ...)` (Task 2), `simulate_projection_summary(household, ...)` (Task 2).
 - Produces: no new public names.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `src/backend/finances/tests/test_views_projection.py`:
 
@@ -1255,23 +1255,23 @@ def test_import_batch_belongs_to_the_household(logged_client, user, household):
     assert batch.created_by == user
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/finances/tests/test_views_projection.py -q`
 Expected: FAIL — `build_projection` receives a user.
 
-- [ ] **Step 3: Convert the three modules**
+- [x] **Step 3: Convert the three modules**
 
 Shape B throughout. In `importer.py`, the `ImportBatch` create and every `Entry` create gain `household=request.household, created_by=request.user` alongside the existing `user=request.user`.
 
 > `test_import_query_count.py` enforces an O(N) ceiling of 1.5 queries per imported row. `for_household()` adds no query — it is the same single `WHERE` clause — but the bridge's `household_for_writer` memoisation is what keeps creates cheap. If the ceiling breaks here, the cause is a create that lost its `user=` (forcing a fresh resolution per row), not the read conversion.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/finances/tests/test_consolidated_detail_filter.py src/backend/finances/tests/test_consolidated_dropdown.py src/backend/finances/tests/test_views_projection.py src/backend/finances/tests/features/test_import.py src/backend/finances/tests/test_import_double_submit.py src/backend/finances/tests/test_import_query_count.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Strike three entries and commit**
+- [x] **Step 5: Strike three entries and commit**
 
 Remove `consolidated.py`, `projection.py` and `importer.py` from `BASELINE`, then:
 
@@ -1295,7 +1295,7 @@ git commit -m "refactor(finances): consolidated, projection and the importer sco
 - Consumes: every converted service from Tasks 2-4.
 - Produces: `SummaryView._month_totals(household, billing_month) -> dict` — the one `@staticmethod` that takes a scope; first parameter renamed. `_get_month_params(request)` is unchanged.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `src/backend/finances/tests/test_api_dashboard.py`:
 
@@ -1343,12 +1343,12 @@ def test_api_without_a_household_returns_zeroes_not_everything(client, user):
 
 > The second test writes `household=None` explicitly, which the phase 2 bridge would otherwise fill. If the bridge overrides it, create the row and then `Income.objects.filter(pk=...).update(household=None)` — `.update()` bypasses signals, which is the same technique phase 2's own tests used.
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/finances/tests/test_api_dashboard.py -q`
 Expected: FAIL — the services receive a user.
 
-- [ ] **Step 3: Convert the module**
+- [x] **Step 3: Convert the module**
 
 Every `user = request.user` becomes `household = request.household`, every service call passes it, every direct query uses `for_request(request)`:
 
@@ -1365,12 +1365,12 @@ Every `user = request.user` becomes `household = request.household`, every servi
         )["total"] or Decimal("0")
 ```
 
-- [ ] **Step 4: Run the API tests**
+- [x] **Step 4: Run the API tests**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/finances/tests/test_api_dashboard.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Strike the entry and commit**
+- [x] **Step 5: Strike the entry and commit**
 
 Remove `"src/backend/finances/api/views.py"` from `BASELINE`, then:
 
@@ -1397,7 +1397,7 @@ Each takes a username on the CLI. Each resolves the household once, then scopes 
 - Consumes: `accounts.resolution.household_for_user` (Task 1).
 - Produces: no new public names. Every command gains one line after resolving the user.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to the `import_csv` test module:
 
@@ -1423,12 +1423,12 @@ def test_import_csv_writes_into_the_users_household(user, household, tmp_path):
 
 > Read the command's actual argument names and CSV dialect first — `import_csv` reads Brazilian-format files from `.data/imports/` and its flags may differ. Match the existing happy-path test in the module rather than inventing an invocation.
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/finances/tests/ -k import_command -q`
 Expected: FAIL — `created_by` is None, or the assertion on `household` fails.
 
-- [ ] **Step 3: Convert the four commands**
+- [x] **Step 3: Convert the four commands**
 
 The shared shape, right after the user lookup:
 
@@ -1458,12 +1458,12 @@ In `transfer_entries.py` the import loop resolves per row, because each row name
 
 Leave the export half (`qs.filter(user__username=...)`) alone — it selects *whose* rows to export, which is a person question, and the ratchet's regex does not match it.
 
-- [ ] **Step 4: Run the command tests**
+- [x] **Step 4: Run the command tests**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/finances/tests/ src/backend/assistant/tests/ -k "import or seed or transfer" -q`
 Expected: PASS.
 
-- [ ] **Step 5: Strike four entries and commit**
+- [x] **Step 5: Strike four entries and commit**
 
 Remove `import_csv.py`, `seed_qa_data.py`, `transfer_entries.py` and `seed_category_rules.py` from `BASELINE`, then:
 
@@ -1479,17 +1479,17 @@ git commit -m "refactor: the CLI commands write into a household, not a person"
 
 No files created. This is the checkpoint before the agent is touched. If phase 3b goes badly, this is the commit you ship.
 
-- [ ] **Step 1: Full suite under the real clock**
+- [x] **Step 1: Full suite under the real clock**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/ -q`
 Expected: the Task 1 baseline (1066) plus roughly 20 new tests, **0 failed**.
 
-- [ ] **Step 2: Full suite under a shifted clock**
+- [x] **Step 2: Full suite under a shifted clock**
 
 Run: `POSTGRES_PORT=5433 TEST_CLOCK_SHIFT=+1y uv run pytest src/backend/ -q -m "not current_date"`
 Expected: same counts. Run **serially** after Step 1.
 
-- [ ] **Step 3: Gates**
+- [x] **Step 3: Gates**
 
 ```bash
 POSTGRES_PORT=5433 uv run coverage run -m pytest src/backend/ && uv run coverage report --fail-under=80
@@ -1500,7 +1500,7 @@ uv run python src/backend/manage.py check
 
 Expected: coverage ≥ 80, lint clean, **`No changes detected`** (this phase adds no migration — a change here means a model was edited, which is out of scope), system check clean.
 
-- [ ] **Step 4: The ratchet has shrunk to four**
+- [x] **Step 4: The ratchet has shrunk to four**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/accounts/tests/test_scoping_ratchet.py -q`
 
@@ -1515,7 +1515,7 @@ src/backend/assistant/views.py
 
 > The invariant that matters: **every remaining entry is under `assistant/`**. Anything in `finances/` here means a Task 2-11 conversion was missed. The running count was 25 → 24 (Task 1) → 16 (Task 4) → 15 (Task 5) → 14, 13, 12 (Tasks 6-8) → 9 (Task 9) → 8 (Task 10) → 4 (Task 11).
 
-- [ ] **Step 5: The money boundary held**
+- [x] **Step 5: The money boundary held**
 
 ```bash
 PGHOST=172.17.0.1 PGPORT=5433 PGUSER=postgres PGPASSWORD=postgres PGSSLMODE=prefer \
@@ -1524,7 +1524,7 @@ SOURCE_DB=expense_tracker REWIND=1 scripts/rehearse-e04-migration.sh
 
 Expected: `OK — counts, sums and acumulado identical across the migration.`
 
-- [ ] **Step 6: Commit the gate**
+- [x] **Step 6: Commit the gate**
 
 ```bash
 git commit --allow-empty -m "chore(finances): E04 phase 3a gate — every Django read path scopes by household"
@@ -1552,7 +1552,7 @@ The agent's deps type carries `User` today. It becomes a frozen dataclass carryi
 
 > **Why the whole scope, not just the household:** memory and analytics only read, so they could take a bare household. Passing `AgentScope` uniformly means every tool has one signature shape, and a tool that later needs `created_by` does not force a second signature change. The cost is one attribute access.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/backend/assistant/tests/test_agent_scope.py`:
 
@@ -1618,12 +1618,12 @@ def test_memory_rules_are_household_scoped(user, household, other_user, other_ho
     assert find_matching_rules(scope, "comprei cerveja") == []
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/assistant/tests/test_agent_scope.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'assistant.agents.scope'`
 
-- [ ] **Step 3: Write `AgentScope`**
+- [x] **Step 3: Write `AgentScope`**
 
 `src/backend/assistant/agents/scope.py`:
 
@@ -1657,7 +1657,7 @@ class AgentScope:
         return cls(household=getattr(request, "household", None), user=request.user)
 ```
 
-- [ ] **Step 4: Convert memory and analytics**
+- [x] **Step 4: Convert memory and analytics**
 
 `memory.py`:
 
@@ -1674,12 +1674,12 @@ def find_semantic_matches(scope, query_vector, threshold=0.8, limit=5):
 
 `analytics.py`: rename the first parameter of every public function from `user` to `scope`, and rewrite each query — including lines 247 and 254's `Entry.objects.filter(user=user, billing_month=bm, ...)` — as `Entry.objects.for_household(scope.household).filter(billing_month=bm, ...)`.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/assistant/tests/test_agent_scope.py src/backend/assistant/tests/ -k "memory or analytics" -q`
 Expected: PASS, after converting the existing modules' call sites.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/backend/assistant/agents/scope.py src/backend/assistant/agents/memory.py \
@@ -1711,7 +1711,7 @@ git commit -m "feat(assistant): the agent's scope is a household plus an actor"
 
   The private helpers `_parse_receipt_date(value)` and `_resolve_by_name(queryset, raw_name)` take no scope and do not change.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `src/backend/assistant/tests/test_agent_scope.py`:
 
@@ -1782,23 +1782,23 @@ def test_a_tool_cannot_widen_its_scope_through_an_argument(
 
 > The third test's final assertion depends on the tool's actual pt-BR error string. Read `register_entry`'s not-found branch and assert on what it really returns; the invariant that must hold is that **no entry is created**.
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/assistant/tests/test_agent_scope.py -q`
 Expected: FAIL — `list_categories` receives an `AgentScope` and passes it to `filter(user=...)`.
 
-- [ ] **Step 3: Convert the module**
+- [x] **Step 3: Convert the module**
 
 Mechanical, 41 sites. `Category.objects.filter(user=user)` → `Category.objects.for_household(scope.household)`. `PaymentMethod.objects.filter(user=user, is_active=True)` → `PaymentMethod.objects.for_household(scope.household).filter(is_active=True)`. Every create gains `household=scope.household, created_by=scope.user` beside its existing `user=scope.user`.
 
 Work through it in one pass and let the test suite find what you missed — the parameter rename means a missed site raises `ValueError: Cannot query "AgentScope"`, never a silent leak. That is the whole reason this task renames rather than adds.
 
-- [ ] **Step 4: Run the agent tests**
+- [x] **Step 4: Run the agent tests**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/assistant/ -q`
 Expected: failures only in `assistant.py`'s registrations and `views.py` — Task 15 owns those. Everything in `tools.py`'s own modules passes.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/backend/assistant/agents/tools.py src/backend/assistant/tests
@@ -1820,7 +1820,7 @@ git commit -m "refactor(assistant): every tool reads the household from its scop
 - Consumes: `AgentScope` (Task 13), every converted tool (Task 14).
 - Produces: no new public names. `assistant_agent` keeps its name; its `deps_type` changes.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `src/backend/assistant/tests/test_agent_scope.py`:
 
@@ -1855,12 +1855,12 @@ def test_chat_history_is_household_scoped(
     assert "segredo do vizinho" not in body
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/assistant/tests/ -q`
 Expected: FAIL on both.
 
-- [ ] **Step 3: Convert the orchestrator**
+- [x] **Step 3: Convert the orchestrator**
 
 In `assistant/agents/assistant.py`, replace the `User = get_user_model()` deps usage:
 
@@ -1887,7 +1887,7 @@ Keep the pt-BR docstrings exactly as they are — they are the tool descriptions
 
 Do the same for the three worker agents in `registrar.py`, `analyst.py` and `planner.py` if they declare their own `deps_type`; grep for `deps_type=` across `assistant/agents/` and convert every hit.
 
-- [ ] **Step 4: Convert the chat view**
+- [x] **Step 4: Convert the chat view**
 
 In `assistant/views.py`, build the scope once and use it for both the agent run and the queries:
 
@@ -1907,12 +1907,12 @@ Every `ChatMessage.objects.acreate(user=user, ...)` gains `household=scope.house
 
 > `views.py` is async. `AgentScope.for_request` only reads attributes, so it is safe to call directly; the ORM calls around it are already `await`ed or wrapped in `sync_to_async`. Do not add a `sync_to_async` around `for_request`.
 
-- [ ] **Step 5: Run the assistant suite**
+- [x] **Step 5: Run the assistant suite**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/assistant/ -q`
 Expected: PASS.
 
-- [ ] **Step 6: Strike the last four entries and commit**
+- [x] **Step 6: Strike the last four entries and commit**
 
 Remove `analytics.py`, `memory.py`, `tools.py` and `views.py` from `BASELINE` — it is now **empty**. Leave the `BASELINE = set()` assignment in place with a comment saying phase 4 turns the ratchet into a flat assertion.
 
@@ -1928,17 +1928,17 @@ git commit -m "refactor(assistant): the orchestrator and the chat view speak in 
 
 No files created.
 
-- [ ] **Step 1: Full suite under the real clock**
+- [x] **Step 1: Full suite under the real clock**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/ -q`
 Expected: roughly 1090 passed, 2 skipped, **0 failed**.
 
-- [ ] **Step 2: Full suite under a shifted clock**
+- [x] **Step 2: Full suite under a shifted clock**
 
 Run: `POSTGRES_PORT=5433 TEST_CLOCK_SHIFT=+1y uv run pytest src/backend/ -q -m "not current_date"`
 Expected: same counts. Serially, after Step 1.
 
-- [ ] **Step 3: Gates**
+- [x] **Step 3: Gates**
 
 ```bash
 POSTGRES_PORT=5433 uv run coverage run -m pytest src/backend/ && uv run coverage report --fail-under=80
@@ -1947,7 +1947,7 @@ uv run python src/backend/manage.py makemigrations --check --dry-run
 uv run python src/backend/manage.py check
 ```
 
-- [ ] **Step 4: The baseline is empty**
+- [x] **Step 4: The baseline is empty**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/accounts/tests/test_scoping_ratchet.py -q`
 
@@ -1960,7 +1960,7 @@ grep -A 3 "^ACTOR_SCOPED\|^E04_TRANSITION_TOOLS" src/backend/accounts/tests/test
 
 Expected: `BASELINE` empty; `ACTOR_SCOPED` = `{assistant/throttling.py}`; `E04_TRANSITION_TOOLS` = `{dump_ledger_totals.py}`.
 
-- [ ] **Step 5: No model or migration was touched**
+- [x] **Step 5: No model or migration was touched**
 
 ```bash
 git diff main --stat -- "src/backend/*/models.py" "src/backend/*/models/" "src/backend/*/migrations/"
@@ -1968,7 +1968,7 @@ git diff main --stat -- "src/backend/*/models.py" "src/backend/*/models/" "src/b
 
 Expected: **empty**. Phase 3 changes no schema. Anything here belongs to phase 4.
 
-- [ ] **Step 6: The money boundary held**
+- [x] **Step 6: The money boundary held**
 
 ```bash
 PGHOST=172.17.0.1 PGPORT=5433 PGUSER=postgres PGPASSWORD=postgres PGSSLMODE=prefer \
@@ -1977,7 +1977,7 @@ SOURCE_DB=expense_tracker REWIND=1 scripts/rehearse-e04-migration.sh
 
 Expected: `OK — counts, sums and acumulado identical across the migration.`
 
-- [ ] **Step 7: Commit and open for review**
+- [x] **Step 7: Commit and open for review**
 
 ```bash
 git commit --allow-empty -m "chore(accounts): E04 phase 3 gate — the scoping baseline is empty"
