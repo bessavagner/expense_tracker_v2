@@ -81,11 +81,11 @@ class TestPendingReceiptDirective:
     build_pending_receipt_directive was updated to instruct the single agent.
     """
 
-    def _make_pending(self, user):
+    def _make_pending(self, household):
         from assistant.models import ReceiptDraft, ReceiptDraftStatus
 
         return ReceiptDraft.objects.create(
-            user=user,
+            household=household,
             payload={
                 "store": "MATEUS SUPERMERCADOS",
                 "amount_paid": "745.85",
@@ -94,10 +94,10 @@ class TestPendingReceiptDirective:
             status=ReceiptDraftStatus.PENDING,
         )
 
-    def test_directive_present_when_draft_pending(self, user, scope):
+    def test_directive_present_when_draft_pending(self, user, scope, household):
         from assistant.agents.tools import build_pending_receipt_directive
 
-        self._make_pending(user)
+        self._make_pending(household)
         out = build_pending_receipt_directive(scope)
         assert "commit_receipt" in out
         assert "MATEUS SUPERMERCADOS" in out
@@ -109,12 +109,12 @@ class TestPendingReceiptDirective:
 
         assert build_pending_receipt_directive(scope) == ""
 
-    def test_directive_empty_when_already_registered(self, user, scope):
+    def test_directive_empty_when_already_registered(self, user, scope, household):
         from assistant.agents.tools import build_pending_receipt_directive
         from assistant.models import ReceiptDraft, ReceiptDraftStatus
 
         ReceiptDraft.objects.create(
-            user=user,
+            household=household,
             payload={"store": "X", "items": []},
             status=ReceiptDraftStatus.REGISTERED,
         )

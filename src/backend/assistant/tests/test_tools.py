@@ -3,6 +3,7 @@ from decimal import Decimal
 
 import pytest
 
+from accounts.resolution import household_for_user
 from assistant.agents.tools import (
     create_category,
     create_entry,
@@ -31,7 +32,7 @@ class TestListCategories:
         from model_bakery import baker
 
         other = baker.make("core.CustomUser")
-        baker.make("finances.Category", user=other, name="OtherCat")
+        baker.make("finances.Category", household=household_for_user(other), name="OtherCat")
         result = list_categories(seeded_scope)
         assert "OtherCat" not in result
 
@@ -43,12 +44,12 @@ class TestListPaymentMethods:
         assert "Pix" in result
         assert "Crédito C6" in result
 
-    def test_excludes_inactive(self, seeded_user, seeded_scope):
+    def test_excludes_inactive(self, seeded_user, seeded_scope, household):
         from model_bakery import baker
 
         baker.make(
             "finances.PaymentMethod",
-            user=seeded_user,
+            household=household,
             name="Inactive",
             type="pix",
             is_active=False,
@@ -59,7 +60,7 @@ class TestListPaymentMethods:
 
 @pytest.mark.django_db
 class TestCreateEntry:
-    def test_creates_entry(self, seeded_user, seeded_scope):
+    def test_creates_entry(self, seeded_user, seeded_scope, household):
 
         result = create_entry(
             seeded_scope,
@@ -72,12 +73,12 @@ class TestCreateEntry:
         assert "criada" in result.lower() or "registrada" in result.lower()
         from finances.models import Entry
 
-        entry = Entry.objects.get(user=seeded_user, description="Supermercado Cosmos")
+        entry = Entry.objects.for_household(household).get(description="Supermercado Cosmos")
         assert entry.amount == Decimal("50.00")
         assert entry.category.name == "Alimentação"
         assert entry.payment_method.name == "Pix"
 
-    def test_computes_billing_month(self, seeded_user, seeded_scope):
+    def test_computes_billing_month(self, seeded_user, seeded_scope, household):
 
         create_entry(
             seeded_scope,
@@ -89,12 +90,12 @@ class TestCreateEntry:
         )
         from finances.models import Entry
 
-        entry = Entry.objects.get(user=seeded_user, description="Test CC")
+        entry = Entry.objects.for_household(household).get(description="Test CC")
         # March 27 with C6 closing day 25 (after closing) → invoice closes April,
         # paid May.
         assert entry.billing_month == date(2026, 5, 1)
 
-    def test_invalid_category_returns_error(self, seeded_user, seeded_scope):
+    def test_invalid_category_returns_error(self, seeded_user, seeded_scope, household):
 
         result = create_entry(
             seeded_scope,
@@ -107,7 +108,7 @@ class TestCreateEntry:
         assert "erro" in result.lower() or "não encontrada" in result.lower()
         from finances.models import Entry
 
-        assert not Entry.objects.filter(user=seeded_user, description="Test").exists()
+        assert not Entry.objects.for_household(household).filter(description="Test").exists()
 
     def test_invalid_payment_method_returns_error(self, seeded_user, seeded_scope):
 
@@ -121,7 +122,7 @@ class TestCreateEntry:
         )
         assert "erro" in result.lower() or "não encontrada" in result.lower()
 
-    def test_negative_amount_for_refund(self, seeded_user, seeded_scope):
+    def test_negative_amount_for_refund(self, seeded_user, seeded_scope, household):
 
         create_entry(
             seeded_scope,
@@ -133,20 +134,20 @@ class TestCreateEntry:
         )
         from finances.models import Entry
 
-        entry = Entry.objects.get(user=seeded_user, description="Amanda - reembolso")
+        entry = Entry.objects.for_household(household).get(description="Amanda - reembolso")
         assert entry.amount == Decimal("-150.00")
 
 
 @pytest.mark.django_db
 class TestQueryExpenses:
-    def test_total_for_month(self, seeded_user, seeded_scope):
+    def test_total_for_month(self, seeded_user, seeded_scope, household):
         from model_bakery import baker
 
-        cat = Category.objects.get(user=seeded_user, name="Alimentação")
-        pm = PaymentMethod.objects.get(user=seeded_user, name="Pix")
+        cat = Category.objects.for_household(household).get(name="Alimentação")
+        pm = PaymentMethod.objects.for_household(household).get(name="Pix")
         baker.make(
             "finances.Entry",
-            user=seeded_user,
+            household=household,
             date=date(2026, 3, 5),
             amount=Decimal("500"),
             category=cat,
@@ -155,7 +156,7 @@ class TestQueryExpenses:
         )
         baker.make(
             "finances.Entry",
-            user=seeded_user,
+            household=household,
             date=date(2026, 3, 10),
             amount=Decimal("300"),
             category=cat,
@@ -165,15 +166,15 @@ class TestQueryExpenses:
         result = query_expenses(seeded_scope, 2026, 3)
         assert "800" in result
 
-    def test_filtered_by_category(self, seeded_user, seeded_scope):
+    def test_filtered_by_category(self, seeded_user, seeded_scope, household):
         from model_bakery import baker
 
-        cat = Category.objects.get(user=seeded_user, name="Alimentação")
-        cat2 = Category.objects.get(user=seeded_user, name="Lanche")
-        pm = PaymentMethod.objects.get(user=seeded_user, name="Pix")
+        cat = Category.objects.for_household(household).get(name="Alimentação")
+        cat2 = Category.objects.for_household(household).get(name="Lanche")
+        pm = PaymentMethod.objects.for_household(household).get(name="Pix")
         baker.make(
             "finances.Entry",
-            user=seeded_user,
+            household=household,
             date=date(2026, 3, 5),
             amount=Decimal("500"),
             category=cat,
@@ -182,7 +183,7 @@ class TestQueryExpenses:
         )
         baker.make(
             "finances.Entry",
-            user=seeded_user,
+            household=household,
             date=date(2026, 3, 5),
             amount=Decimal("100"),
             category=cat2,
@@ -200,21 +201,21 @@ class TestQueryExpenses:
 
 @pytest.mark.django_db
 class TestQueryBalance:
-    def test_returns_income_and_expenses(self, seeded_user, seeded_scope):
+    def test_returns_income_and_expenses(self, seeded_user, seeded_scope, household):
         from model_bakery import baker
 
         baker.make(
             "finances.Income",
-            user=seeded_user,
+            household=household,
             month=date(2026, 3, 1),
             amount=Decimal("5000"),
             name="Salário",
         )
-        cat = Category.objects.get(user=seeded_user, name="Alimentação")
-        pm = PaymentMethod.objects.get(user=seeded_user, name="Pix")
+        cat = Category.objects.for_household(household).get(name="Alimentação")
+        pm = PaymentMethod.objects.for_household(household).get(name="Pix")
         baker.make(
             "finances.Entry",
-            user=seeded_user,
+            household=household,
             date=date(2026, 3, 5),
             amount=Decimal("1000"),
             category=cat,
@@ -223,7 +224,7 @@ class TestQueryBalance:
         )
         baker.make(
             "finances.Entry",
-            user=seeded_user,
+            household=household,
             date=date(2026, 3, 10),
             amount=Decimal("-200"),
             category=cat,
@@ -238,16 +239,16 @@ class TestQueryBalance:
 
 @pytest.mark.django_db
 class TestQueryBudgetStatus:
-    def test_over_budget_category(self, seeded_user, seeded_scope):
+    def test_over_budget_category(self, seeded_user, seeded_scope, household):
         from model_bakery import baker
 
-        cat = Category.objects.get(user=seeded_user, name="Alimentação")
+        cat = Category.objects.for_household(household).get(name="Alimentação")
         cat.budget_ceiling = Decimal("100")
         cat.save()
-        pm = PaymentMethod.objects.get(user=seeded_user, name="Pix")
+        pm = PaymentMethod.objects.for_household(household).get(name="Pix")
         baker.make(
             "finances.Entry",
-            user=seeded_user,
+            household=household,
             date=date(2026, 3, 5),
             amount=Decimal("150"),
             category=cat,
@@ -261,14 +262,14 @@ class TestQueryBudgetStatus:
 
 @pytest.mark.django_db
 class TestQueryInstallments:
-    def test_active_installments(self, seeded_user, seeded_scope):
+    def test_active_installments(self, seeded_user, seeded_scope, household):
         from model_bakery import baker
 
-        cat = Category.objects.get(user=seeded_user, name="Alimentação")
-        pm = PaymentMethod.objects.get(user=seeded_user, name="Crédito C6")
+        cat = Category.objects.for_household(household).get(name="Alimentação")
+        pm = PaymentMethod.objects.for_household(household).get(name="Crédito C6")
         plan = baker.make(
             "finances.InstallmentPlan",
-            user=seeded_user,
+            household=household,
             date=date(2025, 12, 1),
             description="Notebook",
             category=cat,
@@ -288,10 +289,10 @@ class TestQueryInstallments:
 
 @pytest.mark.django_db
 class TestCreateCategory:
-    def test_creates_category(self, seeded_user, seeded_scope):
+    def test_creates_category(self, seeded_user, seeded_scope, household):
         result = create_category(seeded_scope, "Assinatura", "200.00")
         assert "criada" in result.lower()
-        assert Category.objects.filter(user=seeded_user, name="Assinatura").exists()
+        assert Category.objects.for_household(household).filter(name="Assinatura").exists()
 
     def test_duplicate_name(self, seeded_user, seeded_scope):
         result = create_category(seeded_scope, "Alimentação", "500.00")
@@ -300,10 +301,10 @@ class TestCreateCategory:
 
 @pytest.mark.django_db
 class TestUpdateCategoryBudget:
-    def test_updates_ceiling(self, seeded_user, seeded_scope):
+    def test_updates_ceiling(self, seeded_user, seeded_scope, household):
         result = update_category_budget(seeded_scope, "Alimentação", "1500.00")
         assert "atualizado" in result.lower()
-        cat = Category.objects.get(user=seeded_user, name="Alimentação")
+        cat = Category.objects.for_household(household).get(name="Alimentação")
         assert cat.budget_ceiling == Decimal("1500.00")
 
     def test_nonexistent_category(self, seeded_user, seeded_scope):
@@ -313,15 +314,15 @@ class TestUpdateCategoryBudget:
 
 @pytest.mark.django_db
 class TestCreatePaymentMethod:
-    def test_creates_pix(self, seeded_user, seeded_scope):
+    def test_creates_pix(self, seeded_user, seeded_scope, household):
         result = create_payment_method(seeded_scope, "Novo Pix", "pix")
         assert "criada" in result.lower()
-        assert PaymentMethod.objects.filter(user=seeded_user, name="Novo Pix").exists()
+        assert PaymentMethod.objects.for_household(household).filter(name="Novo Pix").exists()
 
-    def test_creates_credit_card(self, seeded_user, seeded_scope):
+    def test_creates_credit_card(self, seeded_user, seeded_scope, household):
         result = create_payment_method(seeded_scope, "Crédito Teste", "credit_card", "25")
         assert "criada" in result.lower()
-        pm = PaymentMethod.objects.get(user=seeded_user, name="Crédito Teste")
+        pm = PaymentMethod.objects.for_household(household).get(name="Crédito Teste")
         assert pm.closing_day == 25
 
     def test_invalid_type(self, seeded_user, seeded_scope):
@@ -339,18 +340,18 @@ class TestUpdateIncome:
             user=seeded_user, name="Salário", month=date(2026, 3, 1)
         ).exists()
 
-    def test_updates_existing(self, seeded_user, seeded_scope):
+    def test_updates_existing(self, seeded_user, seeded_scope, household):
         from model_bakery import baker
 
         baker.make(
             "finances.Income",
-            user=seeded_user,
+            household=household,
             name="Salário",
             amount=Decimal("5000"),
             month=date(2026, 3, 1),
         )
         update_income(seeded_scope, "Salário", "8000.00", "2026-03-01")
-        income = Income.objects.get(user=seeded_user, name="Salário", month=date(2026, 3, 1))
+        income = Income.objects.for_household(household).get(name="Salário", month=date(2026, 3, 1))
         assert income.amount == Decimal("8000.00")
 
 
@@ -358,19 +359,18 @@ class TestUpdateIncome:
 class TestSystemicTools:
     """Tests for list_systemic_expenses and set_systemic_amount."""
 
-    def _make_systemic(self, user, name="Análise - Vagner", amount="300.00", is_active=True):
-
+    def _make_systemic(self, household, name="Análise - Vagner", amount="300.00", is_active=True):
         from model_bakery import baker
 
         from finances.models import Category, PaymentMethod
 
-        cat, _ = Category.objects.get_or_create(user=user, name="Saúde")
+        cat, _ = Category.objects.get_or_create(household=household, name="Saúde")
         pm, _ = PaymentMethod.objects.get_or_create(
-            user=user, name="Débito", defaults={"type": "pix"}
+            household=household, name="Débito", defaults={"type": "pix"}
         )
         return baker.make(
             "finances.SystemicExpense",
-            user=user,
+            household=household,
             name=name,
             category=cat,
             payment_method=pm,
@@ -380,20 +380,20 @@ class TestSystemicTools:
 
     # ── list_systemic_expenses ────────────────────────────────────────────────
 
-    def test_list_returns_active_systemic_expenses(self, seeded_user, seeded_scope):
+    def test_list_returns_active_systemic_expenses(self, seeded_user, seeded_scope, household):
         from assistant.agents.tools import list_systemic_expenses
 
-        self._make_systemic(seeded_user, "Análise - Vagner", "300.00")
-        self._make_systemic(seeded_user, "Unimed", "450.00")
+        self._make_systemic(household, "Análise - Vagner", "300.00")
+        self._make_systemic(household, "Unimed", "450.00")
         result = list_systemic_expenses(seeded_scope)
         assert any("Análise - Vagner" in item for item in result)
         assert any("Unimed" in item for item in result)
 
-    def test_list_excludes_inactive(self, seeded_user, seeded_scope):
+    def test_list_excludes_inactive(self, seeded_user, seeded_scope, household):
         from assistant.agents.tools import list_systemic_expenses
 
-        self._make_systemic(seeded_user, "Spotify", "45.00", is_active=True)
-        self._make_systemic(seeded_user, "InativoXYZ", "10.00", is_active=False)
+        self._make_systemic(household, "Spotify", "45.00", is_active=True)
+        self._make_systemic(household, "InativoXYZ", "10.00", is_active=False)
         result = list_systemic_expenses(seeded_scope)
         assert not any("InativoXYZ" in item for item in result)
 
@@ -403,10 +403,10 @@ class TestSystemicTools:
         from assistant.agents.tools import list_systemic_expenses
 
         other = baker.make("core.CustomUser")
-        cat = baker.make("finances.Category", user=other, name="X")
+        cat = baker.make("finances.Category", household=household_for_user(other), name="X")
         baker.make(
             "finances.SystemicExpense",
-            user=other,
+            household=household_for_user(other),
             name="OtherSystemic",
             category=cat,
             default_amount=Decimal("100"),
@@ -417,11 +417,11 @@ class TestSystemicTools:
 
     # ── set_systemic_amount: happy paths ─────────────────────────────────────
 
-    def test_set_creates_systemic_entry_for_month(self, seeded_user, seeded_scope):
+    def test_set_creates_systemic_entry_for_month(self, seeded_user, seeded_scope, household):
         from assistant.agents.tools import set_systemic_amount
         from finances.models import Entry, EntryType
 
-        s = self._make_systemic(seeded_user, "Análise - Vagner", "300.00")
+        s = self._make_systemic(household, "Análise - Vagner", "300.00")
         result = set_systemic_amount(seeded_scope, "Análise - Vagner", "350.00", "2026-06-01")
         assert "Análise - Vagner" in result
         assert "350" in result
@@ -432,11 +432,11 @@ class TestSystemicTools:
         )
         assert entry.amount == Decimal("350.00")
 
-    def test_set_updates_existing_entry_no_duplicate(self, seeded_user, seeded_scope):
+    def test_set_updates_existing_entry_no_duplicate(self, seeded_user, seeded_scope, household):
         from assistant.agents.tools import set_systemic_amount
         from finances.models import Entry, EntryType
 
-        s = self._make_systemic(seeded_user, "Análise - Vagner", "300.00")
+        s = self._make_systemic(household, "Análise - Vagner", "300.00")
         # First call creates
         set_systemic_amount(seeded_scope, "Análise - Vagner", "350.00", "2026-06-01")
         # Second call updates, must NOT duplicate
@@ -450,11 +450,11 @@ class TestSystemicTools:
         assert entries.count() == 1
         assert entries.first().amount == Decimal("400.00")
 
-    def test_set_case_insensitive_name_match(self, seeded_user, seeded_scope):
+    def test_set_case_insensitive_name_match(self, seeded_user, seeded_scope, household):
         from assistant.agents.tools import set_systemic_amount
         from finances.models import Entry, EntryType
 
-        s = self._make_systemic(seeded_user, "Análise - Vagner", "300.00")
+        s = self._make_systemic(household, "Análise - Vagner", "300.00")
         result = set_systemic_amount(seeded_scope, "análise - vagner", "320.00", "2026-06-01")
         assert "320" in result
         assert (
@@ -469,28 +469,28 @@ class TestSystemicTools:
 
     # ── set_systemic_amount: error paths ─────────────────────────────────────
 
-    def test_unknown_name_returns_error_creates_nothing(self, seeded_user, seeded_scope):
+    def test_unknown_name_returns_error_creates_nothing(self, seeded_user, seeded_scope, household):
         from assistant.agents.tools import set_systemic_amount
         from finances.models import Entry
 
-        self._make_systemic(seeded_user, "Análise - Vagner", "300.00")
+        self._make_systemic(household, "Análise - Vagner", "300.00")
         result = set_systemic_amount(seeded_scope, "DesconhecidoXYZ", "300.00", "2026-06-01")
         assert "Não encontrei" in result
         assert "DesconhecidoXYZ" in result
         assert "Análise - Vagner" in result  # lists available names
-        assert Entry.objects.filter(user=seeded_user).count() == 0
+        assert Entry.objects.for_household(household).count() == 0
 
-    def test_invalid_amount_returns_error(self, seeded_user, seeded_scope):
+    def test_invalid_amount_returns_error(self, seeded_user, seeded_scope, household):
         from assistant.agents.tools import set_systemic_amount
 
-        self._make_systemic(seeded_user, "Análise - Vagner", "300.00")
+        self._make_systemic(household, "Análise - Vagner", "300.00")
         result = set_systemic_amount(seeded_scope, "Análise - Vagner", "abc", "2026-06-01")
         assert "inválido" in result.lower() or "erro" in result.lower()
 
-    def test_invalid_date_returns_error(self, seeded_user, seeded_scope):
+    def test_invalid_date_returns_error(self, seeded_user, seeded_scope, household):
         from assistant.agents.tools import set_systemic_amount
 
-        self._make_systemic(seeded_user, "Análise - Vagner", "300.00")
+        self._make_systemic(household, "Análise - Vagner", "300.00")
         result = set_systemic_amount(seeded_scope, "Análise - Vagner", "300.00", "not-a-date")
         assert "inválido" in result.lower() or "erro" in result.lower()
 
@@ -504,12 +504,12 @@ class TestReceiptContext:
 
         assert build_receipt_context(scope) == ""
 
-    def test_includes_store_and_items_for_pending_draft(self, user, scope):
+    def test_includes_store_and_items_for_pending_draft(self, user, scope, household):
         from assistant.agents.tools import build_receipt_context
         from assistant.models import ReceiptDraft
 
         ReceiptDraft.objects.create(
-            user=user,
+            household=household,
             payload={
                 "store": "Lojas Americanas",
                 "discount": "3.99",
@@ -522,11 +522,13 @@ class TestReceiptContext:
         assert "Soutien" in ctx
         assert "propose_receipt" in ctx
 
-    def test_ignores_non_pending_draft(self, user, scope):
+    def test_ignores_non_pending_draft(self, user, scope, household):
         from assistant.agents.tools import build_receipt_context
         from assistant.models import ReceiptDraft
 
-        ReceiptDraft.objects.create(user=user, status="registered", payload={"store": "Já gravado"})
+        ReceiptDraft.objects.create(
+            household=household, status="registered", payload={"store": "Já gravado"}
+        )
         assert build_receipt_context(scope) == ""
 
 
@@ -536,15 +538,14 @@ class TestRegisterReceipt:
     atribuindo cada item (por ÍNDICE) a exatamente uma categoria — impede dupla
     contagem. (Substitui o antigo one-shot register_receipt.)"""
 
-    def _add(self, user, name):
-
+    def _add(self, household, name):
         from model_bakery import baker
 
-        baker.make("finances.Category", user=user, name=name)
+        baker.make("finances.Category", household=household, name=name)
 
     def _draft(
         self,
-        user,
+        household,
         items,
         *,
         discount="0",
@@ -566,18 +567,18 @@ class TestRegisterReceipt:
             else str(total - Decimal(discount)),
             "items": [{"description": d, "line_total": v} for d, v in items],
         }
-        return ReceiptDraft.objects.create(user=user, payload=payload)
+        return ReceiptDraft.objects.create(household=household, payload=payload)
 
     def test_registers_one_line_per_category_from_draft_values(
-        self, seeded_user, scope, seeded_scope
+        self, seeded_user, scope, seeded_scope, household
     ):
         from django.db.models import Sum
 
         from assistant.agents.tools import commit_receipt, propose_receipt
         from finances.models import Entry
 
-        self._add(seeded_user, "Pets")
-        draft = self._draft(seeded_user, [("MASSA", "9.95"), ("ENERG", "14.50"), ("RACAO", "9.45")])
+        self._add(household, "Pets")
+        draft = self._draft(household, [("MASSA", "9.95"), ("ENERG", "14.50"), ("RACAO", "9.45")])
         propose_receipt(
             seeded_scope,
             items_by_category={"Alimentação": [0], "Lanche": [1], "Pets": [2]},
@@ -585,7 +586,7 @@ class TestRegisterReceipt:
             summaries={"Alimentação": "massa"},
         )
         commit_receipt(seeded_scope)
-        entries = Entry.objects.filter(user=seeded_user)
+        entries = Entry.objects.for_household(household)
         assert entries.count() == 3
         assert entries.aggregate(s=Sum("amount"))["s"] == Decimal("33.90")
         assert entries.get(category__name="Alimentação").amount == Decimal("9.95")
@@ -597,13 +598,13 @@ class TestRegisterReceipt:
         draft.refresh_from_db()
         assert draft.status == "registered"
 
-    def test_double_counting_is_rejected(self, seeded_user, seeded_scope):
+    def test_double_counting_is_rejected(self, seeded_user, seeded_scope, household):
 
         from assistant.agents.tools import propose_receipt
         from finances.models import Entry
 
-        self._add(seeded_user, "Pets")
-        draft = self._draft(seeded_user, [("MASSA", "9.95"), ("ENERG", "14.50"), ("RACAO", "9.45")])
+        self._add(household, "Pets")
+        draft = self._draft(household, [("MASSA", "9.95"), ("ENERG", "14.50"), ("RACAO", "9.45")])
         # idx 2 em duas categorias; idx 1 faltando
         msg = propose_receipt(
             seeded_scope,
@@ -611,33 +612,33 @@ class TestRegisterReceipt:
             payment_method_name="Crédito C6",
         )
         assert "erro" in msg.lower()
-        assert Entry.objects.filter(user=seeded_user).count() == 0
+        assert Entry.objects.for_household(household).count() == 0
         draft.refresh_from_db()
         assert draft.status == "pending"
 
-    def test_missing_item_is_rejected(self, seeded_user, seeded_scope):
+    def test_missing_item_is_rejected(self, seeded_user, seeded_scope, household):
 
         from assistant.agents.tools import propose_receipt
         from finances.models import Entry
 
-        self._draft(seeded_user, [("MASSA", "9.95"), ("ENERG", "14.50")])
+        self._draft(household, [("MASSA", "9.95"), ("ENERG", "14.50")])
         msg = propose_receipt(
             seeded_scope,
             items_by_category={"Alimentação": [0]},  # falta o índice 1
             payment_method_name="Crédito C6",
         )
         assert "erro" in msg.lower()
-        assert Entry.objects.filter(user=seeded_user).count() == 0
+        assert Entry.objects.for_household(household).count() == 0
 
-    def test_prorates_discount_to_amount_paid(self, seeded_user, scope, seeded_scope):
+    def test_prorates_discount_to_amount_paid(self, seeded_user, scope, seeded_scope, household):
         from django.db.models import Sum
 
         from assistant.agents.tools import commit_receipt, propose_receipt
         from finances.models import Entry
 
-        self._add(seeded_user, "Roupa")
+        self._add(household, "Roupa")
         self._draft(
-            seeded_user,
+            household,
             [("SOUTIEN", "9.99"), ("A", "9.99"), ("B", "9.99"), ("C", "6.19"), ("D", "9.99")],
             discount="3.99",
             amount_paid="42.16",
@@ -648,39 +649,41 @@ class TestRegisterReceipt:
             payment_method_name="Crédito C6",
         )
         commit_receipt(seeded_scope)
-        entries = Entry.objects.filter(user=seeded_user)
+        entries = Entry.objects.for_household(household)
         assert entries.aggregate(s=Sum("amount"))["s"] == Decimal("42.16")
         assert entries.get(category__name="Roupa").amount == Decimal("9.13")
         assert entries.get(category__name="Lanche").amount == Decimal("33.03")
 
-    def test_payment_falls_back_to_unambiguous_hint(self, seeded_user, scope, seeded_scope):
+    def test_payment_falls_back_to_unambiguous_hint(
+        self, seeded_user, scope, seeded_scope, household
+    ):
         from assistant.agents.tools import commit_receipt, propose_receipt
         from finances.models import Entry
 
-        self._draft(seeded_user, [("ENERG", "14.50")], payment_hint="Pix")
+        self._draft(household, [("ENERG", "14.50")], payment_hint="Pix")
         propose_receipt(
             seeded_scope,
             items_by_category={"Lanche": [0]},
             payment_method_name="",  # vazio → cai no hint do recibo
         )
         commit_receipt(seeded_scope)
-        assert Entry.objects.get(user=seeded_user).payment_method.name == "Pix"
+        assert Entry.objects.for_household(household).get().payment_method.name == "Pix"
 
-    def test_generic_credit_hint_asks_which_card(self, seeded_user, seeded_scope):
+    def test_generic_credit_hint_asks_which_card(self, seeded_user, seeded_scope, household):
 
         from assistant.agents.tools import propose_receipt
         from finances.models import Entry
 
-        self._draft(seeded_user, [("ENERG", "14.50")], payment_hint="Cartão Crédito")
+        self._draft(household, [("ENERG", "14.50")], payment_hint="Cartão Crédito")
         msg = propose_receipt(
             seeded_scope,
             items_by_category={"Lanche": [0]},
             payment_method_name="",  # genérico não resolve → pergunta
         )
         assert "pagamento" in msg.lower() or "cartão" in msg.lower()
-        assert Entry.objects.filter(user=seeded_user).count() == 0
+        assert Entry.objects.for_household(household).count() == 0
 
-    def test_no_pending_draft_errors(self, seeded_user, seeded_scope):
+    def test_no_pending_draft_errors(self, seeded_user, seeded_scope, household):
 
         from assistant.agents.tools import propose_receipt
         from finances.models import Entry
@@ -691,7 +694,7 @@ class TestRegisterReceipt:
             payment_method_name="Pix",
         )
         assert "pendente" in msg.lower() or "recibo" in msg.lower()
-        assert Entry.objects.filter(user=seeded_user).count() == 0
+        assert Entry.objects.for_household(household).count() == 0
 
 
 @pytest.mark.django_db
@@ -708,12 +711,12 @@ def test_list_recent_entries_scoped_and_formatted(seeded_user, seeded_scope):
 
 
 @pytest.mark.django_db
-def test_update_entry_changes_fields_by_id_prefix(seeded_user, seeded_scope):
+def test_update_entry_changes_fields_by_id_prefix(seeded_user, seeded_scope, household):
     from assistant.agents.tools import create_entry, update_entry
     from finances.models import Entry
 
     create_entry(seeded_scope, "2026-06-20", "50.00", "feira", "Alimentação", "Pix")
-    e = Entry.objects.filter(user=seeded_user).latest("created_at")
+    e = Entry.objects.for_household(household).latest("created_at")
     prefix = str(e.id)[:8]
     out = update_entry(seeded_scope, prefix, amount_str="65.00", category_name="Lanche")
     e.refresh_from_db()
@@ -730,24 +733,24 @@ def test_update_entry_unknown_id(seeded_user, seeded_scope):
 
 
 @pytest.mark.django_db
-def test_delete_entry_removes(seeded_user, seeded_scope):
+def test_delete_entry_removes(seeded_user, seeded_scope, household):
     from assistant.agents.tools import create_entry, delete_entry
     from finances.models import Entry
 
     create_entry(seeded_scope, "2026-06-20", "50.00", "feira", "Alimentação", "Pix")
-    e = Entry.objects.filter(user=seeded_user).latest("created_at")
+    e = Entry.objects.for_household(household).latest("created_at")
     out = delete_entry(seeded_scope, str(e.id)[:8])
     assert Entry.objects.filter(id=e.id).count() == 0
     assert "exclu" in out.lower()
 
 
 @pytest.mark.django_db
-def test_add_receipt_item_appends_and_clears_plan(seeded_user, seeded_scope):
+def test_add_receipt_item_appends_and_clears_plan(seeded_user, seeded_scope, household):
     from assistant.agents.tools import add_receipt_item
     from assistant.models import ReceiptDraft, ReceiptDraftStatus
 
     d = ReceiptDraft.objects.create(
-        user=seeded_user,
+        household=household,
         payload={
             "store": "X",
             "items": [{"description": "a", "line_total": "10", "category": "Alimentação"}],

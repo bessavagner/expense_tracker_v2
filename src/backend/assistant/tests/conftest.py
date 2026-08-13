@@ -39,13 +39,12 @@ def other_scope(other_user, other_household):
 @pytest.fixture
 def seeded_user(user, household):
     """User with categories and payment methods for agent testing."""
-    baker.make("finances.Category", user=user, household=household, name="Alimentação")
-    baker.make("finances.Category", user=user, household=household, name="Lanche")
-    baker.make("finances.Category", user=user, household=household, name="Álcool")
-    baker.make("finances.PaymentMethod", user=user, household=household, name="Pix", type="pix")
+    baker.make("finances.Category", household=household, name="Alimentação")
+    baker.make("finances.Category", household=household, name="Lanche")
+    baker.make("finances.Category", household=household, name="Álcool")
+    baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
     baker.make(
         "finances.PaymentMethod",
-        user=user,
         household=household,
         name="Crédito C6",
         type="credit_card",

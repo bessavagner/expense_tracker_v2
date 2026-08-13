@@ -21,9 +21,9 @@ def test_extraction_prompt_asks_for_readable_summaries():
     assert "resumo" in low or "legível" in low or "legivel" in low
 
 
-def test_pending_directive_asks_summaries_and_learns_category(seeded_user, seeded_scope):
+def test_pending_directive_asks_summaries_and_learns_category(seeded_user, seeded_scope, household):
     ReceiptDraft.objects.create(
-        user=seeded_user,
+        household=household,
         status=ReceiptDraftStatus.PENDING,
         payload={
             "store": "Cosmos",
@@ -61,7 +61,7 @@ def test_extraction_needs_review_head_no_store_name():
     assert "não inclua o nome da loja" in low or "nome da loja" in low
 
 
-def test_pending_directive_forbids_hand_typed_table(seeded_user, seeded_scope):
+def test_pending_directive_forbids_hand_typed_table(seeded_user, seeded_scope, household):
     """Bug real (Mercado Livre 2026-07-15): o modelo digitou uma tabela com
     categorias inventadas ("Vestuário", "Eletrônicos" — nomes que não existem
     nas categorias do usuário) e sem coluna de valor, em vez de mostrar o texto
@@ -69,7 +69,7 @@ def test_pending_directive_forbids_hand_typed_table(seeded_user, seeded_scope):
     explicitamente.
     """
     ReceiptDraft.objects.create(
-        user=seeded_user,
+        household=household,
         status=ReceiptDraftStatus.PENDING,
         payload={
             "store": "Mercado Livre",
@@ -83,11 +83,11 @@ def test_pending_directive_forbids_hand_typed_table(seeded_user, seeded_scope):
     assert "literal" in low or "exatamente o texto" in low
 
 
-def test_pending_directive_payment_method_is_sticky(seeded_user, seeded_scope):
+def test_pending_directive_payment_method_is_sticky(seeded_user, seeded_scope, household):
     """Bug real: o bot perguntou a forma de pagamento 3 vezes no mesmo recibo,
     mesmo já resolvida (legenda da foto + resposta explícita do usuário)."""
     ReceiptDraft.objects.create(
-        user=seeded_user,
+        household=household,
         status=ReceiptDraftStatus.PENDING,
         payload={
             "store": "Mercado Livre",

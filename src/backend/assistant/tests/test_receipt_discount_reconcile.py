@@ -24,18 +24,18 @@ pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
-def seeded_user(seeded_user):
+def seeded_user(seeded_user, household):
     """Adiciona a categoria Farmácia (o recibo de drogaria usa saúde/farmácia)."""
     from model_bakery import baker
 
-    baker.make("finances.Category", user=seeded_user, name="Farmácia")
+    baker.make("finances.Category", household=household, name="Farmácia")
     return seeded_user
 
 
-def _drogasil_draft(user):
+def _drogasil_draft(household):
     """Linhas JÁ LÍQUIDAS que somam 118,86 = valor pago; discount impresso 27,60."""
     return ReceiptDraft.objects.create(
-        user=user,
+        household=household,
         payload={
             "store": "Drogasil",
             "date": "2026-07-04",
@@ -75,12 +75,12 @@ def _drogasil_draft(user):
     )
 
 
-def test_net_lines_do_not_double_subtract_discount(seeded_user, seeded_scope):
+def test_net_lines_do_not_double_subtract_discount(seeded_user, seeded_scope, household):
     """Linhas líquidas + discount impresso → plano bate com valor pago (118,86),
     NÃO 91,26."""
-    _drogasil_draft(seeded_user)
+    _drogasil_draft(household)
     propose_receipt(seeded_scope, payment_method_name="Pix")
-    plan = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload["plan"]
+    plan = ReceiptDraft.objects.for_household(household).latest("created_at").payload["plan"]
     assert Decimal(plan["total"]) == Decimal("118.86")
     # Alimentação = 3×6,99 = 20,97 (não 16,10); Farmácia = 57,99+39,90 = 97,89
     by_cat = {ln["category_name"]: Decimal(ln["amount"]) for ln in plan["lines"]}
@@ -88,19 +88,19 @@ def test_net_lines_do_not_double_subtract_discount(seeded_user, seeded_scope):
     assert by_cat["Farmácia"] == Decimal("97.89")
 
 
-def test_net_lines_commit_totals_paid(seeded_user, seeded_scope):
-    _drogasil_draft(seeded_user)
+def test_net_lines_commit_totals_paid(seeded_user, seeded_scope, household):
+    _drogasil_draft(household)
     propose_receipt(seeded_scope, payment_method_name="Pix")
     commit_receipt(seeded_scope)
-    total = sum((e.amount for e in Entry.objects.filter(user=seeded_user)), Decimal("0"))
+    total = sum((e.amount for e in Entry.objects.for_household(household)), Decimal("0"))
     assert total == Decimal("118.86")
 
 
-def test_gross_lines_still_prorate_discount(seeded_user, seeded_scope):
+def test_gross_lines_still_prorate_discount(seeded_user, seeded_scope, household):
     """Quando as linhas são BRUTAS e o desconto leva ao valor pago, o rateio
     continua válido (recibo PAGUE MENOS: 217,32 − 61,42 = 155,90)."""
     ReceiptDraft.objects.create(
-        user=seeded_user,
+        household=household,
         payload={
             "store": "PAGUE MENOS",
             "date": "2026-07-04",
@@ -116,14 +116,14 @@ def test_gross_lines_still_prorate_discount(seeded_user, seeded_scope):
         status=ReceiptDraftStatus.PENDING,
     )
     propose_receipt(seeded_scope, payment_method_name="Pix")
-    plan = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload["plan"]
+    plan = ReceiptDraft.objects.for_household(household).latest("created_at").payload["plan"]
     assert Decimal(plan["total"]) == Decimal("155.90")
 
 
-def test_no_amount_paid_falls_back_to_printed_discount(seeded_user, seeded_scope):
+def test_no_amount_paid_falls_back_to_printed_discount(seeded_user, seeded_scope, household):
     """Sem valor pago, usa o desconto impresso (comportamento anterior)."""
     ReceiptDraft.objects.create(
-        user=seeded_user,
+        household=household,
         payload={
             "store": "Loja",
             "discount": "10.00",
@@ -137,7 +137,7 @@ def test_no_amount_paid_falls_back_to_printed_discount(seeded_user, seeded_scope
         status=ReceiptDraftStatus.PENDING,
     )
     propose_receipt(seeded_scope, payment_method_name="Pix")
-    plan = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload["plan"]
+    plan = ReceiptDraft.objects.for_household(household).latest("created_at").payload["plan"]
     assert Decimal(plan["total"]) == Decimal("90.00")  # 100 - 10 printed discount
 
 

@@ -16,7 +16,7 @@ class MemoryEmbeddingModelTest(TestCase):
 
     def test_create_embedding(self):
         embedding = MemoryEmbedding.objects.create(
-            user=self.user,
+            household=household_for_user(self.user),
             text="compra no supermercado cosmos",
             embedding=[0.1] * 1536,
             metadata={"field": "category", "value": "Alimentação"},
@@ -28,19 +28,27 @@ class MemoryEmbeddingModelTest(TestCase):
 
     def test_embedding_str(self):
         embedding = MemoryEmbedding.objects.create(
-            user=self.user,
+            household=household_for_user(self.user),
             text="compra no supermercado cosmos que é muito bom e fica na esquina",
             embedding=[0.0] * 1536,
         )
         self.assertIn("compra no supermercado", str(embedding))
 
-    def test_embedding_user_cascade_delete(self):
+    def test_embedding_household_cascade_delete(self):
+        """The embedding belongs to the household, so the household is what takes
+        it away. It used to hang off the user, and deleting a member would have
+        destroyed memories the rest of the household still relies on."""
+        household = household_for_user(self.user)
         MemoryEmbedding.objects.create(
-            user=self.user,
+            household=household,
             text="test",
             embedding=[0.0] * 1536,
         )
+
         self.user.delete()
+        self.assertEqual(MemoryEmbedding.objects.count(), 1)
+
+        household.delete()
         self.assertEqual(MemoryEmbedding.objects.count(), 0)
 
 
@@ -51,14 +59,12 @@ class SemanticSearchTest(TestCase):
         self.scope = AgentScope(household=self.household, user=self.user)
         # Create embeddings with known vectors for cosine similarity testing
         self.emb1 = MemoryEmbedding.objects.create(
-            user=self.user,
             household=self.household,
             text="supermercado cosmos",
             embedding=[1.0] + [0.0] * 1535,
             metadata={"field": "category", "value": "Alimentação"},
         )
         self.emb2 = MemoryEmbedding.objects.create(
-            user=self.user,
             household=self.household,
             text="posto de gasolina",
             embedding=[0.0, 1.0] + [0.0] * 1534,
@@ -85,7 +91,6 @@ class SemanticSearchTest(TestCase):
 
         other_user = User.objects.create_user(username="other", password="testpass")
         MemoryEmbedding.objects.create(
-            user=other_user,
             household=household_for_user(other_user),
             text="other user embedding",
             embedding=[1.0] + [0.0] * 1535,

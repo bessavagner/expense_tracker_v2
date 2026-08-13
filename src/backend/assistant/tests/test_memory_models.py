@@ -3,13 +3,15 @@ from django.db import IntegrityError
 from django.utils import timezone
 from model_bakery import baker
 
+from accounts.resolution import household_for_user
+
 
 @pytest.mark.django_db
 class TestMemoryRule:
-    def test_create_memory_rule(self, user):
+    def test_create_memory_rule(self, user, household):
         rule = baker.make(
             "assistant.MemoryRule",
-            user=user,
+            household=household,
             trigger="cosmos",
             field="category",
             value="Alimentação",
@@ -25,10 +27,10 @@ class TestMemoryRule:
         assert rule.created_at is not None
         assert rule.last_used_at is not None
 
-    def test_unique_constraint_user_trigger_field(self, user):
+    def test_unique_constraint_household_trigger_field(self, household):
         baker.make(
             "assistant.MemoryRule",
-            user=user,
+            household=household,
             trigger="cosmos",
             field="category",
             value="Alimentação",
@@ -36,52 +38,54 @@ class TestMemoryRule:
         with pytest.raises(IntegrityError):
             baker.make(
                 "assistant.MemoryRule",
-                user=user,
+                household=household,
                 trigger="cosmos",
                 field="category",
                 value="Lanche",
             )
 
-    def test_same_trigger_different_fields_allowed(self, user):
+    def test_same_trigger_different_fields_allowed(self, user, household):
         baker.make(
             "assistant.MemoryRule",
-            user=user,
+            household=household,
             trigger="cosmos",
             field="category",
             value="Alimentação",
         )
         rule2 = baker.make(
             "assistant.MemoryRule",
-            user=user,
+            household=household,
             trigger="cosmos",
             field="description",
             value="Supermercado Cosmos",
         )
         assert rule2.id is not None
 
-    def test_same_trigger_different_users_allowed(self, user):
+    def test_same_trigger_in_two_households_allowed(self, household):
+        """The boundary is tenancy, not identity: the neighbours may teach their
+        assistant the same trigger without colliding with ours."""
         other = baker.make("core.CustomUser")
         baker.make(
             "assistant.MemoryRule",
-            user=user,
+            household=household,
             trigger="cosmos",
             field="category",
             value="Alimentação",
         )
         rule2 = baker.make(
             "assistant.MemoryRule",
-            user=other,
+            household=household_for_user(other),
             trigger="cosmos",
             field="category",
             value="Lanche",
         )
         assert rule2.id is not None
 
-    def test_upsert_via_update_or_create(self, user):
+    def test_upsert_via_update_or_create(self, user, household):
         from assistant.models import MemoryRule
 
         MemoryRule.objects.create(
-            user=user,
+            household=household,
             trigger="cosmos",
             field="category",
             value="Alimentação",
@@ -89,7 +93,7 @@ class TestMemoryRule:
             source="inferred",
         )
         rule, created = MemoryRule.objects.update_or_create(
-            user=user,
+            household=household,
             trigger="cosmos",
             field="category",
             defaults={"value": "Lanche", "confidence": 1.0, "source": "user_correction"},
@@ -98,12 +102,17 @@ class TestMemoryRule:
         assert rule.value == "Lanche"
         assert rule.confidence == 1.0
         assert rule.source == "user_correction"
-        assert MemoryRule.objects.filter(user=user, trigger="cosmos", field="category").count() == 1
+        assert (
+            MemoryRule.objects.for_household(household)
+            .filter(trigger="cosmos", field="category")
+            .count()
+            == 1
+        )
 
-    def test_str_representation(self, user):
+    def test_str_representation(self, user, household):
         rule = baker.make(
             "assistant.MemoryRule",
-            user=user,
+            household=household,
             trigger="cosmos",
             field="category",
             value="Alimentação",
@@ -113,11 +122,11 @@ class TestMemoryRule:
         assert "category" in result
         assert "Alimentação" in result
 
-    def test_default_confidence_is_one(self, user):
+    def test_default_confidence_is_one(self, user, household):
         from assistant.models import MemoryRule
 
         rule = MemoryRule.objects.create(
-            user=user,
+            household=household,
             trigger="cosmos",
             field="category",
             value="Alimentação",
@@ -125,11 +134,11 @@ class TestMemoryRule:
         )
         assert rule.confidence == 1.0
 
-    def test_last_used_at_can_be_updated(self, user):
+    def test_last_used_at_can_be_updated(self, user, household):
         from assistant.models import MemoryRule
 
         rule = MemoryRule.objects.create(
-            user=user,
+            household=household,
             trigger="cosmos",
             field="category",
             value="Alimentação",

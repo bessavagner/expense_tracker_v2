@@ -7,6 +7,7 @@ from django.test import Client
 from model_bakery import baker
 from pydantic_ai.models.test import TestModel
 
+from accounts.resolution import household_for_user
 from assistant.agents.assistant import agents_override, assistant_agent
 from assistant.models import ChatMessage
 
@@ -31,7 +32,7 @@ def consume_streaming(response):
 
 @pytest.mark.django_db
 class TestChatEndpoint:
-    def test_post_creates_user_message(self, logged_client, user):
+    def test_post_creates_user_message(self, logged_client, user, household):
 
         with agents_override(TestModel()):
             response = logged_client.post(
@@ -40,7 +41,7 @@ class TestChatEndpoint:
                 content_type="application/json",
             )
         assert response.status_code == 200
-        assert ChatMessage.objects.filter(user=user, role="user").exists()
+        assert ChatMessage.objects.for_household(household).filter(role="user").exists()
 
     def test_post_returns_sse_content_type(self, logged_client, user):
 
@@ -52,7 +53,7 @@ class TestChatEndpoint:
             )
         assert response["Content-Type"] == "text/event-stream"
 
-    def test_post_creates_assistant_message(self, logged_client, user):
+    def test_post_creates_assistant_message(self, logged_client, user, household):
 
         with agents_override(TestModel()):
             response = logged_client.post(
@@ -62,7 +63,7 @@ class TestChatEndpoint:
             )
             # Consume the streaming response (may be async generator in Django 6)
             consume_streaming(response)
-        assert ChatMessage.objects.filter(user=user, role="assistant").exists()
+        assert ChatMessage.objects.for_household(household).filter(role="assistant").exists()
 
     def test_post_unauthenticated(self):
 
@@ -83,7 +84,9 @@ class TestChatEndpoint:
         )
         assert response.status_code == 400
 
-    def test_multipart_audio_transcribes_and_streams(self, logged_client, user, monkeypatch):
+    def test_multipart_audio_transcribes_and_streams(
+        self, logged_client, user, monkeypatch, household
+    ):
 
         async def fake_transcribe(data, filename, content_type, *, client=None):
             return "mercado 80 no pix"
@@ -102,7 +105,7 @@ class TestChatEndpoint:
         assert ChatMessage.objects.filter(
             user=user, role="user", content__icontains="mercado 80"
         ).exists()
-        assert ChatMessage.objects.filter(user=user, role="assistant").exists()
+        assert ChatMessage.objects.for_household(household).filter(role="assistant").exists()
 
     def test_multipart_image_routes_to_assistant(self, logged_client, user):
 
@@ -129,7 +132,7 @@ class TestChatEndpoint:
             user=user, role="user", content__icontains="foto"
         ).exists()
 
-    def test_image_creates_receipt_draft(self, logged_client, user):
+    def test_image_creates_receipt_draft(self, logged_client, user, household):
         """Fase 1: a foto gera um ReceiptDraft persistido com a extração."""
         from assistant.agents.extraction import extraction_agent
         from assistant.models import ReceiptDraft
@@ -150,9 +153,11 @@ class TestChatEndpoint:
         assert response.status_code == 200
         # TestModel calls all tools including discard_receipt, so the draft may
         # transition pending → discarded; assert creation happened (any status).
-        assert ReceiptDraft.objects.filter(user=user).exists()
+        assert ReceiptDraft.objects.for_household(household).exists()
 
-    def test_resent_registered_receipt_does_not_reregister(self, logged_client, user, monkeypatch):
+    def test_resent_registered_receipt_does_not_reregister(
+        self, logged_client, user, monkeypatch, household
+    ):
         """Reenviar a MESMA nota (já registrada) NÃO abre um novo fluxo de recibo
         — não cria draft para re-commit. Evita a duplicata do incidente PAGUE
         MENOS (o 'sim' seguinte deixa de ser sequestrado para commit_receipt)."""
@@ -162,7 +167,7 @@ class TestChatEndpoint:
         from assistant.models import ReceiptDraft, ReceiptDraftStatus
 
         ReceiptDraft.objects.create(
-            user=user,
+            household=household,
             payload={
                 "store": "EMPREENDIMENTOS PAGUE MENOS S/A",
                 "date": "2026-07-04",
@@ -174,7 +179,7 @@ class TestChatEndpoint:
             },
             status=ReceiptDraftStatus.REGISTERED,
         )
-        before = ReceiptDraft.objects.filter(user=user).count()
+        before = ReceiptDraft.objects.for_household(household).count()
 
         async def fake_extract(images, categories=None, payment_methods=None, model=None):
 
@@ -204,7 +209,7 @@ class TestChatEndpoint:
 
         assert response.status_code == 200
         # nenhum draft novo criado → não há recibo pendente para re-commit
-        assert ReceiptDraft.objects.filter(user=user).count() == before
+        assert ReceiptDraft.objects.for_household(household).count() == before
 
     def test_multipart_rejects_two_files(self, logged_client, user):
 
@@ -376,14 +381,14 @@ class TestChatEndpoint:
         assert Entry.objects.count() == 0
 
     def test_pending_receipt_routes_confirm_and_commits_once(
-        self, logged_client, seeded_user, seeded_scope
+        self, logged_client, seeded_user, seeded_scope, household
     ):
         from assistant.agents.tools import propose_receipt
         from assistant.models import ReceiptDraft, ReceiptDraftStatus
         from finances.models import Entry
 
         draft = ReceiptDraft.objects.create(
-            user=seeded_user,
+            household=household,
             status=ReceiptDraftStatus.PENDING,
             payload={
                 "store": "MATEUS",
@@ -407,7 +412,7 @@ class TestChatEndpoint:
                 content_type="application/json",
             )
             consume_streaming(resp)
-        assert Entry.objects.filter(user=seeded_user).count() == 2
+        assert Entry.objects.for_household(household).count() == 2
         draft.refresh_from_db()
         assert draft.status == ReceiptDraftStatus.REGISTERED
 
@@ -419,10 +424,10 @@ class TestChatEndpoint:
                 content_type="application/json",
             )
             consume_streaming(resp2)
-        assert Entry.objects.filter(user=seeded_user).count() == 2
+        assert Entry.objects.for_household(household).count() == 2
 
     def test_pending_receipt_audio_routes_confirm_and_commits_once(
-        self, logged_client, seeded_user, seeded_scope, monkeypatch
+        self, logged_client, seeded_user, seeded_scope, monkeypatch, household
     ):
         """Voice confirmation of a pending receipt must route to assistant_agent —
         regression guard for the audio path (single-agent mode)."""
@@ -431,7 +436,7 @@ class TestChatEndpoint:
         from finances.models import Entry
 
         draft = ReceiptDraft.objects.create(
-            user=seeded_user,
+            household=household,
             status=ReceiptDraftStatus.PENDING,
             payload={
                 "store": "MATEUS",
@@ -458,16 +463,18 @@ class TestChatEndpoint:
             resp = logged_client.post("/api/assistant/chat/", data={"audio": audio})
             consume_streaming(resp)
 
-        assert Entry.objects.filter(user=seeded_user).count() == 2
+        assert Entry.objects.for_household(household).count() == 2
         draft.refresh_from_db()
         assert draft.status == ReceiptDraftStatus.REGISTERED
 
-    def test_images_pass_user_taxonomy_to_extraction(self, logged_client, user, monkeypatch):
+    def test_images_pass_user_taxonomy_to_extraction(
+        self, logged_client, user, monkeypatch, household
+    ):
 
         from assistant.agents.extraction import ReceiptExtraction
 
-        baker.make("finances.Category", user=user, name="Alimentação")
-        baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")
+        baker.make("finances.Category", household=household, name="Alimentação")
+        baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
 
         captured = {}
 
@@ -489,10 +496,10 @@ class TestChatEndpoint:
 
 @pytest.mark.django_db
 class TestHistoryEndpoint:
-    def test_returns_messages(self, logged_client, user):
+    def test_returns_messages(self, logged_client, user, household):
 
-        baker.make("assistant.ChatMessage", user=user, role="user", content="oi")
-        baker.make("assistant.ChatMessage", user=user, role="assistant", content="olá!")
+        baker.make("assistant.ChatMessage", household=household, role="user", content="oi")
+        baker.make("assistant.ChatMessage", household=household, role="assistant", content="olá!")
         response = logged_client.get("/api/assistant/history/")
         assert response.status_code == 200
         data = response.json()
@@ -500,20 +507,20 @@ class TestHistoryEndpoint:
         assert data[0]["role"] == "user"
         assert data[1]["role"] == "assistant"
 
-    def test_filters_by_user(self, logged_client, user):
+    def test_filters_by_user(self, logged_client, user, household):
 
         other = baker.make("core.CustomUser")
-        baker.make("assistant.ChatMessage", user=user, content="mine")
-        baker.make("assistant.ChatMessage", user=other, content="theirs")
+        baker.make("assistant.ChatMessage", household=household, content="mine")
+        baker.make("assistant.ChatMessage", household=household_for_user(other), content="theirs")
         response = logged_client.get("/api/assistant/history/")
         data = response.json()
         assert len(data) == 1
         assert data[0]["content"] == "mine"
 
-    def test_limits_to_50(self, logged_client, user):
+    def test_limits_to_50(self, logged_client, user, household):
 
         for i in range(60):
-            baker.make("assistant.ChatMessage", user=user, content=f"msg {i}")
+            baker.make("assistant.ChatMessage", household=household, content=f"msg {i}")
         response = logged_client.get("/api/assistant/history/")
         data = response.json()
         assert len(data) == 50

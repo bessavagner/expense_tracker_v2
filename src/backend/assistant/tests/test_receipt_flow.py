@@ -14,7 +14,7 @@ from finances.models import Entry
 pytestmark = pytest.mark.django_db
 
 
-def _draft(user, **over):
+def _draft(household, **over):
 
     payload = {
         "store": "MATEUS",
@@ -29,13 +29,13 @@ def _draft(user, **over):
     }
     payload.update(over)
     return ReceiptDraft.objects.create(
-        user=user, payload=payload, status=ReceiptDraftStatus.PENDING
+        household=household, payload=payload, status=ReceiptDraftStatus.PENDING
     )
 
 
-def test_propose_stores_plan_and_writes_nothing(seeded_user, seeded_scope):
+def test_propose_stores_plan_and_writes_nothing(seeded_user, seeded_scope, household):
 
-    _draft(seeded_user)
+    _draft(household)
     out = propose_receipt(
         seeded_scope,
         items_by_category={"Alimentação": [0], "Lanche": [1]},
@@ -43,7 +43,7 @@ def test_propose_stores_plan_and_writes_nothing(seeded_user, seeded_scope):
         summaries={"Alimentação": "grãos", "Lanche": "bebida"},
     )
     assert Entry.objects.count() == 0  # nothing written
-    draft = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at")
+    draft = ReceiptDraft.objects.for_household(household).latest("created_at")
     assert draft.status == ReceiptDraftStatus.PENDING
     plan = (draft.payload or {}).get("plan")
     assert plan is not None
@@ -53,56 +53,56 @@ def test_propose_stores_plan_and_writes_nothing(seeded_user, seeded_scope):
     assert "Confirma" in out
 
 
-def test_propose_rejects_incomplete_coverage(seeded_user, seeded_scope):
-    _draft(seeded_user)
+def test_propose_rejects_incomplete_coverage(seeded_user, seeded_scope, household):
+    _draft(household)
     out = propose_receipt(seeded_scope, items_by_category={"Alimentação": [0]})
     assert "exatamente UMA" in out  # item 1 missing
-    draft = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at")
+    draft = ReceiptDraft.objects.for_household(household).latest("created_at")
     assert "plan" not in (draft.payload or {})
 
 
-def test_propose_ambiguous_payment_asks(seeded_user, seeded_scope):
+def test_propose_ambiguous_payment_asks(seeded_user, seeded_scope, household):
 
-    _draft(seeded_user, payment_hint="")
+    _draft(household, payment_hint="")
     out = propose_receipt(
         seeded_scope,
         items_by_category={"Alimentação": [0], "Lanche": [1]},
         payment_method_name="",
     )
     assert "forma de pagamento" in out.lower()
-    draft = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at")
+    draft = ReceiptDraft.objects.for_household(household).latest("created_at")
     assert "plan" not in (draft.payload or {})
 
 
-def test_commit_creates_entries_once_and_is_idempotent(seeded_user, seeded_scope):
-    _draft(seeded_user)
+def test_commit_creates_entries_once_and_is_idempotent(seeded_user, seeded_scope, household):
+    _draft(household)
     propose_receipt(
         seeded_scope,
         items_by_category={"Alimentação": [0], "Lanche": [1]},
         payment_method_name="Pix",
     )
     out = commit_receipt(seeded_scope)
-    assert Entry.objects.filter(user=seeded_user).count() == 2
-    draft = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at")
+    assert Entry.objects.for_household(household).count() == 2
+    draft = ReceiptDraft.objects.for_household(household).latest("created_at")
     assert draft.status == ReceiptDraftStatus.REGISTERED
     assert "Registrado" in out
-    total = sorted(e.amount for e in Entry.objects.filter(user=seeded_user))
+    total = sorted(e.amount for e in Entry.objects.for_household(household))
     assert total == [Decimal("40.00"), Decimal("60.00")]
     # second confirm must NOT duplicate
     out2 = commit_receipt(seeded_scope)
-    assert Entry.objects.filter(user=seeded_user).count() == 2
+    assert Entry.objects.for_household(household).count() == 2
     assert "pendente" in out2.lower()
 
 
-def test_commit_without_plan_writes_nothing(seeded_user, seeded_scope):
-    _draft(seeded_user)  # pending draft but no propose() => no plan
+def test_commit_without_plan_writes_nothing(seeded_user, seeded_scope, household):
+    _draft(household)  # pending draft but no propose() => no plan
     out = commit_receipt(seeded_scope)
     assert Entry.objects.count() == 0
     assert "pendente" in out.lower()
 
 
-def test_discard_blocks_commit(seeded_user, seeded_scope):
-    _draft(seeded_user)
+def test_discard_blocks_commit(seeded_user, seeded_scope, household):
+    _draft(household)
     propose_receipt(
         seeded_scope,
         items_by_category={"Alimentação": [0], "Lanche": [1]},
@@ -124,10 +124,10 @@ def test_assistant_agent_exposes_receipt_and_write_tools():
     assert "register_receipt" not in names
 
 
-def _draft_categorized(user):
+def _draft_categorized(household):
 
     return ReceiptDraft.objects.create(
-        user=user,
+        household=household,
         payload={
             "store": "MATEUS",
             "date": "2026-06-22",
@@ -143,30 +143,30 @@ def _draft_categorized(user):
     )
 
 
-def test_propose_auto_mode_groups_by_item_category(seeded_user, seeded_scope):
-    _draft_categorized(seeded_user)
+def test_propose_auto_mode_groups_by_item_category(seeded_user, seeded_scope, household):
+    _draft_categorized(household)
     out = propose_receipt(seeded_scope, payment_method_name="Pix")  # no items_by_category
     assert Entry.objects.count() == 0
-    plan = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload["plan"]
+    plan = ReceiptDraft.objects.for_household(household).latest("created_at").payload["plan"]
     amounts = sorted(Decimal(ln["amount"]) for ln in plan["lines"])
     assert amounts == [Decimal("40.00"), Decimal("60.00")]
     assert "Confirma" in out
 
 
-def test_propose_auto_mode_errors_when_item_uncategorized(seeded_user, seeded_scope):
-    _draft(seeded_user)  # items have NO category
+def test_propose_auto_mode_errors_when_item_uncategorized(seeded_user, seeded_scope, household):
+    _draft(household)  # items have NO category
     out = propose_receipt(seeded_scope, payment_method_name="Pix")
     assert "categor" in out.lower()  # asks for categorization
     assert "plan" not in (
-        ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload or {}
+        ReceiptDraft.objects.for_household(household).latest("created_at").payload or {}
     )
 
 
-def test_description_uses_product_names_not_category(seeded_user, seeded_scope):
+def test_description_uses_product_names_not_category(seeded_user, seeded_scope, household):
     """Sem summaries explícitos, a descrição é montada dos NOMES dos produtos
     (não o nome da categoria). Regressão do recibo Mercado Livre."""
     ReceiptDraft.objects.create(
-        user=seeded_user,
+        household=household,
         payload={
             "store": "Mercado Livre",
             "date": "2026-06-23",
@@ -181,7 +181,7 @@ def test_description_uses_product_names_not_category(seeded_user, seeded_scope):
         status=ReceiptDraftStatus.PENDING,
     )
     out = propose_receipt(seeded_scope, payment_method_name="Pix")
-    plan = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload["plan"]
+    plan = ReceiptDraft.objects.for_household(household).latest("created_at").payload["plan"]
     desc = plan["lines"][0]["description"]
     assert "arroz tipo 1" in desc and "feijão preto" in desc
     assert desc.startswith("Mercado Livre -")
@@ -191,7 +191,9 @@ def test_description_uses_product_names_not_category(seeded_user, seeded_scope):
     assert "Itens" in out
 
 
-def test_long_description_full_in_entry_truncated_only_in_table(seeded_user, seeded_scope):
+def test_long_description_full_in_entry_truncated_only_in_table(
+    seeded_user, seeded_scope, household
+):
     """Os nomes dos produtos ficam COMPLETOS na descrição gravada; só a tabela
     exibida é truncada (não perde produtos como o 3º item do recibo Amazon)."""
     items = [
@@ -203,70 +205,70 @@ def test_long_description_full_in_entry_truncated_only_in_table(seeded_user, see
         for i in range(4)
     ]
     ReceiptDraft.objects.create(
-        user=seeded_user,
+        household=household,
         payload={"store": "Loja", "payment_hint": "Pix", "items": items},
         status=ReceiptDraftStatus.PENDING,
     )
     out = propose_receipt(seeded_scope, payment_method_name="Pix")
-    plan = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload["plan"]
+    plan = ReceiptDraft.objects.for_household(household).latest("created_at").payload["plan"]
     desc = plan["lines"][0]["description"]
     for i in range(4):  # todos os 4 produtos presentes na descrição gravada
         assert f"numero {i}" in desc
     assert "…" in out  # a tabela exibida trunca
 
 
-def test_description_dedups_store_prefix(seeded_user, seeded_scope):
+def test_description_dedups_store_prefix(seeded_user, seeded_scope, household):
     """Se o summary já repete o nome da loja, não duplica o prefixo
     (regressão 'Amazon - Amazon - ...')."""
-    _draft_categorized(seeded_user)  # store=MATEUS
+    _draft_categorized(household)  # store=MATEUS
     propose_receipt(
         seeded_scope,
         payment_method_name="Pix",
         summaries={"Alimentação": "MATEUS - arroz", "Lanche": "MATEUS bebida"},
     )
-    plan = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload["plan"]
+    plan = ReceiptDraft.objects.for_household(household).latest("created_at").payload["plan"]
     descs = {ln["category_name"]: ln["description"] for ln in plan["lines"]}
     assert descs["Alimentação"] == "MATEUS - arroz"
     assert descs["Lanche"] == "MATEUS - bebida"
     assert "MATEUS - MATEUS" not in descs["Alimentação"]
 
 
-def test_explicit_summary_still_wins(seeded_user, seeded_scope):
+def test_explicit_summary_still_wins(seeded_user, seeded_scope, household):
 
-    _draft_categorized(seeded_user)
+    _draft_categorized(household)
     propose_receipt(
         seeded_scope,
         payment_method_name="Pix",
         summaries={"Alimentação": "grãos", "Lanche": "bebida"},
     )
-    plan = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload["plan"]
+    plan = ReceiptDraft.objects.for_household(household).latest("created_at").payload["plan"]
     descs = {ln["category_name"]: ln["description"] for ln in plan["lines"]}
     assert descs["Alimentação"] == "MATEUS - grãos"
     assert descs["Lanche"] == "MATEUS - bebida"
 
 
-def test_store_name_override(seeded_user, seeded_scope):
+def test_store_name_override(seeded_user, seeded_scope, household):
 
-    _draft(seeded_user, store=None)  # no store → would fall back to "Recibo"
+    _draft(household, store=None)  # no store → would fall back to "Recibo"
     out = propose_receipt(
         seeded_scope,
         items_by_category={"Alimentação": [0], "Lanche": [1]},
         payment_method_name="Pix",
         store_name="Mercado Livre",
     )
-    draft = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at")
+    draft = ReceiptDraft.objects.for_household(household).latest("created_at")
     assert draft.payload["store"] == "Mercado Livre"  # persisted for re-propose
     for ln in draft.payload["plan"]["lines"]:
         assert ln["description"].startswith("Mercado Livre -")
     assert "Mercado Livre" in out
 
 
-def test_commit_discards_other_pending_drafts(seeded_user, seeded_scope):
+def test_commit_discards_other_pending_drafts(seeded_user, seeded_scope, household):
     """Após registrar, drafts pendentes ÓRFÃOS são descartados — não podem ser
     ressuscitados depois (bug real do frete pós-commit: re-registro em massa de
     um draft antigo)."""
     stale = ReceiptDraft.objects.create(
-        user=seeded_user,
+        household=household,
         payload={
             "store": "VELHO",
             "payment_hint": "Pix",
@@ -274,41 +276,45 @@ def test_commit_discards_other_pending_drafts(seeded_user, seeded_scope):
         },
         status=ReceiptDraftStatus.PENDING,
     )
-    _draft_categorized(seeded_user)  # recibo real, mais recente
+    _draft_categorized(household)  # recibo real, mais recente
     propose_receipt(seeded_scope, payment_method_name="Pix")
     commit_receipt(seeded_scope)
     stale.refresh_from_db()
     assert stale.status == ReceiptDraftStatus.DISCARDED
     # só as 2 linhas do recibo real foram gravadas (o item do stale NÃO)
-    assert Entry.objects.filter(user=seeded_user).count() == 2
+    assert Entry.objects.for_household(household).count() == 2
     assert (
-        ReceiptDraft.objects.filter(user=seeded_user, status=ReceiptDraftStatus.PENDING).count()
+        ReceiptDraft.objects.for_household(household)
+        .filter(status=ReceiptDraftStatus.PENDING)
+        .count()
         == 0
     )
 
 
-def test_discard_pending_receipts_helper(seeded_user, seeded_scope):
+def test_discard_pending_receipts_helper(seeded_user, seeded_scope, household):
     from assistant.agents.tools import discard_pending_receipts
 
     ReceiptDraft.objects.create(
-        user=seeded_user, payload={"items": []}, status=ReceiptDraftStatus.PENDING
+        household=household, payload={"items": []}, status=ReceiptDraftStatus.PENDING
     )
     ReceiptDraft.objects.create(
-        user=seeded_user, payload={"items": []}, status=ReceiptDraftStatus.PENDING
+        household=household, payload={"items": []}, status=ReceiptDraftStatus.PENDING
     )
     n = discard_pending_receipts(seeded_scope)
     assert n == 2
     assert (
-        ReceiptDraft.objects.filter(user=seeded_user, status=ReceiptDraftStatus.PENDING).count()
+        ReceiptDraft.objects.for_household(household)
+        .filter(status=ReceiptDraftStatus.PENDING)
+        .count()
         == 0
     )
 
 
-def test_pending_directive_guides_compound_and_store(seeded_user, seeded_scope):
+def test_pending_directive_guides_compound_and_store(seeded_user, seeded_scope, household):
     from assistant.agents.tools import build_pending_receipt_directive
 
     ReceiptDraft.objects.create(
-        user=seeded_user,
+        household=household,
         payload={
             "store": "Recibo",
             "amount_paid": "100.00",
@@ -324,12 +330,12 @@ def test_pending_directive_guides_compound_and_store(seeded_user, seeded_scope):
     assert "uma vez" in out.lower()  # ask payment at most once
 
 
-def test_add_receipt_item_then_propose_folds_frete(seeded_user, seeded_scope):
+def test_add_receipt_item_then_propose_folds_frete(seeded_user, seeded_scope, household):
     """O frete adicionado entra na categoria e na descrição ao re-propor."""
-    _draft_categorized(seeded_user)  # arroz 60 Alimentação, refri 40 Lanche
+    _draft_categorized(household)  # arroz 60 Alimentação, refri 40 Lanche
     add_receipt_item(seeded_scope, "frete", "39.97", "Alimentação")
     propose_receipt(seeded_scope, payment_method_name="Pix")
-    plan = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload["plan"]
+    plan = ReceiptDraft.objects.for_household(household).latest("created_at").payload["plan"]
     ali = next(ln for ln in plan["lines"] if ln["category_name"] == "Alimentação")
     assert "frete" in ali["description"]
     assert Decimal(ali["amount"]) == Decimal("99.97")  # 60.00 + 39.97

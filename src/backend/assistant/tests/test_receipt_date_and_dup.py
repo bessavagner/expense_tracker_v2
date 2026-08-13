@@ -61,10 +61,10 @@ def test_extraction_model_normalizes_date_field():
     assert ext.date == "2026-07-04"
 
 
-def test_propose_uses_cupom_date_not_today(seeded_user, seeded_scope):
+def test_propose_uses_cupom_date_not_today(seeded_user, seeded_scope, household):
     """Draft com data BR+hora → o plano/entry usa a data do cupom, não hoje."""
     ReceiptDraft.objects.create(
-        user=seeded_user,
+        household=household,
         payload={
             "store": "EMPREENDIMENTOS PAGUE MENOS S/A",
             "date": "04/07/2026 12:09:32",
@@ -78,17 +78,17 @@ def test_propose_uses_cupom_date_not_today(seeded_user, seeded_scope):
         status=ReceiptDraftStatus.PENDING,
     )
     propose_receipt(seeded_scope, payment_method_name="Pix")
-    plan = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload["plan"]
+    plan = ReceiptDraft.objects.for_household(household).latest("created_at").payload["plan"]
     assert plan["date"] == "2026-07-04"
     commit_receipt(seeded_scope)
-    for e in Entry.objects.filter(user=seeded_user):
+    for e in Entry.objects.for_household(household):
         assert e.date.isoformat() == "2026-07-04"
 
 
 # ── Bug 2: detecção de recibo já registrado (reenvio) ───────────────────────
 
 
-def _registered(user, **over):
+def _registered(household, **over):
 
     payload = {
         "store": "EMPREENDIMENTOS PAGUE MENOS S/A",
@@ -101,12 +101,12 @@ def _registered(user, **over):
     }
     payload.update(over)
     return ReceiptDraft.objects.create(
-        user=user, payload=payload, status=ReceiptDraftStatus.REGISTERED
+        household=household, payload=payload, status=ReceiptDraftStatus.REGISTERED
     )
 
 
-def test_find_duplicate_matches_store_and_paid(seeded_user, seeded_scope):
-    _registered(seeded_user)
+def test_find_duplicate_matches_store_and_paid(seeded_user, seeded_scope, household):
+    _registered(household)
     incoming = {
         "store": "empreendimentos pague menos s/a",  # case-insensitive
         "amount_paid": "155.90",
@@ -118,8 +118,8 @@ def test_find_duplicate_matches_store_and_paid(seeded_user, seeded_scope):
     assert find_registered_duplicate(seeded_scope, incoming) is not None
 
 
-def test_find_duplicate_matches_by_items_when_paid_missing(seeded_user, seeded_scope):
-    _registered(seeded_user, amount_paid=None)
+def test_find_duplicate_matches_by_items_when_paid_missing(seeded_user, seeded_scope, household):
+    _registered(household, amount_paid=None)
     incoming = {
         "store": "EMPREENDIMENTOS PAGUE MENOS S/A",
         "amount_paid": None,
@@ -131,8 +131,8 @@ def test_find_duplicate_matches_by_items_when_paid_missing(seeded_user, seeded_s
     assert find_registered_duplicate(seeded_scope, incoming) is not None
 
 
-def test_find_duplicate_none_for_different_total(seeded_user, seeded_scope):
-    _registered(seeded_user)
+def test_find_duplicate_none_for_different_total(seeded_user, seeded_scope, household):
+    _registered(household)
     incoming = {
         "store": "EMPREENDIMENTOS PAGUE MENOS S/A",
         "amount_paid": "999.00",
@@ -141,14 +141,14 @@ def test_find_duplicate_none_for_different_total(seeded_user, seeded_scope):
     assert find_registered_duplicate(seeded_scope, incoming) is None
 
 
-def test_find_duplicate_ignores_pending_and_other_store(seeded_user, seeded_scope):
+def test_find_duplicate_ignores_pending_and_other_store(seeded_user, seeded_scope, household):
     # pending (não conta) e loja diferente (não conta)
     ReceiptDraft.objects.create(
-        user=seeded_user,
+        household=household,
         payload={"store": "PAGUE MENOS", "amount_paid": "155.90", "items": []},
         status=ReceiptDraftStatus.PENDING,
     )
-    _registered(seeded_user, store="OUTRA LOJA")
+    _registered(household, store="OUTRA LOJA")
     incoming = {
         "store": "EMPREENDIMENTOS PAGUE MENOS S/A",
         "amount_paid": "155.90",
@@ -157,9 +157,9 @@ def test_find_duplicate_ignores_pending_and_other_store(seeded_user, seeded_scop
     assert find_registered_duplicate(seeded_scope, incoming) is None
 
 
-def test_duplicate_directive_steers_to_edit_not_register(seeded_user, seeded_scope):
+def test_duplicate_directive_steers_to_edit_not_register(seeded_user, seeded_scope, household):
 
-    dup = _registered(seeded_user)
+    dup = _registered(household)
     out = build_duplicate_receipt_directive(
         seeded_scope,
         {"store": "EMPREENDIMENTOS PAGUE MENOS S/A", "amount_paid": "155.90", "items": []},
@@ -212,36 +212,36 @@ def _incoming():
     }
 
 
-def test_deleted_entries_not_a_duplicate(seeded_user, seeded_scope):
+def test_deleted_entries_not_a_duplicate(seeded_user, seeded_scope, household):
     """Registered draft WITH a plan but NO live entries → re-send is allowed."""
     from finances.models import PaymentMethod
 
-    pm = PaymentMethod.objects.filter(user=seeded_user).first()
+    pm = PaymentMethod.objects.for_household(household).first()
     payload = _plan_payload()
     payload["plan"]["payment_method_id"] = str(pm.id)
     ReceiptDraft.objects.create(
-        user=seeded_user, payload=payload, status=ReceiptDraftStatus.REGISTERED
+        household=household, payload=payload, status=ReceiptDraftStatus.REGISTERED
     )
     # No Entry rows created (they were "deleted").
     assert find_registered_duplicate(seeded_scope, _incoming()) is None
 
 
-def test_live_entries_still_a_duplicate(seeded_user, seeded_scope):
+def test_live_entries_still_a_duplicate(seeded_user, seeded_scope, household):
     """Registered draft WITH a plan AND matching live entries → still a dup."""
     from datetime import date
 
     from finances.models import Category, PaymentMethod
 
-    pm = PaymentMethod.objects.filter(user=seeded_user).first()
-    cat = Category.objects.filter(user=seeded_user).first()
+    pm = PaymentMethod.objects.for_household(household).first()
+    cat = Category.objects.for_household(household).first()
     payload = _plan_payload()
     payload["plan"]["payment_method_id"] = str(pm.id)
     ReceiptDraft.objects.create(
-        user=seeded_user, payload=payload, status=ReceiptDraftStatus.REGISTERED
+        household=household, payload=payload, status=ReceiptDraftStatus.REGISTERED
     )
     # One matching live entry (date + pm + amount) is enough.
     Entry.objects.create(
-        user=seeded_user,
+        household=household,
         date=date(2026, 7, 4),
         amount="20.97",
         description="Drogasil - a",
@@ -251,9 +251,9 @@ def test_live_entries_still_a_duplicate(seeded_user, seeded_scope):
     assert find_registered_duplicate(seeded_scope, _incoming()) is not None
 
 
-def test_legacy_draft_without_plan_still_duplicate(seeded_user, seeded_scope):
+def test_legacy_draft_without_plan_still_duplicate(seeded_user, seeded_scope, household):
     """No 'plan' key (pre-plan drafts) → fallback keeps dup behavior."""
-    _registered(seeded_user)  # helper payload has NO 'plan'
+    _registered(household)  # helper payload has NO 'plan'
     incoming = {
         "store": "EMPREENDIMENTOS PAGUE MENOS S/A",
         "amount_paid": "155.90",

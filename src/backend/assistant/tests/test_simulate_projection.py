@@ -9,7 +9,9 @@ from finances.services.whatif import HypotheticalItem, HypoType, simulate_projec
 
 @pytest.mark.django_db
 def test_summary_reports_delta(user, household):
-    baker.make("finances.Income", user=user, amount=Decimal("3000"), month=date(2026, 7, 1))
+    baker.make(
+        "finances.Income", household=household, amount=Decimal("3000"), month=date(2026, 7, 1)
+    )
     items = [
         HypotheticalItem(
             id="a",

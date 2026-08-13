@@ -41,23 +41,6 @@ HOUSEHOLD_OWNED = {
 BAKE_BASELINE = {
     "src/backend/accounts/tests/test_backfill.py",
     "src/backend/accounts/tests/test_bridge.py",
-    "src/backend/assistant/tests/test_analytics.py",
-    "src/backend/assistant/tests/test_assistant.py",
-    "src/backend/assistant/tests/test_category_memory.py",
-    "src/backend/assistant/tests/test_create_entry_fuzzy.py",
-    "src/backend/assistant/tests/test_image_extraction_regression.py",
-    "src/backend/assistant/tests/test_memory_models.py",
-    "src/backend/assistant/tests/test_memory_tools.py",
-    "src/backend/assistant/tests/test_models.py",
-    "src/backend/assistant/tests/test_receipt_date_and_dup.py",
-    "src/backend/assistant/tests/test_receipt_discount_reconcile.py",
-    "src/backend/assistant/tests/test_receipt_flow.py",
-    "src/backend/assistant/tests/test_receipt_prompts.py",
-    "src/backend/assistant/tests/test_semantic_memory.py",
-    "src/backend/assistant/tests/test_simulate_projection.py",
-    "src/backend/assistant/tests/test_throttling.py",
-    "src/backend/assistant/tests/test_tools.py",
-    "src/backend/assistant/tests/test_views.py",
     "src/backend/finances/tests/test_query_indexes.py",
 }
 

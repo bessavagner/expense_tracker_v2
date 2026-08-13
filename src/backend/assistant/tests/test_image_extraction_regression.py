@@ -85,7 +85,7 @@ def _extraction(flat, *, store, date, discount="0", amount_paid):
 
 
 def _make_draft(
-    user, flat, *, store, date, amount_paid, discount="0", payment_hint="Cartão Crédito"
+    household, flat, *, store, date, amount_paid, discount="0", payment_hint="Cartão Crédito"
 ):
     """Cria um ReceiptDraft pendente e o mapa categoria→[índices] do gabarito."""
     from assistant.models import ReceiptDraft
@@ -98,7 +98,7 @@ def _make_draft(
         "payment_hint": payment_hint,
         "items": [{"description": d, "line_total": v} for d, v, _ in flat],
     }
-    draft = ReceiptDraft.objects.create(user=user, payload=payload)
+    draft = ReceiptDraft.objects.create(household=household, payload=payload)
     mapping: dict[str, list[int]] = {}
     for idx, (_, _, cat) in enumerate(flat):
         mapping.setdefault(cat, []).append(idx)
@@ -125,16 +125,16 @@ def test_americanas_gabarito_is_internally_consistent():
 
 
 @pytest.mark.django_db
-def test_americanas_split_sums_to_amount_paid(seeded_user, scope, seeded_scope):
+def test_americanas_split_sums_to_amount_paid(seeded_user, scope, seeded_scope, household):
     from django.db.models import Sum
     from model_bakery import baker
 
     from assistant.agents.tools import commit_receipt, propose_receipt
     from finances.models import Entry
 
-    baker.make("finances.Category", user=seeded_user, name="Roupa")
+    baker.make("finances.Category", household=household, name="Roupa")
     _make_draft(
-        seeded_user,
+        household,
         AMERICANAS_ITEMS,
         store="americanas sa - 1063",
         date="2026-06-12",
@@ -147,7 +147,7 @@ def test_americanas_split_sums_to_amount_paid(seeded_user, scope, seeded_scope):
         payment_method_name="Crédito C6",
     )
     commit_receipt(seeded_scope)
-    entries = Entry.objects.filter(user=seeded_user)
+    entries = Entry.objects.for_household(household)
     assert entries.count() == 2
     assert entries.aggregate(s=Sum("amount"))["s"] == Decimal("42.16")
     assert entries.get(category__name="Roupa").amount > 0
@@ -155,7 +155,9 @@ def test_americanas_split_sums_to_amount_paid(seeded_user, scope, seeded_scope):
 
 
 @pytest.mark.django_db
-def test_hipermacional_no_double_count_and_correct_total(seeded_user, scope, seeded_scope):
+def test_hipermacional_no_double_count_and_correct_total(
+    seeded_user, scope, seeded_scope, household
+):
     """O bug: Pets entrou em dobro e Lanche foi fundido em Alimentação."""
     from django.db.models import Sum
     from model_bakery import baker
@@ -164,9 +166,9 @@ def test_hipermacional_no_double_count_and_correct_total(seeded_user, scope, see
     from finances.models import Entry
 
     for cat in ("Pets", "Casa", "Limpeza", "Perfumaria"):
-        baker.make("finances.Category", user=seeded_user, name=cat)
+        baker.make("finances.Category", household=household, name=cat)
     _, mapping = _make_draft(
-        seeded_user,
+        household,
         HIPERMACIONAL_ITEMS,
         store="HIPERMACIONAL LTDA",
         date="2026-06-15",
@@ -181,7 +183,7 @@ def test_hipermacional_no_double_count_and_correct_total(seeded_user, scope, see
     )
     msg = commit_receipt(seeded_scope)
     assert "✅" in msg
-    entries = Entry.objects.filter(user=seeded_user)
+    entries = Entry.objects.for_household(household)
     assert entries.count() == 6
     # total correto (não 395,60)
     assert entries.aggregate(s=Sum("amount"))["s"] == Decimal("376.70")

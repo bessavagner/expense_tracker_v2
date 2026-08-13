@@ -11,6 +11,7 @@ import pytest
 from asgiref.sync import async_to_sync
 from django.utils import timezone
 
+from accounts.resolution import household_for_user
 from assistant.models import AssistantUsageEvent, AssistantUsageKind
 from assistant.throttling import exceeded_rule, rules_for
 
@@ -26,10 +27,19 @@ def _frozen_clock(time_machine):
 
 
 def _burn(user, kind, count, *, age=timedelta(0)):
-    """Create ``count`` usage events, backdated by ``age``."""
+    """Create ``count`` usage events, backdated by ``age``.
+
+    The event names both its actor and its tenant, and keeps them distinct.
+    ``user`` is the *actor*: throttling is per person, so two members of one
+    household each get their own budget (epic decision 1), and every call site
+    below varies the actor rather than the household. ``household`` is set
+    explicitly because Task 12 makes the column NOT NULL and deletes the write
+    bridge that used to fill it.
+    """
     stamp = timezone.now() - age
+    household = household_for_user(user)
     for _ in range(count):
-        event = AssistantUsageEvent.objects.create(user=user, kind=kind)
+        event = AssistantUsageEvent.objects.create(user=user, household=household, kind=kind)
         AssistantUsageEvent.objects.filter(pk=event.pk).update(created_at=stamp)
 
 
@@ -185,14 +195,16 @@ class TestChatEndpointThrottle:
         assert "Limite" in body["error"]
         assert "hora" in body["error"]
 
-    def test_rejected_turn_writes_no_chat_message(self, logged_client, user, monkeypatch, settings):
+    def test_rejected_turn_writes_no_chat_message(
+        self, logged_client, user, monkeypatch, settings, household
+    ):
         from assistant.models import ChatMessage
 
         settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 3
         settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
         _burn(user, AssistantUsageKind.TEXT, 3)
         self._post_text(logged_client, monkeypatch)
-        assert not ChatMessage.objects.filter(user=user).exists()
+        assert not ChatMessage.objects.for_household(household).exists()
 
     def test_admitted_turn_records_one_usage_event(
         self, logged_client, user, monkeypatch, settings
