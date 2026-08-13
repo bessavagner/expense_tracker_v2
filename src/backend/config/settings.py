@@ -234,6 +234,29 @@ ACCOUNT_ADAPTER = "allauth.account.adapter.DefaultAccountAdapter"
 # their own admin.
 MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
 
+# --- Transactional email (E05 S05-2) ------------------------------------
+# Resend over plain SMTP, deliberately: an API-key-in-a-header SDK would be a
+# dependency and a code path, and Django already speaks SMTP. Switching
+# provider is then an environment change, not a deploy.
+#
+# The absent-EMAIL_HOST branch is the important one. Django's default is an
+# SMTP backend pointed at localhost:25 — mail vanishes with no exception, so a
+# developer sees "e-mail enviado" and an empty inbox. Console backend instead.
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
+if EMAIL_HOST:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = True
+# Resend's SMTP username is the literal string "resend"; the password is the
+# API key, which lives in Secret Manager and never in this repo.
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "resend")
+EMAIL_HOST_PASSWORD = os.environ.get("RESEND_API_KEY", "")
+EMAIL_TIMEOUT = 10
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "Ledger <nao-responda@localhost>")
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
+
 # AI Assistant
 LLM_MODEL = os.environ.get("LLM_MODEL", "openai:gpt-5.4")
 # Agente único (prompt 009): um assistente forte com todas as ferramentas.

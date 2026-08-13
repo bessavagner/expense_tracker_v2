@@ -894,6 +894,95 @@ print(h, '->', u)
 Their **oldest** membership is the default household, so if they already have
 one of their own from a first login, that one keeps winning until they switch.
 
+## Transactional email
+
+E05 made email the login identifier, so mail is not a nicety here: an account
+that cannot receive a verification message cannot be created, and an invitation
+that lands in Spam is an invitation that was never sent. The provider is
+**Resend, over plain SMTP** — Django already speaks SMTP, so switching provider
+is an environment change rather than a deploy.
+
+**Locally, nothing is sent.** With `EMAIL_HOST` unset the settings pick the
+console backend and every message is printed to the terminal, links included.
+That branch exists because Django's own default is an SMTP backend pointed at
+`localhost:25`, where mail is swallowed with no exception — you would see
+"e-mail enviado" and an empty inbox forever.
+
+### 1. Create the Resend account and verify the sending domain
+
+**This step is yours; nothing in the repo can do it, and nothing below works
+until it is done.** In the Resend dashboard, add the sending domain and publish
+the DNS records it issues at the registrar:
+
+| Type | Host | Value |
+|---|---|---|
+| `TXT` | `send.SEU-DOMINIO` | `v=spf1 include:amazonses.com ~all` |
+| `TXT` | `resend._domainkey.SEU-DOMINIO` | the DKIM public key Resend shows |
+| `MX` | `send.SEU-DOMINIO` | `feedback-smtp.<region>.amazonses.com` (priority 10) |
+
+Resend prints the exact values — copy them, do not retype the DKIM key. It
+takes minutes to hours to verify.
+
+**This is not optional and it is not cosmetic.** Unauthenticated mail from a
+financial app is exactly the profile Gmail files under Spam. An unverified
+domain does not get "slightly worse delivery"; it gets a signup funnel where
+nobody ever confirms their address, and you will read it as a bug in the code.
+
+### 2. Store the key and point the service at it
+
+```bash
+printf '%s' 're_xxxxxxxxxxxxxxxxxxxxx' | gcloud secrets create resend-api-key \
+  --project=expense-tracker-482807 --data-file=-
+
+gcloud run services update expense-tracker --region=southamerica-east1 \
+  --project=expense-tracker-482807 \
+  --set-env-vars=EMAIL_HOST=smtp.resend.com,DEFAULT_FROM_EMAIL='Ledger <nao-responda@SEU-DOMINIO>' \
+  --set-secrets=RESEND_API_KEY=resend-api-key:latest
+```
+
+`gcloud secrets create` prints `Created version [1] of the secret
+[resend-api-key].`; the `run services update` prints the new revision name and
+`Service [expense-tracker] revision [expense-tracker-000NN-xxx] has been
+deployed and is serving 100 percent of traffic.`
+
+**`printf`, not `echo`.** `echo` appends a newline, the newline goes into the
+secret, and SMTP then fails with `535 Authentication failed` — an error that
+reads like a wrong key and is really a wrong *byte*. If you see 535, suspect
+this before you suspect Resend.
+
+The sending address must be **at the verified domain**. A `DEFAULT_FROM_EMAIL`
+at a domain Resend has not verified is rejected outright.
+
+### 3. Send a test message from the deployed revision
+
+```bash
+gcloud run services proxy expense-tracker --region=southamerica-east1 \
+  --project=expense-tracker-482807 &
+# then, in a Django shell on the revision:
+#   from django.core.mail import send_mail
+#   send_mail("Teste", "corpo", None, ["seu-endereco@gmail.com"])
+```
+
+`send_mail` returns `1`. A return of `0`, or a `SMTPAuthenticationError`, means
+the key or the from-address is wrong — see above.
+
+### 4. The deliverability check (S05-2's last bullet)
+
+Not a formality, and not satisfiable by a passing test. Send to a **real Gmail
+address** and confirm:
+
+- [ ] it arrives in **Inbox** — not Promotions, not Spam;
+- [ ] "Show original" reports `spf=pass` and `dkim=pass`;
+- [ ] the `Authentication-Results` header is pasted below as evidence.
+
+```
+Authentication-Results: mx.google.com;
+       <paste the real header here after the first successful send>
+```
+
+An empty block above means this check has not been done, whatever the test
+suite says.
+
 ## Import batches
 
 Each confirmed column mapping creates one `finances_importbatch` row, and the
