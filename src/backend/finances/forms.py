@@ -323,7 +323,13 @@ class SystemicEntryEditForm(forms.Form):
         systemic.save(update_fields=["name", "updated_at"])
         from finances.models import Entry
 
-        Entry.objects.filter(systemic_expense=systemic).update(description=cd["name"])
+        # Scoped even though it is transitively safe: `self.entry` came from a
+        # household-scoped queryset, so its household is non-None and every
+        # entry of that systemic shares it. This is a mass `update()`, and a
+        # bare queryset is the wrong default for one.
+        Entry.objects.for_household(self.entry.household).filter(systemic_expense=systemic).update(
+            description=cd["name"]
+        )
         self.entry.date = cd["date"]
         self.entry.amount = cd["amount"]
         self.entry.category = cd["category"]

@@ -1021,7 +1021,9 @@ def query_installments(scope) -> str:
     total_monthly = Decimal("0")
 
     for plan in plans:
-        entry_count = Entry.objects.filter(installment_plan=plan).count()
+        entry_count = (
+            Entry.objects.for_household(scope.household).filter(installment_plan=plan).count()
+        )
         if entry_count == 0:
             continue
         lines.append(
