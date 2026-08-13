@@ -334,7 +334,12 @@ async def simulate_projection(
         start = date(start_year, start_month, 1)
     except ValueError:
         return f"Erro: ano/mês inválido ({start_year}/{start_month})."
-    return await sync_to_async(simulate_projection_summary)(ctx.deps, items, start, months)
+    # `.household`, not the whole scope: this service takes a household, unlike
+    # the analytics/tools functions above, which take the scope and unwrap it
+    # themselves. E04 changed its first parameter and this call site was missed.
+    return await sync_to_async(simulate_projection_summary)(
+        ctx.deps.household, items, start, months
+    )
 
 
 # ── Ferramentas de MEMÓRIA ──────────────────────────────────────────────────
