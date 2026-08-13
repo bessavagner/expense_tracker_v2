@@ -41,5 +41,6 @@ urlpatterns = [
     path("api/assistant/", include("assistant.urls")),
     path("sw.js", ServiceWorkerView.as_view(), name="service-worker"),
     path("offline/", OfflineView.as_view(), name="offline"),
+    path("casa/", include("accounts.urls")),
     path("", include("finances.urls")),
 ]

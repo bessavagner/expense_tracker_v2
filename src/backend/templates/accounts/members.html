@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Membros da casa — Expense Tracker{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto space-y-6">
+    <header>
+        <h1 class="text-2xl font-semibold">Quem vê as contas da {{ household.name }}</h1>
+        <p class="text-sm opacity-70 mt-1">
+            Todo mundo nesta lista enxerga o mesmo extrato, o mesmo saldo e as mesmas metas.
+        </p>
+    </header>
+
+    <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+            <h2 class="card-title text-lg">Membros</h2>
+            <ul class="list">
+                {% for membership in memberships %}
+                <li class="list-row">
+                    <div class="list-col-grow break-all">{{ membership.user.email }}</div>
+                    <span class="badge badge-sm">{% if membership.role == 'owner' %}Dono{% else %}Membro{% endif %}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </section>
+
+    {% if invitations %}
+    <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+            <h2 class="card-title text-lg">Convites pendentes</h2>
+            <ul class="list">
+                {% for invitation in invitations %}
+                <li class="list-row">
+                    <div class="list-col-grow">
+                        <div class="break-all">{{ invitation.email }}</div>
+                        <div class="text-xs opacity-60">vale até {{ invitation.expires_at|date:"d/m/Y" }}</div>
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if viewer_is_owner %}
+    <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+            <h2 class="card-title text-lg">Convidar alguém</h2>
+            <p class="text-sm opacity-70">
+                A pessoa recebe um link por e-mail. Ele vale por 7 dias e só pode ser usado uma vez.
+            </p>
+            <form method="post" action="{% url 'invite_create' %}">
+                {% csrf_token %}
+                <fieldset class="fieldset">
+                    <label class="label" for="invite-email">E-mail</label>
+                    <input type="email" name="email" id="invite-email" class="input w-full"
+                           autocomplete="email" autocapitalize="none" inputmode="email"
+                           placeholder="pessoa@exemplo.com" required>
+                </fieldset>
+                <button type="submit" class="btn btn-accent mt-4" data-pending="Enviando…">Convidar</button>
+            </form>
+        </div>
+    </section>
+    {% endif %}
+</div>
+{% endblock %}
