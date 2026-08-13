@@ -44,6 +44,11 @@ INSTALLED_APPS = [
     "django_tailwind_cli",
     "django_htmx",
     "rest_framework",
+    # Identity (E05, ADR-007). `allauth.mfa` is the second factor Task 15
+    # requires of staff before admin will answer them.
+    "allauth",
+    "allauth.account",
+    "allauth.mfa",
     # Local apps
     "core",
     "accounts",
@@ -63,6 +68,10 @@ MIDDLEWARE = [
     "django_htmx.middleware.HtmxMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # Must sit after AuthenticationMiddleware: it reads request.user. Must sit
+    # before the household resolver, because a request allauth rejects should
+    # never have cost us a membership query.
+    "allauth.account.middleware.AccountMiddleware",
     "accounts.middleware.active_household_middleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -198,6 +207,30 @@ LOGIN_REDIRECT_URL = "/"
 AUTHENTICATION_BACKENDS = ["core.auth_backends.LockoutModelBackend"]
 LOGIN_FAILURE_LIMIT = int(os.environ.get("LOGIN_FAILURE_LIMIT", "10"))
 LOGIN_FAILURE_WINDOW_MINUTES = int(os.environ.get("LOGIN_FAILURE_WINDOW_MINUTES", "15"))
+
+# --- Identity (E05 / ADR-007) -------------------------------------------
+# Email is the login identifier. `username` stays on CustomUser because ten
+# models and every historical migration reference it, but allauth derives it
+# from the email at signup and no screen ever shows it.
+ACCOUNT_LOGIN_METHODS = {"email"}
+ACCOUNT_SIGNUP_FIELDS = ["email*", "email2*", "password1*", "password2*"]
+ACCOUNT_UNIQUE_EMAIL = True
+# Mandatory rather than optional: a half-verified account is a state every
+# downstream feature would have to reason about, and E11's activation funnel
+# would inherit the ambiguity. Decided with E11, per the epic's question 3.
+ACCOUNT_EMAIL_VERIFICATION = "mandatory"
+# Do not confirm or deny that an address has an account — applies to signup
+# and to password reset alike.
+ACCOUNT_PREVENT_ENUMERATION = True
+ACCOUNT_EMAIL_SUBJECT_PREFIX = ""
+ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION = True
+ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 3
+ACCOUNT_ADAPTER = "allauth.account.adapter.DefaultAccountAdapter"
+
+# The second factor Task 15 demands of staff. Recovery codes are on by
+# default and stay on: losing a phone must not lock the only operator out of
+# their own admin.
+MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
 
 # AI Assistant
 LLM_MODEL = os.environ.get("LLM_MODEL", "openai:gpt-5.4")

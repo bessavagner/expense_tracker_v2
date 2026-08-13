@@ -17,6 +17,9 @@ urlpatterns = [
     path(".well-known/assetlinks.json", AssetLinksView.as_view(), name="assetlinks"),
     path("login/", AppLoginView.as_view(), name="login"),
     path("logout/", LogoutView.as_view(next_page="/login/"), name="logout"),
+    # E05: allauth owns signup, verification, password reset and TOTP. Task 6
+    # hands it the login page too; until then this coexists with /login/.
+    path("accounts/", include("allauth.urls")),
     path("admin/", admin.site.urls),
     path("api/assistant/", include("assistant.urls")),
     path("sw.js", ServiceWorkerView.as_view(), name="service-worker"),
