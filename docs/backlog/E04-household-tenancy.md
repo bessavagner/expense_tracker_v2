@@ -112,14 +112,14 @@ finances/tests/test_category.py:33                  finances/tests/test_api_dash
 
 > `created_by` is not decoration. It delivers review finding M5 (no audit trail) as a side effect of work you are already doing, and E17 surfaces it in the UI.
 
-### S04-4 · Re-scope every read and write path
+### S04-4 · Re-scope every read and write path — **DONE** (phase 3, 2026-08-13)
 
 - **Given** the call sites inventoried above
 - **When** they are migrated to the household-scoped manager
 - **Then** the DRF API, all six HTMX view modules, and all `finances/services/` functions scope by household
 - **And** no domain query outside the accounts app references `user` for scoping
 
-### S04-5 · Re-scope the agent
+### S04-5 · Re-scope the agent — **DONE** (phase 3, 2026-08-13)
 
 - **Given** `deps_type=User` at `assistant/agents/assistant.py:69`
 - **When** the agent is re-scoped
@@ -155,11 +155,11 @@ Observable assertions:
 
 - [ ] A parameterized test covers every domain model for cross-household rejection
 - [ ] Two users in one household see identical ledger data
-- [ ] The agent cannot be argument-injected across households
-- [ ] `created_by` is populated for all back-filled rows
+- [x] The agent cannot be argument-injected across households — *2026-08-13: `assistant/tests/test_agent_scope.py::test_a_tool_cannot_widen_its_scope_through_an_argument`. `deps_type` is a frozen `AgentScope(household, user)`; an LLM-supplied category name from another household fails to resolve and no entry is written.*
+- [x] `created_by` is populated for all back-filled rows — *2026-08-13: `accounts/backfill.py` sets `created_by_id` from `user_id` wherever the model has the field. Note this covers **back-filled** rows only; phase 3's review found new rows written by `apply_income_recurrence` were losing it, fixed in `6d3c1e0`.*
 - [x] The data migration has been run against a **copy of the real Supabase data**, and entry counts, balances, and the monthly acumulado match before and after — this project has a documented history of balance reconciliation issues; verify totals, not just row counts — *2026-08-12: 3 users, 2320 entries, sum 344529.48; fingerprint identical, no unfilled rows (`scripts/rehearse-e04-migration.sh`, runbook § "Rehearsing the E04 tenancy migration")*
 - [ ] E03's indexes are re-created with `household` leading, and `EXPLAIN ANALYZE` confirms usage
-- [ ] `/security-review` passed with no cross-tenant finding
+- [~] `/security-review` passed with no cross-tenant finding — *2026-08-13: a full security review of the phase-3 branch found **no exploitable cross-tenant leak** (unscoped querysets, agent scope widening, write provenance, the cockpit pk union, the throttle's actor column, `dump_ledger_totals` reachability, middleware session tampering). Two LOW defense-in-depth items closed in `6d3c1e0`. Marked `~` not `x` because it was run as a review agent over `git diff main...HEAD`, not the literal `/security-review` command, which needs `origin/HEAD` — main is 28 commits ahead of origin. Re-run the command form after phase 4 drops the `user` columns.*
 
 ## Out of scope
 
