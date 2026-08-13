@@ -77,18 +77,16 @@ class HouseholdOwnedModel(models.Model):
     so there is exactly one definition of the tenant column and phase 4 can
     enumerate the models instead of trusting a hand-maintained list.
 
-    ``household`` is nullable through E04 phases 2 and 3 because the rows that
-    exist today have no household until the back-fill runs, and because every
-    not-yet-converted write site still sets only ``user``. Phase 4 makes it
-    NOT NULL once every write path sets it explicitly — that is the point at
-    which the database itself starts enforcing tenancy.
+    ``household`` was nullable through E04 phases 2 and 3, while the back-fill
+    ran and while write sites still set only ``user``. Phase 4 made it NOT
+    NULL: every write path now names its household explicitly, and from here
+    the database is what enforces tenancy — not a signal, not a convention. A
+    row with no household is impossible rather than merely unintended.
     """
 
     household = models.ForeignKey(
         "accounts.Household",
         on_delete=models.CASCADE,
-        null=True,
-        blank=True,
         related_name="%(app_label)s_%(class)s",
     )
 

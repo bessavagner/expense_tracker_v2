@@ -606,20 +606,23 @@ def test_summary_excludes_other_households(
 @pytest.mark.django_db
 def test_api_without_a_household_returns_zeroes_not_everything(client, user, household):
     """A user with no Membership must see an empty dashboard, never the table.
-    Note: `user`, not `logged_client` — this test needs a household-less user."""
-    from finances.models import Income
 
+    Note: `client`, not `logged_client` — this test needs a household-less user.
+
+    Through phases 2 and 3 this also blanked the row's household, to make the
+    "everything" it must not return as visible as possible. Phase 4 made the
+    column NOT NULL, so a tenant-less row is no longer constructible — and that
+    is the stronger statement. What remains is the case that still exists: a
+    populated household the requester is not a member of. Fail closed means
+    zeroes, not that household's ledger.
+    """
     client.force_login(user)
-    income = baker.make(
+    baker.make(
         "finances.Income",
         household=household,
         amount=Decimal("100.00"),
         month=date(2026, 3, 1),
     )
-    # The phase-2 write bridge fills `household` on create, and creating the row
-    # also mints the Membership the middleware reads. Strip both back out with
-    # `.update()`, which bypasses signals — the technique phase 2's own tests used.
-    Income.objects.filter(pk=income.pk).update(household=None)
     Membership.objects.filter(user=user).delete()
 
     response = client.get("/api/dashboard/summary/?year=2026&month=3")

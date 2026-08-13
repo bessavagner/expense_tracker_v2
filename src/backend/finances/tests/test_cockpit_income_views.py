@@ -12,6 +12,11 @@ from finances.models import Income
 class TestCockpitIncomeViews(TestCase):
     def setUp(self):
         self.user = baker.make(CustomUser)
+        # Resolved for its side effect: it mints the Membership the middleware
+        # reads. Without one `request.household` is None, and since phase 4
+        # made the column NOT NULL that is an IntegrityError on the first
+        # write rather than a quietly empty read.
+        self.household = household_for_user(self.user)
         self.client.force_login(self.user)
 
     def test_create_income_for_month_renders_section(self):

@@ -38,10 +38,10 @@ HOUSEHOLD_OWNED = {
     "AssistantUsageEvent",
 }
 
-BAKE_BASELINE = {
-    "src/backend/accounts/tests/test_backfill.py",
-    "src/backend/accounts/tests/test_bridge.py",
-}
+# Empty as of phase 4: every test names the household it writes into. The
+# assignment stays so `test_bake_baseline_has_no_stale_entries` keeps meaning
+# something and a regression cannot quietly re-add a file.
+BAKE_BASELINE = set()
 
 
 def _model_name(call):

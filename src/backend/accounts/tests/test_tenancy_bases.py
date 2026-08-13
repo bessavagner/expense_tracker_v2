@@ -57,9 +57,9 @@ def test_every_registered_model_has_a_scoped_manager():
         )
 
 
-def test_household_fk_cascades_and_is_nullable_for_now():
+def test_household_fk_cascades_and_is_required():
     field = HouseholdOwnedModel._meta.get_field("household")
-    assert field.null is True  # NOT NULL is phase 4
+    assert field.null is False  # phase 4: the database enforces tenancy
     assert field.remote_field.on_delete is models.CASCADE
 
 

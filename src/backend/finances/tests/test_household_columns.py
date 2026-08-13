@@ -33,25 +33,31 @@ def test_entry_scopes_through_the_household_manager():
     assert Entry.objects.for_household(None).count() == 0
 
 
-def test_entry_household_may_be_null_during_the_transition(household):
-    """Phases 2 and 3 run with both columns and a partially-converted app.
-    NOT NULL arrives in phase 4, once every write path sets it.
+def test_household_is_required():
+    """Phase 4: the database enforces tenancy, not just the application.
 
-    E04 PHASE 4, TASK 12 DELETES THIS TEST — it asserts the exact property the
-    NOT NULL migration removes. Its replacement is `test_household_is_required`
-    in this same file.
-
-    The write goes through a queryset ``.update()`` because the phase 2 bridge
-    refills any household a normal save leaves empty — so the only way to ask
-    the database whether the column still accepts NULL is to bypass signals.
+    Replaces `test_entry_household_may_be_null_during_the_transition`, which
+    asserted exactly the property the NOT NULL migration removes.
     """
     from finances.models import Entry
 
-    entry = baker.make("finances.Entry", household=household)
-    Entry.objects.filter(pk=entry.pk).update(household=None)
-    entry.refresh_from_db()
+    assert Entry._meta.get_field("household").null is False
 
-    assert entry.household_id is None
+
+def test_a_tenant_less_row_cannot_be_written():
+    """Not merely declared required — refused by the database.
+
+    A queryset ``.update()`` bypasses every signal and every model hook, so it
+    is the sharpest way to ask whether the column itself still accepts NULL.
+    """
+    from django.db import IntegrityError, transaction
+
+    from finances.models import Entry
+
+    entry = baker.make("finances.Entry", household=baker.make(Household))
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        Entry.objects.filter(pk=entry.pk).update(household=None)
 
 
 FINANCES_HOUSEHOLD_MODELS = [

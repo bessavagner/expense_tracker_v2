@@ -17,8 +17,15 @@ from assistant.models import ChatMessage
 
 
 @pytest.fixture
-def csrf_client(user):
-    """A client that enforces CSRF and already holds a csrftoken cookie."""
+def csrf_client(user, household):
+    """A client that enforces CSRF and already holds a csrftoken cookie.
+
+    `household` is requested for its side effect: the middleware resolves
+    `request.household` from a Membership, and a user without one gives the
+    assistant a scope with no tenant — which, since phase 4 made the column NOT
+    NULL, is an IntegrityError on the first usage event rather than a quiet
+    empty read.
+    """
     client = Client(enforce_csrf_checks=True)
     client.force_login(user)
     client.get("/")  # any rendered page sets the cookie
@@ -27,16 +34,16 @@ def csrf_client(user):
 
 @pytest.mark.django_db
 class TestChatCsrf:
-    def test_post_without_token_is_rejected(self, csrf_client, user):
+    def test_post_without_token_is_rejected(self, csrf_client, household):
         response = csrf_client.post(
             "/api/assistant/chat/",
             data=json.dumps({"message": "oi"}),
             content_type="application/json",
         )
         assert response.status_code == 403
-        assert not ChatMessage.objects.filter(user=user).exists()
+        assert not ChatMessage.objects.for_household(household).exists()
 
-    def test_post_with_invalid_token_is_rejected(self, csrf_client, user):
+    def test_post_with_invalid_token_is_rejected(self, csrf_client, household):
         response = csrf_client.post(
             "/api/assistant/chat/",
             data=json.dumps({"message": "oi"}),
@@ -44,9 +51,9 @@ class TestChatCsrf:
             headers={"x-csrftoken": "x" * 64},
         )
         assert response.status_code == 403
-        assert not ChatMessage.objects.filter(user=user).exists()
+        assert not ChatMessage.objects.for_household(household).exists()
 
-    def test_post_with_valid_token_succeeds(self, csrf_client, user):
+    def test_post_with_valid_token_succeeds(self, csrf_client, household):
         token = csrf_client.cookies["csrftoken"].value
         with agents_override(TestModel()):
             response = csrf_client.post(
@@ -58,7 +65,7 @@ class TestChatCsrf:
         assert response.status_code == 200
         assert response["Content-Type"] == "text/event-stream"
 
-    def test_multipart_image_with_valid_token_succeeds(self, csrf_client, user):
+    def test_multipart_image_with_valid_token_succeeds(self, csrf_client, household):
         from django.core.files.uploadedfile import SimpleUploadedFile
 
         from assistant.agents.assistant import assistant_agent
@@ -82,7 +89,7 @@ class TestChatCsrf:
             )
         assert response.status_code == 200
 
-    def test_multipart_audio_with_valid_token_succeeds(self, csrf_client, user, monkeypatch):
+    def test_multipart_audio_with_valid_token_succeeds(self, csrf_client, household, monkeypatch):
         from django.core.files.uploadedfile import SimpleUploadedFile
 
         async def fake_transcribe(data, filename, content_type, *, client=None):
