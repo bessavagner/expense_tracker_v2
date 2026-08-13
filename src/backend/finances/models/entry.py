@@ -19,6 +19,11 @@ class Entry(AuthoredHouseholdModel):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="entries",
+        # E04 phase 4, beat one: nullable so the test suite can move from
+        # `user=` to `household=` in one pass. The column goes entirely once
+        # every write site sets a household. Do not start relying on it again.
+        null=True,
+        blank=True,
         # No standalone index on user_id: it is the leading column of BOTH
         # indexes in Meta, so those already serve every user-only lookup (an
         # Index Only Scan, measured). Keeping Django's default FK index here is

@@ -19,6 +19,9 @@ class PaymentMethod(AuthoredHouseholdModel):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="payment_methods",
+        # E04 phase 4, beat one: nullable so the suite converts in one pass.
+        null=True,
+        blank=True,
     )
     name = models.CharField(max_length=100)
     type = models.CharField(max_length=20, choices=PaymentType.choices)

@@ -10,7 +10,12 @@ from finances.services.billing import add_months, installment_billing_months
 class InstallmentPlan(AuthoredHouseholdModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="installment_plans"
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="installment_plans",
+        # E04 phase 4, beat one: nullable so the suite converts in one pass.
+        null=True,
+        blank=True,
     )
     date = models.DateField()
     description = models.CharField(max_length=500)

@@ -19,6 +19,9 @@ class ChatMessage(AuthoredHouseholdModel):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="chat_messages",
+        # E04 phase 4, beat one: nullable so the suite converts in one pass.
+        null=True,
+        blank=True,
         # Redundant with chat_user_recent_idx, whose leading column is user.
         # See the note on finances.Entry.user.
         db_index=False,
@@ -56,6 +59,9 @@ class MemoryRule(AuthoredHouseholdModel):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="memory_rules",
+        # E04 phase 4, beat one: nullable so the suite converts in one pass.
+        null=True,
+        blank=True,
     )
     trigger = models.CharField(max_length=255)
     field = models.CharField(max_length=50)
@@ -99,6 +105,9 @@ class ReceiptDraft(AuthoredHouseholdModel):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="receipt_drafts",
+        # E04 phase 4, beat one: nullable so the suite converts in one pass.
+        null=True,
+        blank=True,
         # Redundant with draft_user_status_recent_idx, whose leading column is
         # user. See the note on finances.Entry.user.
         db_index=False,
@@ -147,6 +156,9 @@ class MemoryEmbedding(HouseholdOwnedModel):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="memory_embeddings",
+        # E04 phase 4, beat one: nullable so the suite converts in one pass.
+        null=True,
+        blank=True,
     )
     text = models.TextField()
     embedding = VectorField(dimensions=1536)

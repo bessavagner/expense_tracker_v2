@@ -12,6 +12,9 @@ class Category(AuthoredHouseholdModel):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="categories",
+        # E04 phase 4, beat one: nullable so the suite converts in one pass.
+        null=True,
+        blank=True,
     )
     name = models.CharField(max_length=100)
     budget = models.ForeignKey(

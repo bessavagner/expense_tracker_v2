@@ -12,6 +12,9 @@ class Income(AuthoredHouseholdModel):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="incomes",
+        # E04 phase 4, beat one: nullable so the suite converts in one pass.
+        null=True,
+        blank=True,
         # Redundant with income_user_month_idx, whose leading column is user.
         # See the longer note on Entry.user for why the extra index is a cost
         # rather than a spare tyre.
