@@ -245,6 +245,7 @@ Reviewed and clean, each verified rather than assumed:
 |---|---|---|
 | HIGH | A user with no `Membership` could not write anything — 500 on the NOT NULL | **Fixed**, `ff68d9d` |
 | — | `/security-review`, command form, all four phases: **zero findings** | Gate green |
+| — | `simulate_projection` passed a scope where a household was expected (non-security; fails closed) | **Fixed**, `3ebea6c` |
 | MEDIUM | `transfer_entries` round-trip splits a shared household by author | **Follow-on**, below |
 | LOW | Duplicate category / payment-method name is a 500 | **Follow-on**, below — pre-existing on `main` |
 
@@ -268,7 +269,7 @@ Reviewed and clean, each verified rather than assumed:
    lands in `exclude` and `UniqueConstraint.validate` returns early. Same
    user-visible bug the budget views were just fixed for. Pre-existing on
    `main`, so not a phase-4 regression.
-3. **`simulate_projection` is wired to the wrong argument.**
+3. ~~**`simulate_projection` is wired to the wrong argument.**~~ **FIXED in `3ebea6c`**, with a tool-level test verified by reverting the fix and watching it fail.
    `assistant/agents/assistant.py:337` passes `ctx.deps` — an `AgentScope` — to
    `simulate_projection_summary`, whose first parameter became a *household* in
    this epic (`finances/services/whatif.py:92`). Found by the phase-4
