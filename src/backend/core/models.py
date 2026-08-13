@@ -3,6 +3,12 @@ from django.db import models
 
 
 class CustomUser(AbstractUser):
+    # AbstractUser leaves this blank-able and non-unique. E05 makes the address
+    # the login identifier, so it has to be exactly one account's. `username`
+    # stays — ten models and every historical migration reference it — but
+    # allauth derives it from the email and no screen shows it.
+    email = models.EmailField("endereço de e-mail", unique=True)
+
     class Meta:
         verbose_name = "user"
         verbose_name_plural = "users"

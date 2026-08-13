@@ -771,6 +771,63 @@ Run it at both phase-3 gates (3a, after the Django surface converts; 3b, after
 the agent). Needs the pgvector container on `:5433` and a `.env`; the temporary
 worktree inherits your `.env` and is removed on exit.
 
+### Rehearsing the E05 email-unique migration
+
+`core/0003_customuser_email_unique` puts a UNIQUE constraint on
+`core_customuser.email`, a column that has held `''` for every account that
+never set an address. `ALTER TABLE … ADD CONSTRAINT UNIQUE` aborts the whole
+deploy the moment two rows share a value, and `''` is the value they would
+share — so the migration back-fills blanks with
+`<username>@sem-email.invalid` (RFC 2606 reserves `.invalid`, so a placeholder
+can neither collide with a real address nor receive mail) before adding the
+constraint.
+
+```bash
+scripts/rehearse-e05-email-unique.sh
+```
+
+Same shape as the E04 script: production is read once by `pg_dump`, restored
+into a throwaway `pgvector/pgvector:pg17` container on `127.0.0.1:55433`,
+migrated there, and inspected. Nothing on the production server is created,
+migrated or dropped. Credentials come from `SUPABASE_SESSION_POOLER` in `.env`
+if `PGHOST` is unset — the script splits the URL itself because the password
+contains a space and the URL form is therefore malformed for libpq.
+
+It fails loudly, before migrating, if two accounts share a **non-blank**
+address. The back-fill cannot repair that case and resolving it is an operator
+decision, not a code one.
+
+**Run for real on 2026-08-13.** Production held 3 accounts, of which 1 had a
+blank address; the migration applied cleanly and left zero duplicates.
+
+**The one account that needs a human afterwards.** `claude-bessavagner`
+(`is_staff=True`) is the blank one, so it becomes
+`claude-bessavagner@sem-email.invalid` — an address that can never receive
+mail. From E05 the login identifier *is* the email, so **that account cannot
+log in until someone gives it a real one**, and it is a staff account, which
+means it is also the one that reaches the admin. Repair it in the same
+maintenance window as the deploy:
+
+```bash
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/postgres?sslmode=require" \
+  uv run python src/backend/manage.py shell -c "
+from core.models import CustomUser
+u = CustomUser.objects.get(username='claude-bessavagner')
+u.email = 'seu-endereco@gmail.com'
+u.save(update_fields=['email'])
+print(u.username, u.email)
+"
+```
+
+Then check nothing else was left behind:
+
+```sql
+SELECT id, username, email, is_staff FROM core_customuser
+ WHERE email LIKE '%@sem-email.invalid';
+```
+
+Expected after the repair: zero rows.
+
 ---
 
 ## Signing in, and clearing a lockout
