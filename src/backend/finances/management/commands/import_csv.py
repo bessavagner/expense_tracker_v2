@@ -18,6 +18,7 @@ from pathlib import Path
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
+from accounts.resolution import household_for_user
 from core.models import CustomUser
 from finances.models import (
     Category,
@@ -54,15 +55,19 @@ class Command(BaseCommand):
         except CustomUser.DoesNotExist as e:
             raise CommandError(f"User '{options['user']}' does not exist.") from e
 
+        # Resolved once: every row this run writes belongs to the household, and
+        # the catalogue it reuses is the household's, not this person's.
+        self.household = household_for_user(self.user)
+
         self.base = Path(options["dir"])
         if not self.base.is_dir():
             raise CommandError(f"Directory '{self.base}' does not exist.")
 
         self._cat_cache: dict[str, Category] = {
-            c.name.lower(): c for c in Category.objects.filter(user=self.user)
+            c.name.lower(): c for c in Category.objects.for_household(self.household)
         }
         self._pm_cache: dict[str, PaymentMethod] = {
-            p.name.lower(): p for p in PaymentMethod.objects.filter(user=self.user)
+            p.name.lower(): p for p in PaymentMethod.objects.for_household(self.household)
         }
 
         # Order matters: payment methods and categories must exist before entries.
@@ -78,7 +83,11 @@ class Command(BaseCommand):
         key = name.strip().lower()
         cat = self._cat_cache.get(key)
         if cat is None:
-            cat, _ = Category.objects.get_or_create(user=self.user, name=name.strip())
+            cat, _ = Category.objects.get_or_create(
+                household=self.household,
+                name=name.strip(),
+                defaults={"user": self.user, "created_by": self.user},
+            )
             self._cat_cache[key] = cat
             self.stdout.write(f"  + categoria criada: {name.strip()}")
         return cat
@@ -88,7 +97,13 @@ class Command(BaseCommand):
         pm = self._pm_cache.get(key)
         if pm is None:
             pm, _ = PaymentMethod.objects.get_or_create(
-                user=self.user, name=name.strip(), defaults={"type": default_type}
+                household=self.household,
+                name=name.strip(),
+                defaults={
+                    "type": default_type,
+                    "user": self.user,
+                    "created_by": self.user,
+                },
             )
             self._pm_cache[key] = pm
             self.stdout.write(f"  + forma de pagamento criada: {name.strip()}")
@@ -120,9 +135,14 @@ class Command(BaseCommand):
             default_day = Counter(positive_days).most_common(1)[0][0] if positive_days else None
 
             pm, _ = PaymentMethod.objects.update_or_create(
-                user=self.user,
+                household=self.household,
                 name=name,
-                defaults={"type": pm_type, "closing_day": default_day},
+                defaults={
+                    "type": pm_type,
+                    "closing_day": default_day,
+                    "user": self.user,
+                    "created_by": self.user,
+                },
             )
             self._pm_cache[name.lower()] = pm
 
@@ -146,10 +166,14 @@ class Command(BaseCommand):
         for row in rows:
             for month, amount in row["months"].items():
                 Income.objects.update_or_create(
-                    user=self.user,
+                    household=self.household,
                     name=row["nome"],
                     month=month,
-                    defaults={"amount": amount},
+                    defaults={
+                        "amount": amount,
+                        "user": self.user,
+                        "created_by": self.user,
+                    },
                 )
 
     def _import_systemics(self):
@@ -169,18 +193,22 @@ class Command(BaseCommand):
             category = self._get_category(row["categoria"])
             default_amount = Counter(months.values()).most_common(1)[0][0]
             se, _ = SystemicExpense.objects.update_or_create(
-                user=self.user,
+                household=self.household,
                 name=row["nome"],
                 defaults={
                     "category": category,
                     "payment_method": pix,
                     "default_amount": default_amount,
+                    "user": self.user,
+                    "created_by": self.user,
                 },
             )
             for month, amount in months.items():
-                exists = Entry.objects.filter(
-                    user=self.user, systemic_expense=se, date=month
-                ).exists()
+                exists = (
+                    Entry.objects.for_household(self.household)
+                    .filter(systemic_expense=se, date=month)
+                    .exists()
+                )
                 if not exists:
                     se.create_monthly_entry(month, amount=amount, payment_method=pix)
 
@@ -199,16 +227,21 @@ class Command(BaseCommand):
                 total = parse_amount(raw["valor"])
                 category = self._get_category(raw["categoria"])
                 payment_method = self._get_payment_method(raw["forma"])
-                if InstallmentPlan.objects.filter(
-                    user=self.user,
-                    date=entry_date,
-                    total_amount=total,
-                    description=description,
-                    payment_method=payment_method,
-                ).exists():
+                if (
+                    InstallmentPlan.objects.for_household(self.household)
+                    .filter(
+                        date=entry_date,
+                        total_amount=total,
+                        description=description,
+                        payment_method=payment_method,
+                    )
+                    .exists()
+                ):
                     continue
                 plan = InstallmentPlan.objects.create(
-                    user=self.user,
+                    user=self.user,  # still NOT NULL until phase 4
+                    household=self.household,
+                    created_by=self.user,
                     date=entry_date,
                     description=description,
                     category=category,
@@ -233,17 +266,22 @@ class Command(BaseCommand):
                     description = raw["descrição"].strip()
                     category = self._get_category(raw["categoria"])
                     payment_method = self._get_payment_method(raw["forma"])
-                    if Entry.objects.filter(
-                        user=self.user,
-                        date=entry_date,
-                        amount=amount,
-                        description=description,
-                        category=category,
-                        payment_method=payment_method,
-                    ).exists():
+                    if (
+                        Entry.objects.for_household(self.household)
+                        .filter(
+                            date=entry_date,
+                            amount=amount,
+                            description=description,
+                            category=category,
+                            payment_method=payment_method,
+                        )
+                        .exists()
+                    ):
                         continue
                     Entry.objects.create(
-                        user=self.user,
+                        user=self.user,  # still NOT NULL until phase 4
+                        household=self.household,
+                        created_by=self.user,
                         date=entry_date,
                         amount=amount,
                         description=description,

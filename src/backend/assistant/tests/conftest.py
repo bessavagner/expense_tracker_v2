@@ -2,7 +2,6 @@ import os
 
 import pydantic_ai.models
 import pytest
-from django.test import Client
 from model_bakery import baker
 
 # Só libera chamadas reais de modelo quando RUN_LLM_TESTS=1 (testes de LLM
@@ -10,36 +9,52 @@ from model_bakery import baker
 pydantic_ai.models.ALLOW_MODEL_REQUESTS = os.environ.get("RUN_LLM_TESTS") == "1"
 
 
-@pytest.fixture
-def user(db):
-    return baker.make("core.CustomUser", username="vagner")
+# `user`, `other_user`, `household`, `other_household` and `logged_client` all
+# live in the root `src/backend/conftest.py` — one definition, reachable from
+# every app's tests. Do not shadow `logged_client` here: a copy that omits the
+# `household` dependency makes household-scoped view tests pass vacuously.
 
 
 @pytest.fixture
-def other_user(db):
-    """A second tenant, for asserting that a query stays scoped to one user."""
-    return baker.make("core.CustomUser", username="amanda")
+def scope(user, household):
+    """What the agent is allowed to see, and who is asking.
+
+    Every tool and every analytics function takes one of these; building it
+    here keeps the tests honest about where scope comes from — deps, never a
+    tool argument.
+    """
+    from assistant.agents.scope import AgentScope
+
+    return AgentScope(household=household, user=user)
 
 
 @pytest.fixture
-def logged_client(user):
-    client = Client()
-    client.force_login(user)
-    return client
+def other_scope(other_user, other_household):
+    """The neighbour's scope, for asserting a tool cannot reach across."""
+    from assistant.agents.scope import AgentScope
+
+    return AgentScope(household=other_household, user=other_user)
 
 
 @pytest.fixture
-def seeded_user(user):
+def seeded_user(user, household):
     """User with categories and payment methods for agent testing."""
-    baker.make("finances.Category", user=user, name="Alimentação")
-    baker.make("finances.Category", user=user, name="Lanche")
-    baker.make("finances.Category", user=user, name="Álcool")
-    baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")
+    baker.make("finances.Category", user=user, household=household, name="Alimentação")
+    baker.make("finances.Category", user=user, household=household, name="Lanche")
+    baker.make("finances.Category", user=user, household=household, name="Álcool")
+    baker.make("finances.PaymentMethod", user=user, household=household, name="Pix", type="pix")
     baker.make(
         "finances.PaymentMethod",
         user=user,
+        household=household,
         name="Crédito C6",
         type="credit_card",
         closing_day=25,
     )
     return user
+
+
+@pytest.fixture
+def seeded_scope(seeded_user, scope):
+    """`scope`, with the catalogue `seeded_user` creates already in place."""
+    return scope

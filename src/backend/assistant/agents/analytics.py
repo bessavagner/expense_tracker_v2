@@ -34,19 +34,21 @@ def _billing_month(year: int, month: int) -> "date | None":
         return None
 
 
-def _spend_qs(user, billing_month):
+def _spend_qs(scope, billing_month):
     """Positive-amount (despesa) entries for a billing month — exclui reembolsos."""
-    return Entry.objects.filter(user=user, billing_month=billing_month, amount__gt=0)
+    return Entry.objects.for_household(scope.household).filter(
+        billing_month=billing_month, amount__gt=0
+    )
 
 
-def category_breakdown(user, year: int, month: int) -> str:
+def category_breakdown(scope, year: int, month: int) -> str:
     """Quebra de gastos por categoria e por forma de pagamento no mês."""
     bm = _billing_month(year, month)
     if bm is None:
         return f"Erro: ano/mês inválido ({year}/{month})."
 
     by_cat = (
-        _spend_qs(user, bm)
+        _spend_qs(scope, bm)
         .values("category__name")
         .annotate(total=Sum("amount"))
         .order_by("-total")
@@ -55,7 +57,7 @@ def category_breakdown(user, year: int, month: int) -> str:
         return f"Nenhum gasto em {month:02d}/{year}."
 
     by_pm = (
-        _spend_qs(user, bm)
+        _spend_qs(scope, bm)
         .values("payment_method__name")
         .annotate(total=Sum("amount"))
         .order_by("-total")
@@ -68,7 +70,7 @@ def category_breakdown(user, year: int, month: int) -> str:
     return "\n".join(lines)
 
 
-def compare_months(user, year: int, month: int) -> str:
+def compare_months(scope, year: int, month: int) -> str:
     """Compara o gasto total do mês com o mês anterior (delta e %)."""
     bm = _billing_month(year, month)
     if bm is None:
@@ -76,8 +78,8 @@ def compare_months(user, year: int, month: int) -> str:
 
     prev = date(bm.year - 1, 12, 1) if bm.month == 1 else date(bm.year, bm.month - 1, 1)
 
-    cur_total = _spend_qs(user, bm).aggregate(t=Sum("amount"))["t"] or Decimal("0")
-    prev_total = _spend_qs(user, prev).aggregate(t=Sum("amount"))["t"] or Decimal("0")
+    cur_total = _spend_qs(scope, bm).aggregate(t=Sum("amount"))["t"] or Decimal("0")
+    prev_total = _spend_qs(scope, prev).aggregate(t=Sum("amount"))["t"] or Decimal("0")
 
     if prev_total == 0:
         return (
@@ -95,7 +97,7 @@ def compare_months(user, year: int, month: int) -> str:
     )
 
 
-def monthly_report_csv(user, year: int, month: int) -> str:
+def monthly_report_csv(scope, year: int, month: int) -> str:
     """Relatório CSV do mês (semicolon-delimited, espelha o legado sheets+claude).
 
     Convenções do legado: sem prefixo ``R$`` nos valores, vírgula na descrição
@@ -106,7 +108,8 @@ def monthly_report_csv(user, year: int, month: int) -> str:
         return f"Erro: ano/mês inválido ({year}/{month})."
 
     entries = (
-        Entry.objects.filter(user=user, billing_month=bm)
+        Entry.objects.for_household(scope.household)
+        .filter(billing_month=bm)
         .select_related("category", "payment_method")
         .order_by("date", "created_at")
     )
@@ -122,7 +125,7 @@ def monthly_report_csv(user, year: int, month: int) -> str:
     return "\n".join(rows)
 
 
-def project_month_end(user, year: int, month: int, today: date | None = None) -> str:
+def project_month_end(scope, year: int, month: int, today: date | None = None) -> str:
     """Projeção de gasto até o fim do mês por *run-rate* (regra de três simples)."""
     bm = _billing_month(year, month)
     if bm is None:
@@ -134,7 +137,7 @@ def project_month_end(user, year: int, month: int, today: date | None = None) ->
     else:
         elapsed = days_in_month  # mês fechado: projeção == realizado
 
-    spent = _spend_qs(user, bm).aggregate(t=Sum("amount"))["t"] or Decimal("0")
+    spent = _spend_qs(scope, bm).aggregate(t=Sum("amount"))["t"] or Decimal("0")
     elapsed = max(elapsed, 1)
     projected = spent / elapsed * days_in_month
 
@@ -144,7 +147,7 @@ def project_month_end(user, year: int, month: int, today: date | None = None) ->
     )
 
 
-def detect_anomalies(user, year: int, month: int, factor: Decimal = ANOMALY_FACTOR) -> str:
+def detect_anomalies(scope, year: int, month: int, factor: Decimal = ANOMALY_FACTOR) -> str:
     """Sinaliza categorias cujo gasto excede ``factor`` × a média (trimestral/histórica)."""
     bm = _billing_month(year, month)
     if bm is None:
@@ -152,11 +155,11 @@ def detect_anomalies(user, year: int, month: int, factor: Decimal = ANOMALY_FACT
 
     totals = {
         r["category__id"]: r["total"]
-        for r in _spend_qs(user, bm).values("category__id").annotate(total=Sum("amount"))
+        for r in _spend_qs(scope, bm).values("category__id").annotate(total=Sum("amount"))
     }
-    averages = category_moving_averages(user, window=3, as_of=bm)
+    averages = category_moving_averages(scope.household, window=3, as_of=bm)
     flagged = []
-    for cat in Category.objects.filter(user=user, id__in=totals.keys()):
+    for cat in Category.objects.for_household(scope.household).filter(id__in=totals.keys()):
         avg = averages.get(cat.id)
         if not avg or avg <= 0:
             continue
@@ -170,10 +173,10 @@ def detect_anomalies(user, year: int, month: int, factor: Decimal = ANOMALY_FACT
     return f"Anomalias de gasto em {month:02d}/{year}:\n" + "\n".join(flagged)
 
 
-def category_averages(user, year: int | None = None, month: int | None = None) -> str:
+def category_averages(scope, year: int | None = None, month: int | None = None) -> str:
     """Média móvel (3m) de gasto por categoria."""
     as_of = _billing_month(year, month) if (year and month) else None
-    rows = category_moving_averages_named(user, window=3, as_of=as_of)
+    rows = category_moving_averages_named(scope.household, window=3, as_of=as_of)
     if not rows:
         return "Sem histórico suficiente para médias por categoria."
     lines = ["Média de gasto por categoria (3 meses):"]
@@ -181,7 +184,7 @@ def category_averages(user, year: int | None = None, month: int | None = None) -
     return "\n".join(lines)
 
 
-def build_proactive_alerts(user, year: int, month: int) -> list[dict]:
+def build_proactive_alerts(scope, year: int, month: int) -> list[dict]:
     """Motor determinístico de gatilhos: retorna eventos priorizados de orçamento.
 
     Cada evento: {category, level (over|warn|info), pct, ceiling, total, priority,
@@ -194,10 +197,12 @@ def build_proactive_alerts(user, year: int, month: int) -> list[dict]:
 
     totals = {
         r["category__id"]: r["total"]
-        for r in _spend_qs(user, bm).values("category__id").annotate(total=Sum("amount"))
+        for r in _spend_qs(scope, bm).values("category__id").annotate(total=Sum("amount"))
     }
     alerts: list[dict] = []
-    for cat in Category.objects.filter(user=user, budget_ceiling__gt=0, id__in=totals.keys()):
+    for cat in Category.objects.for_household(scope.household).filter(
+        budget_ceiling__gt=0, id__in=totals.keys()
+    ):
         total = totals[cat.id]
         pct = total / cat.budget_ceiling * 100
         if pct >= 100:
@@ -227,9 +232,9 @@ def build_proactive_alerts(user, year: int, month: int) -> list[dict]:
     return alerts
 
 
-def proactive_alerts(user, year: int, month: int) -> str:
+def proactive_alerts(scope, year: int, month: int) -> str:
     """Wrapper textual do motor de gatilhos para uso como ferramenta de agente."""
-    alerts = build_proactive_alerts(user, year, month)
+    alerts = build_proactive_alerts(scope, year, month)
     if not alerts:
         return f"Tudo dentro do orçamento em {month:02d}/{year}. Nenhum alerta."
     return f"Alertas de orçamento em {month:02d}/{year}:\n" + "\n".join(
@@ -237,29 +242,31 @@ def proactive_alerts(user, year: int, month: int) -> str:
     )
 
 
-def upcoming_obligations(user, year: int, month: int) -> str:
+def upcoming_obligations(scope, year: int, month: int) -> str:
     """Lista obrigações futuras conhecidas: parcelas e gastos sistemáticos do mês."""
     bm = _billing_month(year, month)
     if bm is None:
         return f"Erro: ano/mês inválido ({year}/{month})."
 
     lines: list[str] = []
-    inst_total = Entry.objects.filter(
-        user=user, billing_month=bm, installment_plan__isnull=False, amount__gt=0
+    inst_total = Entry.objects.for_household(scope.household).filter(
+        billing_month=bm, installment_plan__isnull=False, amount__gt=0
     ).aggregate(t=Sum("amount"))["t"] or Decimal("0")
     if inst_total > 0:
         lines.append(f"- Parcelas no mês: R$ {inst_total:.2f}")
 
-    sys_total = Entry.objects.filter(
-        user=user, billing_month=bm, systemic_expense__isnull=False, amount__gt=0
+    sys_total = Entry.objects.for_household(scope.household).filter(
+        billing_month=bm, systemic_expense__isnull=False, amount__gt=0
     ).aggregate(t=Sum("amount"))["t"] or Decimal("0")
     if sys_total > 0:
         lines.append(f"- Gastos sistemáticos no mês: R$ {sys_total:.2f}")
 
     if not lines:
         # nenhum lançamento ainda — usa os templates/planos como referência
-        active_systemic = SystemicExpense.objects.filter(user=user, is_active=True).count()
-        active_plans = InstallmentPlan.objects.filter(user=user).count()
+        active_systemic = (
+            SystemicExpense.objects.for_household(scope.household).filter(is_active=True).count()
+        )
+        active_plans = InstallmentPlan.objects.for_household(scope.household).count()
         return (
             f"Sem parcelas/sistemáticos lançados em {month:02d}/{year}. "
             f"(Cadastrados: {active_plans} parcelamento(s), {active_systemic} sistemático(s).)"

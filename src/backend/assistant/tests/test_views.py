@@ -18,6 +18,7 @@ def consume_streaming(response):
         # async generator — use async_to_sync to stay within the same thread/DB context
 
         async def collect():
+
             chunks = []
             async for chunk in content:
                 chunks.append(chunk)
@@ -31,6 +32,7 @@ def consume_streaming(response):
 @pytest.mark.django_db
 class TestChatEndpoint:
     def test_post_creates_user_message(self, logged_client, user):
+
         with agents_override(TestModel()):
             response = logged_client.post(
                 "/api/assistant/chat/",
@@ -41,6 +43,7 @@ class TestChatEndpoint:
         assert ChatMessage.objects.filter(user=user, role="user").exists()
 
     def test_post_returns_sse_content_type(self, logged_client, user):
+
         with agents_override(TestModel()):
             response = logged_client.post(
                 "/api/assistant/chat/",
@@ -50,6 +53,7 @@ class TestChatEndpoint:
         assert response["Content-Type"] == "text/event-stream"
 
     def test_post_creates_assistant_message(self, logged_client, user):
+
         with agents_override(TestModel()):
             response = logged_client.post(
                 "/api/assistant/chat/",
@@ -61,6 +65,7 @@ class TestChatEndpoint:
         assert ChatMessage.objects.filter(user=user, role="assistant").exists()
 
     def test_post_unauthenticated(self):
+
         client = Client()
         response = client.post(
             "/api/assistant/chat/",
@@ -70,6 +75,7 @@ class TestChatEndpoint:
         assert response.status_code == 403
 
     def test_post_empty_message(self, logged_client, user):
+
         response = logged_client.post(
             "/api/assistant/chat/",
             data=json.dumps({"message": ""}),
@@ -78,6 +84,7 @@ class TestChatEndpoint:
         assert response.status_code == 400
 
     def test_multipart_audio_transcribes_and_streams(self, logged_client, user, monkeypatch):
+
         async def fake_transcribe(data, filename, content_type, *, client=None):
             return "mercado 80 no pix"
 
@@ -98,6 +105,7 @@ class TestChatEndpoint:
         assert ChatMessage.objects.filter(user=user, role="assistant").exists()
 
     def test_multipart_image_routes_to_assistant(self, logged_client, user):
+
         # 1x1 PNG válido (bytes mínimos)
         png = (
             b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00"
@@ -169,6 +177,7 @@ class TestChatEndpoint:
         before = ReceiptDraft.objects.filter(user=user).count()
 
         async def fake_extract(images, categories=None, payment_methods=None, model=None):
+
             return ReceiptExtraction(
                 store="EMPREENDIMENTOS PAGUE MENOS S/A",
                 amount_paid=Decimal("155.90"),
@@ -198,12 +207,14 @@ class TestChatEndpoint:
         assert ReceiptDraft.objects.filter(user=user).count() == before
 
     def test_multipart_rejects_two_files(self, logged_client, user):
+
         a = SimpleUploadedFile("n.webm", b"\x00", content_type="audio/webm")
         i = SimpleUploadedFile("r.png", b"\x00", content_type="image/png")
         response = logged_client.post("/api/assistant/chat/", data={"audio": a, "image": i})
         assert response.status_code == 400
 
     def test_multipart_rejects_bad_audio_type(self, logged_client, user):
+
         bad = SimpleUploadedFile("x.txt", b"\x00", content_type="text/plain")
         response = logged_client.post("/api/assistant/chat/", data={"audio": bad})
         assert response.status_code == 400
@@ -214,6 +225,7 @@ class TestChatEndpoint:
         'Erro de conexão' no widget)."""
 
         async def fake_transcribe(data, filename, content_type, *, client=None):
+
             return "mercado 80 no pix"
 
         monkeypatch.setattr("assistant.views.transcribe_audio", fake_transcribe)
@@ -229,6 +241,7 @@ class TestChatEndpoint:
         assert response["Content-Type"] == "text/event-stream"
 
     def test_multipart_rejects_oversized_image(self, logged_client, user, settings):
+
         settings.ASSISTANT_MAX_IMAGE_MB = 0  # tudo é grande demais
         big = SimpleUploadedFile("r.png", b"\x00" * 1024, content_type="image/png")
         response = logged_client.post("/api/assistant/chat/", data={"image": big})
@@ -240,6 +253,7 @@ class TestChatEndpoint:
         captured = {}
 
         async def fake_extract(images, categories=None, payment_methods=None, model=None):
+
             captured.setdefault("calls", []).append(model)
             if model is None:
                 raise RuntimeError("primeira extração falha")
@@ -268,6 +282,7 @@ class TestChatEndpoint:
         calls = {}
 
         def fake_prepare(data, media_type):
+
             calls["called"] = True
             calls["media_type"] = media_type
             return b"PREPPED", "image/jpeg"
@@ -277,6 +292,7 @@ class TestChatEndpoint:
         from assistant.agents.extraction import ReceiptExtraction
 
         async def fake_extract(images, categories=None, payment_methods=None, model=None):
+
             calls["extract_images"] = images
             return ReceiptExtraction()
 
@@ -306,6 +322,7 @@ class TestChatEndpoint:
         captured = {}
 
         async def fake_extract(images, categories=None, payment_methods=None, model=None):
+
             captured["images"] = images
             return ReceiptExtraction()
 
@@ -328,6 +345,7 @@ class TestChatEndpoint:
         ).exists()
 
     def test_rejects_too_many_images(self, logged_client, user, settings):
+
         settings.ASSISTANT_MAX_IMAGES = 1
         img1 = SimpleUploadedFile("a.png", self._PNG, content_type="image/png")
         img2 = SimpleUploadedFile("b.png", self._PNG, content_type="image/png")
@@ -335,6 +353,7 @@ class TestChatEndpoint:
         assert response.status_code == 400
 
     def test_rejects_bad_type_among_images(self, logged_client, user):
+
         good = SimpleUploadedFile("a.png", self._PNG, content_type="image/png")
         bad = SimpleUploadedFile("x.txt", b"\x00", content_type="text/plain")
         response = logged_client.post("/api/assistant/chat/", data={"image": [good, bad]})
@@ -356,7 +375,9 @@ class TestChatEndpoint:
         # The image turn must PROPOSE, never write: zero entries created at all.
         assert Entry.objects.count() == 0
 
-    def test_pending_receipt_routes_confirm_and_commits_once(self, logged_client, seeded_user):
+    def test_pending_receipt_routes_confirm_and_commits_once(
+        self, logged_client, seeded_user, seeded_scope
+    ):
         from assistant.agents.tools import propose_receipt
         from assistant.models import ReceiptDraft, ReceiptDraftStatus
         from finances.models import Entry
@@ -375,7 +396,7 @@ class TestChatEndpoint:
                 ],
             },
         )
-        propose_receipt(seeded_user, {"Alimentação": [0], "Lanche": [1]}, "Pix")
+        propose_receipt(seeded_scope, {"Alimentação": [0], "Lanche": [1]}, "Pix")
 
         # A TestModel that calls only commit_receipt simulates the user's "sim".
         tm = TestModel(call_tools=["commit_receipt"])
@@ -401,7 +422,7 @@ class TestChatEndpoint:
         assert Entry.objects.filter(user=seeded_user).count() == 2
 
     def test_pending_receipt_audio_routes_confirm_and_commits_once(
-        self, logged_client, seeded_user, monkeypatch
+        self, logged_client, seeded_user, seeded_scope, monkeypatch
     ):
         """Voice confirmation of a pending receipt must route to assistant_agent —
         regression guard for the audio path (single-agent mode)."""
@@ -423,9 +444,10 @@ class TestChatEndpoint:
                 ],
             },
         )
-        propose_receipt(seeded_user, {"Alimentação": [0], "Lanche": [1]}, "Pix")
+        propose_receipt(seeded_scope, {"Alimentação": [0], "Lanche": [1]}, "Pix")
 
         async def fake_transcribe(data, filename, content_type, *, client=None):
+
             return "sim"
 
         monkeypatch.setattr("assistant.views.transcribe_audio", fake_transcribe)
@@ -441,6 +463,7 @@ class TestChatEndpoint:
         assert draft.status == ReceiptDraftStatus.REGISTERED
 
     def test_images_pass_user_taxonomy_to_extraction(self, logged_client, user, monkeypatch):
+
         from assistant.agents.extraction import ReceiptExtraction
 
         baker.make("finances.Category", user=user, name="Alimentação")
@@ -449,6 +472,7 @@ class TestChatEndpoint:
         captured = {}
 
         async def fake_extract(images, categories=None, payment_methods=None, model=None):
+
             captured["categories"] = categories
             captured["payment_methods"] = payment_methods
             return ReceiptExtraction(amount_paid=None)
@@ -466,6 +490,7 @@ class TestChatEndpoint:
 @pytest.mark.django_db
 class TestHistoryEndpoint:
     def test_returns_messages(self, logged_client, user):
+
         baker.make("assistant.ChatMessage", user=user, role="user", content="oi")
         baker.make("assistant.ChatMessage", user=user, role="assistant", content="olá!")
         response = logged_client.get("/api/assistant/history/")
@@ -476,6 +501,7 @@ class TestHistoryEndpoint:
         assert data[1]["role"] == "assistant"
 
     def test_filters_by_user(self, logged_client, user):
+
         other = baker.make("core.CustomUser")
         baker.make("assistant.ChatMessage", user=user, content="mine")
         baker.make("assistant.ChatMessage", user=other, content="theirs")
@@ -485,6 +511,7 @@ class TestHistoryEndpoint:
         assert data[0]["content"] == "mine"
 
     def test_limits_to_50(self, logged_client, user):
+
         for i in range(60):
             baker.make("assistant.ChatMessage", user=user, content=f"msg {i}")
         response = logged_client.get("/api/assistant/history/")
@@ -492,6 +519,7 @@ class TestHistoryEndpoint:
         assert len(data) == 50
 
     def test_unauthenticated(self):
+
         client = Client()
         response = client.get("/api/assistant/history/")
         assert response.status_code == 403

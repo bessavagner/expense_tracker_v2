@@ -40,36 +40,36 @@ class TestEstimatedTrack:
         for bm in (date(2026, 3, 1), date(2026, 4, 1), date(2026, 5, 1)):
             _e(user, cat, pix, "1000", bm)
 
-    def test_future_month_uses_average(self, user, cat, pix):
+    def test_future_month_uses_average(self, user, household, cat, pix):
         self._seed_avg_1000(user, cat, pix)
-        rows = build_projection(user, date(2026, 6, 1), 2, today=self.TODAY)
+        rows = build_projection(household, date(2026, 6, 1), 2, today=self.TODAY)
         july = next(r for r in rows if r["month"] == date(2026, 7, 1))
         assert july["diverse"] == Decimal("0")  # nothing posted
         assert july["diverse_estimated"] == Decimal("1000.00")
 
-    def test_past_month_estimated_equals_real(self, user, cat, pix):
+    def test_past_month_estimated_equals_real(self, user, household, cat, pix):
         m = date(2026, 5, 1)
         _e(user, cat, pix, "750", m)
-        rows = build_projection(user, m, 1, today=self.TODAY)
+        rows = build_projection(household, m, 1, today=self.TODAY)
         assert rows[0]["diverse"] == Decimal("750")
         assert rows[0]["diverse_estimated"] == Decimal("750")
 
-    def test_current_month_max_actual_over_average(self, user, cat, pix):
+    def test_current_month_max_actual_over_average(self, user, household, cat, pix):
         self._seed_avg_1000(user, cat, pix)
         _e(user, cat, pix, "1400", date(2026, 6, 1))  # already over average
-        rows = build_projection(user, date(2026, 6, 1), 1, today=self.TODAY)
+        rows = build_projection(household, date(2026, 6, 1), 1, today=self.TODAY)
         assert rows[0]["diverse_estimated"] == Decimal("1400.00")
 
-    def test_current_month_average_when_under(self, user, cat, pix):
+    def test_current_month_average_when_under(self, user, household, cat, pix):
         self._seed_avg_1000(user, cat, pix)
         _e(user, cat, pix, "200", date(2026, 6, 1))  # under average
-        rows = build_projection(user, date(2026, 6, 1), 1, today=self.TODAY)
+        rows = build_projection(household, date(2026, 6, 1), 1, today=self.TODAY)
         assert rows[0]["diverse_estimated"] == Decimal("1000.00")
 
-    def test_acumulado_estimado_accumulates(self, user, cat, pix):
+    def test_acumulado_estimado_accumulates(self, user, household, cat, pix):
         self._seed_avg_1000(user, cat, pix)
         baker.make("finances.Income", user=user, amount=Decimal("3000"), month=date(2026, 7, 1))
-        rows = build_projection(user, date(2026, 7, 1), 1, today=self.TODAY)
+        rows = build_projection(household, date(2026, 7, 1), 1, today=self.TODAY)
         r = rows[0]
         assert r["saldo_projetado_estimado"] == r["income"] - r["total_estimated"]
 
@@ -78,7 +78,7 @@ class TestEstimatedTrack:
 class TestEstimatedTrackRobust:
     TODAY = date(2026, 6, 20)
 
-    def test_future_uses_median_not_mean(self, user, cat, pix):
+    def test_future_uses_median_not_mean(self, user, household, cat, pix):
         for bm, amt in [
             (date(2025, 12, 1), "500"),
             (date(2026, 1, 1), "500"),
@@ -88,13 +88,13 @@ class TestEstimatedTrackRobust:
             (date(2026, 5, 1), "4000"),
         ]:
             _e(user, cat, pix, amt, bm)
-        rows = build_projection(user, date(2026, 7, 1), 1, today=self.TODAY)
+        rows = build_projection(household, date(2026, 7, 1), 1, today=self.TODAY)
         assert rows[0]["diverse_estimated"] == Decimal("500.00")
 
-    def test_future_excludes_adjustment(self, user, cat, pix):
+    def test_future_excludes_adjustment(self, user, household, cat, pix):
         ajuste = baker.make("finances.Category", user=user, name="Ajuste (temporario)")
         for bm in (date(2026, 3, 1), date(2026, 4, 1), date(2026, 5, 1)):
             _e(user, cat, pix, "800", bm)
             _e(user, ajuste, pix, "5000", bm)
-        rows = build_projection(user, date(2026, 7, 1), 1, today=self.TODAY)
+        rows = build_projection(household, date(2026, 7, 1), 1, today=self.TODAY)
         assert rows[0]["diverse_estimated"] == Decimal("800.00")

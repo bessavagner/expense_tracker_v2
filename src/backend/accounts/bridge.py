@@ -18,8 +18,8 @@ keeping it would only hide the next mistake.
 
 from django.db.models.signals import pre_save
 
-from accounts.migrations_helpers import seed_household_for_user
-from accounts.models import Household, Membership, household_owned_models
+from accounts.models import household_owned_models
+from accounts.resolution import household_for_user
 
 _CACHE_ATTR = "_e04_bridge_household"
 
@@ -33,32 +33,29 @@ def household_for_writer(user):
     ledger is the fail-closed outcome; borrowing an existing household would
     be the leak.
 
-    Takes the user's *oldest* membership, which diverges from
-    ``accounts.middleware.resolve_active_household`` — that one honours the
-    session-selected household. For a multi-household user an unconverted
-    write would therefore land in the wrong household. Not reachable today:
-    ``Membership.objects.create`` has a single, idempotent call site
-    (``accounts/migrations_helpers.py``), so nobody holds two memberships.
-    Phase 3 must convert writes to pass the *active* household explicitly
-    rather than inherit this fallback.
+    The rule itself lives in ``accounts.resolution.household_for_user``, which
+    outlives this module: it takes the user's *oldest* membership, which
+    diverges from ``accounts.middleware.resolve_active_household`` — that one
+    honours the session-selected household. For a multi-household user an
+    unconverted write would therefore land in the wrong household. Not
+    reachable today: ``Membership.objects.create`` has a single, idempotent
+    call site (``accounts/migrations_helpers.py``), so nobody holds two
+    memberships. Phase 3 must convert writes to pass the *active* household
+    explicitly rather than inherit this fallback.
 
-    Memoised on the user *instance*, and ``select_related`` on the way in.
-    Without both, a bulk write path that saves N rows against one request user
-    pays 2N queries — a lookup plus a lazy FK dereference each — which is the
-    exact O(N) slope ``test_import_query_count`` exists to catch. The cache
-    lives as long as the user object does, so a new request resolves afresh.
+    What this adds over the bare rule is memoisation on the user *instance*
+    (``household_for_user`` does the ``select_related``). Without both, a bulk
+    write path that saves N rows against one request user pays 2N queries — a
+    lookup plus a lazy FK dereference each — which is the exact O(N) slope
+    ``test_import_query_count`` exists to catch. The cache lives as long as the
+    user object does, so a new request resolves afresh.
     """
     if user is None:
         return None
     cached = getattr(user, _CACHE_ATTR, None)
     if cached is not None:
         return cached
-    membership = Membership.objects.select_related("household").filter(user=user).first()
-    household = (
-        membership.household
-        if membership is not None
-        else seed_household_for_user(Household, Membership, user)
-    )
+    household = household_for_user(user)
     setattr(user, _CACHE_ATTR, household)
     return household
 

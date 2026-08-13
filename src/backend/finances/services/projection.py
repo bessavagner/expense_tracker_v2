@@ -55,14 +55,14 @@ def projection_origin() -> date:
 
 
 def build_projection(
-    user,
+    household,
     start_month: date,
     num_months: int,
     today: date | None = None,
     overlay: dict | None = None,
     diverse_estimator: str = "median",
 ):
-    """Return a list of ``num_months`` dicts, one per month from ``start_month``.
+    """The projection of ``household``'s ledger: one dict per month from ``start_month``.
 
     Each dict holds: ``month``, ``systemic``, ``installments``, ``programmed``,
     ``diverse``, ``total``, ``income``, ``pct_income`` (Decimal|None),
@@ -86,8 +86,8 @@ def build_projection(
     # Earliest month with any data — acumulado is anchored here, not at the
     # window start, so the accumulated balance for a month is fixed regardless
     # of the projection window the user picks.
-    inc_min = Income.objects.filter(user=user).aggregate(m=Min("month"))["m"]
-    ent_min = Entry.objects.filter(user=user).aggregate(m=Min("billing_month"))["m"]
+    inc_min = Income.objects.for_household(household).aggregate(m=Min("month"))["m"]
+    ent_min = Entry.objects.for_household(household).aggregate(m=Min("billing_month"))["m"]
     data_candidates = [d for d in (inc_min, ent_min) if d is not None]
     data_anchor = min(data_candidates).replace(day=1) if data_candidates else start_month
     # Floor at the projection origin: anything before it is excluded entirely, so
@@ -102,9 +102,8 @@ def build_projection(
     # --- one aggregated pass per source over the whole span ---
     entry_totals: dict[tuple[date, str], Decimal] = {}
     for r in (
-        Entry.objects.filter(
-            user=user, billing_month__gte=agg_start, billing_month__lt=end_exclusive
-        )
+        Entry.objects.for_household(household)
+        .filter(billing_month__gte=agg_start, billing_month__lt=end_exclusive)
         .values("billing_month", "entry_type")
         .annotate(total=Sum("amount"))
     ):
@@ -112,7 +111,8 @@ def build_projection(
 
     income_totals: dict[date, Decimal] = {}
     for r in (
-        Income.objects.filter(user=user, month__gte=agg_start, month__lt=end_exclusive)
+        Income.objects.for_household(household)
+        .filter(month__gte=agg_start, month__lt=end_exclusive)
         .values("month")
         .annotate(total=Sum("amount"))
     ):
@@ -128,9 +128,9 @@ def build_projection(
                 entry_totals[key] = entry_totals.get(key, ZERO) + amount
 
     active_systemic_total = (
-        SystemicExpense.objects.filter(user=user, is_active=True).aggregate(
-            total=Sum("default_amount")
-        )["total"]
+        SystemicExpense.objects.for_household(household)
+        .filter(is_active=True)
+        .aggregate(total=Sum("default_amount"))["total"]
         or ZERO
     )
 
@@ -141,9 +141,9 @@ def build_projection(
     #   (window=6), excluding reconciliation entries, so a one-off reform/big
     #   purchase can't poison the forward projection. ---
     if diverse_estimator == "ceiling":
-        est_typical_diverse = monthly_diverse_total_ceiling(user)
+        est_typical_diverse = monthly_diverse_total_ceiling(household)
     else:
-        est_typical_diverse = monthly_diverse_total_median(user, window=6, as_of=today)
+        est_typical_diverse = monthly_diverse_total_median(household, window=6, as_of=today)
 
     rows = []
     acumulado = ZERO

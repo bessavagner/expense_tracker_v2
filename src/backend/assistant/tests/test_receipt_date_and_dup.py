@@ -28,34 +28,40 @@ pytestmark = pytest.mark.django_db
 
 
 def test_normalize_brazilian_date_with_time():
+
     # o caso real do cupom PAGUE MENOS
     assert normalize_receipt_date("04/07/2026 12:09:32") == "2026-07-04"
 
 
 def test_normalize_iso_passthrough():
+
     assert normalize_receipt_date("2026-07-04") == "2026-07-04"
 
 
 def test_normalize_iso_datetime_drops_time():
+
     assert normalize_receipt_date("2026-07-04T12:09:32") == "2026-07-04"
 
 
 def test_normalize_two_digit_year():
+
     assert normalize_receipt_date("04/07/26") == "2026-07-04"
 
 
 def test_normalize_unparseable_returns_none():
+
     assert normalize_receipt_date("sem data") is None
     assert normalize_receipt_date(None) is None
     assert normalize_receipt_date("") is None
 
 
 def test_extraction_model_normalizes_date_field():
+
     ext = ReceiptExtraction(date="04/07/2026 12:09:32")
     assert ext.date == "2026-07-04"
 
 
-def test_propose_uses_cupom_date_not_today(seeded_user):
+def test_propose_uses_cupom_date_not_today(seeded_user, seeded_scope):
     """Draft com data BR+hora → o plano/entry usa a data do cupom, não hoje."""
     ReceiptDraft.objects.create(
         user=seeded_user,
@@ -71,10 +77,10 @@ def test_propose_uses_cupom_date_not_today(seeded_user):
         },
         status=ReceiptDraftStatus.PENDING,
     )
-    propose_receipt(seeded_user, payment_method_name="Pix")
+    propose_receipt(seeded_scope, payment_method_name="Pix")
     plan = ReceiptDraft.objects.filter(user=seeded_user).latest("created_at").payload["plan"]
     assert plan["date"] == "2026-07-04"
-    commit_receipt(seeded_user)
+    commit_receipt(seeded_scope)
     for e in Entry.objects.filter(user=seeded_user):
         assert e.date.isoformat() == "2026-07-04"
 
@@ -83,6 +89,7 @@ def test_propose_uses_cupom_date_not_today(seeded_user):
 
 
 def _registered(user, **over):
+
     payload = {
         "store": "EMPREENDIMENTOS PAGUE MENOS S/A",
         "date": "2026-07-04",
@@ -98,7 +105,7 @@ def _registered(user, **over):
     )
 
 
-def test_find_duplicate_matches_store_and_paid(seeded_user):
+def test_find_duplicate_matches_store_and_paid(seeded_user, seeded_scope):
     _registered(seeded_user)
     incoming = {
         "store": "empreendimentos pague menos s/a",  # case-insensitive
@@ -108,10 +115,10 @@ def test_find_duplicate_matches_store_and_paid(seeded_user):
             {"description": "y", "line_total": "19.92"},
         ],
     }
-    assert find_registered_duplicate(seeded_user, incoming) is not None
+    assert find_registered_duplicate(seeded_scope, incoming) is not None
 
 
-def test_find_duplicate_matches_by_items_when_paid_missing(seeded_user):
+def test_find_duplicate_matches_by_items_when_paid_missing(seeded_user, seeded_scope):
     _registered(seeded_user, amount_paid=None)
     incoming = {
         "store": "EMPREENDIMENTOS PAGUE MENOS S/A",
@@ -121,20 +128,20 @@ def test_find_duplicate_matches_by_items_when_paid_missing(seeded_user):
             {"description": "y", "line_total": "19.92"},
         ],
     }
-    assert find_registered_duplicate(seeded_user, incoming) is not None
+    assert find_registered_duplicate(seeded_scope, incoming) is not None
 
 
-def test_find_duplicate_none_for_different_total(seeded_user):
+def test_find_duplicate_none_for_different_total(seeded_user, seeded_scope):
     _registered(seeded_user)
     incoming = {
         "store": "EMPREENDIMENTOS PAGUE MENOS S/A",
         "amount_paid": "999.00",
         "items": [{"description": "x", "line_total": "999.00"}],
     }
-    assert find_registered_duplicate(seeded_user, incoming) is None
+    assert find_registered_duplicate(seeded_scope, incoming) is None
 
 
-def test_find_duplicate_ignores_pending_and_other_store(seeded_user):
+def test_find_duplicate_ignores_pending_and_other_store(seeded_user, seeded_scope):
     # pending (não conta) e loja diferente (não conta)
     ReceiptDraft.objects.create(
         user=seeded_user,
@@ -147,13 +154,14 @@ def test_find_duplicate_ignores_pending_and_other_store(seeded_user):
         "amount_paid": "155.90",
         "items": [{"description": "x", "line_total": "155.90"}],
     }
-    assert find_registered_duplicate(seeded_user, incoming) is None
+    assert find_registered_duplicate(seeded_scope, incoming) is None
 
 
-def test_duplicate_directive_steers_to_edit_not_register(seeded_user):
+def test_duplicate_directive_steers_to_edit_not_register(seeded_user, seeded_scope):
+
     dup = _registered(seeded_user)
     out = build_duplicate_receipt_directive(
-        seeded_user,
+        seeded_scope,
         {"store": "EMPREENDIMENTOS PAGUE MENOS S/A", "amount_paid": "155.90", "items": []},
         dup,
     )
@@ -168,6 +176,7 @@ def test_duplicate_directive_steers_to_edit_not_register(seeded_user):
 
 
 def _plan_payload(**over):
+
     payload = {
         "store": "Drogasil",
         "date": "2026-07-04",
@@ -192,6 +201,7 @@ def _plan_payload(**over):
 
 
 def _incoming():
+
     return {
         "store": "Drogasil",
         "amount_paid": "118.86",
@@ -202,7 +212,7 @@ def _incoming():
     }
 
 
-def test_deleted_entries_not_a_duplicate(seeded_user):
+def test_deleted_entries_not_a_duplicate(seeded_user, seeded_scope):
     """Registered draft WITH a plan but NO live entries → re-send is allowed."""
     from finances.models import PaymentMethod
 
@@ -213,10 +223,10 @@ def test_deleted_entries_not_a_duplicate(seeded_user):
         user=seeded_user, payload=payload, status=ReceiptDraftStatus.REGISTERED
     )
     # No Entry rows created (they were "deleted").
-    assert find_registered_duplicate(seeded_user, _incoming()) is None
+    assert find_registered_duplicate(seeded_scope, _incoming()) is None
 
 
-def test_live_entries_still_a_duplicate(seeded_user):
+def test_live_entries_still_a_duplicate(seeded_user, seeded_scope):
     """Registered draft WITH a plan AND matching live entries → still a dup."""
     from datetime import date
 
@@ -238,10 +248,10 @@ def test_live_entries_still_a_duplicate(seeded_user):
         category=cat,
         payment_method=pm,
     )
-    assert find_registered_duplicate(seeded_user, _incoming()) is not None
+    assert find_registered_duplicate(seeded_scope, _incoming()) is not None
 
 
-def test_legacy_draft_without_plan_still_duplicate(seeded_user):
+def test_legacy_draft_without_plan_still_duplicate(seeded_user, seeded_scope):
     """No 'plan' key (pre-plan drafts) → fallback keeps dup behavior."""
     _registered(seeded_user)  # helper payload has NO 'plan'
     incoming = {
@@ -252,4 +262,4 @@ def test_legacy_draft_without_plan_still_duplicate(seeded_user):
             {"description": "y", "line_total": "19.92"},
         ],
     }
-    assert find_registered_duplicate(seeded_user, incoming) is not None
+    assert find_registered_duplicate(seeded_scope, incoming) is not None

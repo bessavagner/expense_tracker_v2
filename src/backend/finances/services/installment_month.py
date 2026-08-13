@@ -7,7 +7,7 @@ from finances.models.entry import EntryType
 from finances.models.installment_plan import InstallmentPlan
 
 
-def installment_rows_for_month(user, year, month):
+def installment_rows_for_month(household, year, month):
     """Return rows for each InstallmentPlan that has an entry in billing_month=(year,month,1).
 
     Each row dict:
@@ -20,10 +20,10 @@ def installment_rows_for_month(user, year, month):
     """
     billing_month = date(year, month, 1)
 
-    # Plans that have at least one INSTALLMENT entry for this billing_month and user
+    # Plans with at least one INSTALLMENT entry in this billing_month, this household
     plans_this_month = (
-        InstallmentPlan.objects.filter(
-            user=user,
+        InstallmentPlan.objects.for_household(household)
+        .filter(
             entries__entry_type=EntryType.INSTALLMENT,
             entries__billing_month=billing_month,
         )
@@ -34,30 +34,39 @@ def installment_rows_for_month(user, year, month):
     rows = []
     for plan in plans_this_month:
         # This month's entry
-        this_entry = Entry.objects.filter(
-            user=user,
-            installment_plan=plan,
-            entry_type=EntryType.INSTALLMENT,
-            billing_month=billing_month,
-        ).first()
+        this_entry = (
+            Entry.objects.for_household(household)
+            .filter(
+                installment_plan=plan,
+                entry_type=EntryType.INSTALLMENT,
+                billing_month=billing_month,
+            )
+            .first()
+        )
         if this_entry is None:
             continue
 
         # Count entries up to and including this month (parcela_num)
-        parcela_num = Entry.objects.filter(
-            user=user,
-            installment_plan=plan,
-            entry_type=EntryType.INSTALLMENT,
-            billing_month__lte=billing_month,
-        ).count()
+        parcela_num = (
+            Entry.objects.for_household(household)
+            .filter(
+                installment_plan=plan,
+                entry_type=EntryType.INSTALLMENT,
+                billing_month__lte=billing_month,
+            )
+            .count()
+        )
 
         # Sum of amounts up to and including this month
-        paid_agg = Entry.objects.filter(
-            user=user,
-            installment_plan=plan,
-            entry_type=EntryType.INSTALLMENT,
-            billing_month__lte=billing_month,
-        ).aggregate(total=Sum("amount"))
+        paid_agg = (
+            Entry.objects.for_household(household)
+            .filter(
+                installment_plan=plan,
+                entry_type=EntryType.INSTALLMENT,
+                billing_month__lte=billing_month,
+            )
+            .aggregate(total=Sum("amount"))
+        )
         paid = paid_agg["total"] or 0
 
         rows.append(

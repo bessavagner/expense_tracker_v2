@@ -1,15 +1,7 @@
 from decimal import Decimal
 
 import pytest
-from django.test import Client
 from model_bakery import baker
-
-
-@pytest.fixture
-def logged_client(user):
-    client = Client()
-    client.force_login(user)
-    return client
 
 
 @pytest.mark.django_db
@@ -345,3 +337,51 @@ class TestBudgetSettings:
         body = resp.content.decode()
         assert "Total" in body
         assert "3000,00" in body  # sum of budget tetos 1000 + 2000 (pt-BR floatformat)
+
+
+@pytest.mark.django_db
+class TestSettingsTenancy:
+    """Settings is where the catalogue is created — a missed site here is a
+    write-path leak, not just a rendering one."""
+
+    def test_settings_lists_only_this_households_categories(
+        self, logged_client, user, household, other_user, other_household
+    ):
+        baker.make("finances.Category", user=user, household=household, name="Minha categoria")
+        baker.make(
+            "finances.Category",
+            user=other_user,
+            household=other_household,
+            name="Categoria do vizinho",
+        )
+
+        body = logged_client.get("/settings/categories/").content.decode()
+
+        assert "Minha categoria" in body
+        assert "Categoria do vizinho" not in body
+
+    def test_toggling_a_foreign_payment_method_404s(
+        self, logged_client, other_user, other_household
+    ):
+        """The plan named a `payment_method_delete` route; there is none — a
+        payment method is deactivated, never deleted. The invariant is the
+        same: the foreign row must survive untouched."""
+        from django.urls import reverse
+
+        from finances.models import PaymentMethod
+
+        theirs = baker.make(
+            "finances.PaymentMethod",
+            user=other_user,
+            household=other_household,
+            name="Cartão do vizinho",
+            type="credit",
+            is_active=True,
+        )
+
+        response = logged_client.patch(reverse("finances:settings_pm_toggle", args=[theirs.pk]))
+
+        assert response.status_code == 404
+        theirs.refresh_from_db()
+        assert theirs.is_active is True
+        assert PaymentMethod.objects.filter(pk=theirs.pk).exists()

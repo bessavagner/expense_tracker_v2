@@ -20,12 +20,17 @@ def apply_systemic_recurrence(template, amount, start, end) -> int:
     touched = 0
     m = start
     while m <= end:
-        entry = Entry.objects.filter(
-            user=template.user,
-            systemic_expense=template,
-            entry_type=EntryType.SYSTEMIC,
-            billing_month=m,
-        ).first()
+        # Scoped from the template, not from its author: a template the other
+        # member created still posts into the same household's ledger.
+        entry = (
+            Entry.objects.for_household(template.household)
+            .filter(
+                systemic_expense=template,
+                entry_type=EntryType.SYSTEMIC,
+                billing_month=m,
+            )
+            .first()
+        )
         if entry is not None:
             entry.amount = amount
             entry.save(update_fields=["amount", "updated_at"])

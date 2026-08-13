@@ -33,7 +33,7 @@ class ConsolidatedView(HtmxLoginRequiredMixin, TemplateView):
         context["year_range"] = range(2024, today.year + 2)
         context["tab"] = "systemics" if self.entry_type_filter == EntryType.SYSTEMIC else "diverse"
 
-        entries_qs = Entry.objects.filter(user=self.request.user, billing_month=billing_month)
+        entries_qs = Entry.objects.for_request(self.request).filter(billing_month=billing_month)
         if self.entry_type_filter == EntryType.SYSTEMIC:
             entries_qs = entries_qs.filter(entry_type=EntryType.SYSTEMIC)
         else:
@@ -74,7 +74,7 @@ class ConsolidatedView(HtmxLoginRequiredMixin, TemplateView):
         context["income_total"] = sum(
             (
                 inc.amount
-                for inc in Income.objects.filter(user=self.request.user, month=billing_month)
+                for inc in Income.objects.for_request(self.request).filter(month=billing_month)
             ),
             Decimal("0"),
         )
@@ -98,8 +98,7 @@ class CategoryDetailView(HtmxLoginRequiredMixin, ListView):
     context_object_name = "entries"
 
     def get_queryset(self):
-        qs = Entry.objects.filter(
-            user=self.request.user,
+        qs = Entry.objects.for_request(self.request).filter(
             category_id=self.kwargs["category_id"],
             billing_month=date(int(self.kwargs["year"]), int(self.kwargs["month"]), 1),
         )

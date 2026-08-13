@@ -25,18 +25,22 @@ class SummaryView(APIView):
     permission_classes = [IsAuthenticated]
 
     @staticmethod
-    def _month_totals(user, billing_month):
+    def _month_totals(household, billing_month):
         _decimal = DecimalField()
-        income = Income.objects.filter(user=user, month=billing_month).aggregate(
+        income = Income.objects.for_household(household).filter(month=billing_month).aggregate(
             total=Sum("amount")
         )["total"] or Decimal("0")
-        totals = Entry.objects.filter(user=user, billing_month=billing_month).aggregate(
-            expenses=Sum(
-                Case(When(amount__gt=0, then="amount"), default=Value(0), output_field=_decimal)
-            ),
-            returns=Sum(
-                Case(When(amount__lt=0, then="amount"), default=Value(0), output_field=_decimal)
-            ),
+        totals = (
+            Entry.objects.for_household(household)
+            .filter(billing_month=billing_month)
+            .aggregate(
+                expenses=Sum(
+                    Case(When(amount__gt=0, then="amount"), default=Value(0), output_field=_decimal)
+                ),
+                returns=Sum(
+                    Case(When(amount__lt=0, then="amount"), default=Value(0), output_field=_decimal)
+                ),
+            )
         )
         expenses = totals["expenses"] or Decimal("0")
         returns = abs(totals["returns"] or Decimal("0"))
@@ -56,14 +60,14 @@ class SummaryView(APIView):
 
     def get(self, request):
         year, month, billing_month = _get_month_params(request)
-        user = request.user
+        household = request.household
 
-        cur = self._month_totals(user, billing_month)
-        prev = self._month_totals(user, add_months(billing_month, -1))
+        cur = self._month_totals(household, billing_month)
+        prev = self._month_totals(household, add_months(billing_month, -1))
 
-        total_ceiling = Category.objects.filter(user=user).aggregate(total=Sum("budget_ceiling"))[
-            "total"
-        ] or Decimal("0")
+        total_ceiling = Category.objects.for_household(household).aggregate(
+            total=Sum("budget_ceiling")
+        )["total"] or Decimal("0")
         budget_pct = (
             round(float(cur["expenses"]) / float(total_ceiling) * 100, 1)
             if total_ceiling > 0
@@ -88,10 +92,11 @@ class TopCategoriesView(APIView):
 
     def get(self, request):
         year, month, billing_month = _get_month_params(request)
-        user = request.user
+        household = request.household
 
         category_totals = (
-            Entry.objects.filter(user=user, billing_month=billing_month, amount__gt=0)
+            Entry.objects.for_household(household)
+            .filter(billing_month=billing_month, amount__gt=0)
             .values("category__id", "category__name")
             .annotate(total=Sum("amount"))
             .order_by("-total")[:5]
@@ -99,12 +104,12 @@ class TopCategoriesView(APIView):
 
         # 3-month moving average per category (window before this month) so the
         # card can show whether the user is spending above/below their usual.
-        averages = category_moving_averages(user, window=3, as_of=billing_month)
+        averages = category_moving_averages(household, window=3, as_of=billing_month)
 
         # All percentages are relative to the month's GRAND total (every positive
         # entry), so the top-N slices plus "Outros" sum to 100% in the donut legend.
-        grand_total = Entry.objects.filter(
-            user=user, billing_month=billing_month, amount__gt=0
+        grand_total = Entry.objects.for_household(household).filter(
+            billing_month=billing_month, amount__gt=0
         ).aggregate(total=Sum("amount"))["total"] or Decimal("0")
         pct_base = grand_total or Decimal("1")
         result = [
@@ -139,7 +144,7 @@ class EvolutionView(APIView):
 
     def get(self, request):
         year, month, billing_month = _get_month_params(request)
-        user = request.user
+        household = request.household
 
         # Build list of 6 months going back from billing_month
         months = []
@@ -154,7 +159,8 @@ class EvolutionView(APIView):
         # Two bulk queries instead of 12
         _decimal = DecimalField()
         entry_rows = (
-            Entry.objects.filter(user=user, billing_month__in=months)
+            Entry.objects.for_household(household)
+            .filter(billing_month__in=months)
             .values("billing_month")
             .annotate(
                 expenses=Sum(
@@ -168,7 +174,8 @@ class EvolutionView(APIView):
         entry_totals = {r["billing_month"]: r for r in entry_rows}
         income_totals = {
             row["month"]: row["total"]
-            for row in Income.objects.filter(user=user, month__in=months)
+            for row in Income.objects.for_household(household)
+            .filter(month__in=months)
             .values("month")
             .annotate(total=Sum("amount"))
         }
@@ -190,7 +197,7 @@ class AlertsView(APIView):
 
     def get(self, request):
         year, month, billing_month = _get_month_params(request)
-        user = request.user
+        household = request.household
 
         alerts = []
 
@@ -222,14 +229,13 @@ class AlertsView(APIView):
             else:
                 ok_count += 1
 
-        for row in budget_spend_for_month(user, billing_month):
+        for row in budget_spend_for_month(household, billing_month):
             _emit(row["name"], row["spent"], row["amount"], row["pct"], row["status"])
-        for row in orphan_category_spend_for_month(user, billing_month):
+        for row in orphan_category_spend_for_month(household, billing_month):
             _emit(row["name"], row["spent"], row["ceiling"], row["pct"], row["status"])
 
         # Installment info
-        active_entries = Entry.objects.filter(
-            user=user,
+        active_entries = Entry.objects.for_household(household).filter(
             billing_month=billing_month,
             entry_type="installment",
         )
@@ -265,10 +271,11 @@ class RecentEntriesView(APIView):
 
     def get(self, request):
         year, month, billing_month = _get_month_params(request)
-        user = request.user
+        household = request.household
 
         entries = (
-            Entry.objects.filter(user=user, billing_month=billing_month)
+            Entry.objects.for_household(household)
+            .filter(billing_month=billing_month)
             .select_related("category")
             .order_by("-date", "-created_at")[:5]
         )
@@ -289,21 +296,25 @@ class InstallmentsView(APIView):
 
     def get(self, request):
         year, month, billing_month = _get_month_params(request)
-        user = request.user
+        household = request.household
 
         # Find installment entries for this month
-        installment_entries = Entry.objects.filter(
-            user=user,
-            billing_month=billing_month,
-            entry_type="installment",
-            installment_plan__isnull=False,
-        ).select_related("installment_plan")
+        installment_entries = (
+            Entry.objects.for_household(household)
+            .filter(
+                billing_month=billing_month,
+                entry_type="installment",
+                installment_plan__isnull=False,
+            )
+            .select_related("installment_plan")
+        )
 
         # Pre-fetch all installment plan entries in a single query
         plan_ids = [e.installment_plan_id for e in installment_entries]
         plan_months_lookup: dict[int, list] = {}
         for plan_id, bmonth in (
-            Entry.objects.filter(installment_plan_id__in=plan_ids)
+            Entry.objects.for_household(household)
+            .filter(installment_plan_id__in=plan_ids)
             .order_by("billing_month")
             .values_list("installment_plan_id", "billing_month")
         ):
@@ -342,7 +353,7 @@ class DiverseSavingsView(APIView):
 
     def get(self, request):
         year, month, billing_month = _get_month_params(request)
-        data = diverse_savings_for_month(request.user, billing_month)
+        data = diverse_savings_for_month(request.household, billing_month)
         return Response(
             {
                 "baseline": f"{data['baseline']:.2f}",
@@ -364,7 +375,7 @@ class DailyTrendView(APIView):
             period = 30
         if period not in self.ALLOWED:
             period = 30
-        series = daily_spend_trend(request.user, period=period)
+        series = daily_spend_trend(request.household, period=period)
         return Response(
             {
                 "period": period,
@@ -395,7 +406,7 @@ class ProjectionCardView(APIView):
 
     def get(self, request):
         year, month, billing_month = _get_month_params(request)
-        rows = build_projection(request.user, billing_month, self.HORIZON)
+        rows = build_projection(request.household, billing_month, self.HORIZON)
         if not rows:
             return Response({"series": []})
 

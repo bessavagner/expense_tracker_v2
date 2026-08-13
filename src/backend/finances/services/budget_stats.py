@@ -23,9 +23,10 @@ def _status(spent: Decimal, cap: Decimal) -> tuple[int, str]:
     return pct, "success"
 
 
-def _spend_by_category(user, billing_month: date) -> dict:
+def _spend_by_category(household, billing_month: date) -> dict:
     rows = (
-        Entry.objects.filter(user=user, billing_month=billing_month, amount__gt=0)
+        Entry.objects.for_household(household)
+        .filter(billing_month=billing_month, amount__gt=0)
         .exclude(category__name__icontains=ADJUSTMENT_CATEGORY_PATTERN)
         .values("category_id")
         .annotate(total=Sum("amount"))
@@ -33,10 +34,10 @@ def _spend_by_category(user, billing_month: date) -> dict:
     return {r["category_id"]: r["total"] or ZERO for r in rows}
 
 
-def budget_spend_for_month(user, billing_month: date) -> list[dict]:
-    spend = _spend_by_category(user, billing_month)
+def budget_spend_for_month(household, billing_month: date) -> list[dict]:
+    spend = _spend_by_category(household, billing_month)
     out = []
-    for b in Budget.objects.filter(user=user).prefetch_related("categories"):
+    for b in Budget.objects.for_household(household).prefetch_related("categories"):
         spent = sum((spend.get(c.id, ZERO) for c in b.categories.all()), ZERO)
         pct, status = _status(spent, b.amount)
         out.append(
@@ -52,10 +53,10 @@ def budget_spend_for_month(user, billing_month: date) -> list[dict]:
     return out
 
 
-def orphan_category_spend_for_month(user, billing_month: date) -> list[dict]:
-    spend = _spend_by_category(user, billing_month)
+def orphan_category_spend_for_month(household, billing_month: date) -> list[dict]:
+    spend = _spend_by_category(household, billing_month)
     out = []
-    for c in Category.objects.filter(user=user, budget__isnull=True):
+    for c in Category.objects.for_household(household).filter(budget__isnull=True):
         if not c.budget_ceiling or c.budget_ceiling <= 0:
             continue
         spent = spend.get(c.id, ZERO)
@@ -72,12 +73,12 @@ def orphan_category_spend_for_month(user, billing_month: date) -> list[dict]:
     return out
 
 
-def total_diverse_ceiling(user) -> Decimal:
-    budgets = Budget.objects.filter(user=user).aggregate(t=Sum("amount"))["t"] or ZERO
+def total_diverse_ceiling(household) -> Decimal:
+    budgets = Budget.objects.for_household(household).aggregate(t=Sum("amount"))["t"] or ZERO
     orphans = (
-        Category.objects.filter(user=user, budget__isnull=True).aggregate(t=Sum("budget_ceiling"))[
-            "t"
-        ]
+        Category.objects.for_household(household)
+        .filter(budget__isnull=True)
+        .aggregate(t=Sum("budget_ceiling"))["t"]
         or ZERO
     )
     return budgets + orphans

@@ -15,9 +15,9 @@ from finances.models import Entry
 
 @pytest.mark.django_db
 class TestCreateEntryFuzzyPayment:
-    def test_partial_lowercase_resolves(self, seeded_user):
+    def test_partial_lowercase_resolves(self, seeded_user, seeded_scope):
         result = create_entry(
-            user=seeded_user,
+            seeded_scope,
             date_str="2026-06-12",
             amount_str="30.00",
             description="Sabor da Família",
@@ -28,9 +28,9 @@ class TestCreateEntryFuzzyPayment:
         entry = Entry.objects.get(user=seeded_user, description="Sabor da Família")
         assert entry.payment_method.name == "Crédito C6"
 
-    def test_exact_name_still_works(self, seeded_user):
+    def test_exact_name_still_works(self, seeded_user, seeded_scope):
         create_entry(
-            user=seeded_user,
+            seeded_scope,
             date_str="2026-06-12",
             amount_str="30.00",
             description="Exata",
@@ -40,7 +40,7 @@ class TestCreateEntryFuzzyPayment:
         entry = Entry.objects.get(user=seeded_user, description="Exata")
         assert entry.payment_method.name == "Crédito C6"
 
-    def test_ambiguous_partial_returns_options_without_writing(self, seeded_user):
+    def test_ambiguous_partial_returns_options_without_writing(self, seeded_user, seeded_scope):
         baker.make(
             "finances.PaymentMethod",
             user=seeded_user,
@@ -49,7 +49,7 @@ class TestCreateEntryFuzzyPayment:
             closing_day=25,
         )
         result = create_entry(
-            user=seeded_user,
+            seeded_scope,
             date_str="2026-06-12",
             amount_str="30.00",
             description="Ambígua",
@@ -60,9 +60,9 @@ class TestCreateEntryFuzzyPayment:
         # nada deve ser gravado quando ambíguo
         assert not Entry.objects.filter(user=seeded_user, description="Ambígua").exists()
 
-    def test_unknown_payment_still_errors(self, seeded_user):
+    def test_unknown_payment_still_errors(self, seeded_user, seeded_scope):
         result = create_entry(
-            user=seeded_user,
+            seeded_scope,
             date_str="2026-06-12",
             amount_str="30.00",
             description="Desconhecida",
@@ -75,9 +75,9 @@ class TestCreateEntryFuzzyPayment:
 
 @pytest.mark.django_db
 class TestCreateEntryCategoryCaseInsensitive:
-    def test_lowercase_category_resolves(self, seeded_user):
+    def test_lowercase_category_resolves(self, seeded_user, seeded_scope):
         result = create_entry(
-            user=seeded_user,
+            seeded_scope,
             date_str="2026-06-12",
             amount_str="30.00",
             description="Cat minúscula",

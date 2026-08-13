@@ -18,6 +18,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.db.models import Count, Max, Min, Sum
 
+from accounts.resolution import household_for_user
 from finances.models import Entry, Income
 from finances.services.projection import build_projection, projection_origin
 
@@ -69,7 +70,13 @@ class Command(BaseCommand):
                 default=start,
             )
             num_months = max(options["months"], _months_between(start, tail))
-            months = build_projection(user, start, num_months, today=FIXED_TODAY)
+            # `build_projection` speaks households from phase 3 on, but the
+            # aggregates above stay per-user: that is the whole reason this file
+            # keeps its E04_TRANSITION_TOOLS exemption. For a single-household
+            # ledger the two questions coincide, which is what makes the
+            # before/after comparison valid across the migration.
+            household = household_for_user(user)
+            months = build_projection(household, start, num_months, today=FIXED_TODAY)
             report[user.get_username()] = {
                 "entry_count": entries["n"],
                 "entry_sum": f"{entries['total'] or 0:.2f}",

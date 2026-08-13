@@ -71,6 +71,7 @@ HIPERMACIONAL_ITEMS = [
 
 
 def _extraction(flat, *, store, date, discount="0", amount_paid):
+
     items = [ReceiptItem(description=d, line_total=Decimal(v)) for d, v, _ in flat]
     return ReceiptExtraction(
         store=store,
@@ -105,12 +106,14 @@ def _make_draft(
 
 
 def test_fixtures_exist_and_are_images():
+
     for f in (AMERICANAS_FIXTURE, HIPERMACIONAL_FIXTURE):
         assert f.exists()
         Image.open(f).verify()
 
 
 def test_americanas_gabarito_is_internally_consistent():
+
     ext = _extraction(
         AMERICANAS_ITEMS,
         store="americanas sa - 1063",
@@ -122,7 +125,7 @@ def test_americanas_gabarito_is_internally_consistent():
 
 
 @pytest.mark.django_db
-def test_americanas_split_sums_to_amount_paid(seeded_user):
+def test_americanas_split_sums_to_amount_paid(seeded_user, scope, seeded_scope):
     from django.db.models import Sum
     from model_bakery import baker
 
@@ -139,11 +142,11 @@ def test_americanas_split_sums_to_amount_paid(seeded_user):
         amount_paid="42.16",
     )
     propose_receipt(
-        user=seeded_user,
+        seeded_scope,
         items_by_category={"Roupa": [0], "Lanche": [1, 2, 3, 4]},
         payment_method_name="Crédito C6",
     )
-    commit_receipt(user=seeded_user)
+    commit_receipt(seeded_scope)
     entries = Entry.objects.filter(user=seeded_user)
     assert entries.count() == 2
     assert entries.aggregate(s=Sum("amount"))["s"] == Decimal("42.16")
@@ -152,7 +155,7 @@ def test_americanas_split_sums_to_amount_paid(seeded_user):
 
 
 @pytest.mark.django_db
-def test_hipermacional_no_double_count_and_correct_total(seeded_user):
+def test_hipermacional_no_double_count_and_correct_total(seeded_user, scope, seeded_scope):
     """O bug: Pets entrou em dobro e Lanche foi fundido em Alimentação."""
     from django.db.models import Sum
     from model_bakery import baker
@@ -171,12 +174,12 @@ def test_hipermacional_no_double_count_and_correct_total(seeded_user):
         amount_paid="376.70",
     )
     propose_receipt(
-        user=seeded_user,
+        seeded_scope,
         items_by_category=mapping,
         payment_method_name="Crédito C6",  # cartão resolvível no seeded_user
         summaries={"Alimentação": "mercearia, carnes e laticínios"},
     )
-    msg = commit_receipt(user=seeded_user)
+    msg = commit_receipt(seeded_scope)
     assert "✅" in msg
     entries = Entry.objects.filter(user=seeded_user)
     assert entries.count() == 6
@@ -197,6 +200,7 @@ def test_hipermacional_no_double_count_and_correct_total(seeded_user):
     reason="LLM real: requer chave; rode com RUN_LLM_TESTS=1",
 )
 async def test_real_extraction_reads_hipermacional_receipt():
+
     from assistant.agents.extraction import extract_receipt
 
     data = HIPERMACIONAL_FIXTURE.read_bytes()

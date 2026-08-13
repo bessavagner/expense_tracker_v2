@@ -9,9 +9,9 @@ CONFIRM_APPLY = 0.7  # 0.7–0.9: apply with confirmation hint
 # < 0.7: ask user before using
 
 
-def find_matching_rules(user, message: str) -> list[MemoryRule]:
+def find_matching_rules(scope, message: str) -> list[MemoryRule]:
     """Find memory rules whose trigger appears in the message (case-insensitive substring)."""
-    rules = MemoryRule.objects.filter(user=user)
+    rules = MemoryRule.objects.for_household(scope.household)
     matched = []
     message_lower = message.lower()
     for rule in rules:
@@ -25,7 +25,7 @@ def find_matching_rules(user, message: str) -> list[MemoryRule]:
 
 
 def find_semantic_matches(
-    user, query_vector: list[float], threshold: float = 0.8, limit: int = 5
+    scope, query_vector: list[float], threshold: float = 0.8, limit: int = 5
 ) -> list:
     """Memory embeddings similar to ``query_vector``, nearest first.
 
@@ -38,7 +38,7 @@ def find_semantic_matches(
     """
     max_distance = 1 - threshold
     nearest = (
-        MemoryEmbedding.objects.filter(user=user)
+        MemoryEmbedding.objects.for_household(scope.household)
         .annotate(distance=CosineDistance("embedding", query_vector))
         .order_by("distance")[:limit]
     )

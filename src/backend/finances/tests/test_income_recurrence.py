@@ -125,3 +125,32 @@ def test_cockpit_edit_modal_materializes(user):
         Income.objects.filter(user=user, name="Salário").values_list("month", flat=True)
     )
     assert months == [date(2026, 6, 1), date(2026, 7, 1), date(2026, 8, 1)]
+
+
+@pytest.mark.django_db
+def test_recurrence_copies_carry_the_author(user, household):
+    """The copies must record who wrote them.
+
+    Before this phase the write bridge filled `created_by` as a side effect of
+    filling `household`. Now that the service sets `household` explicitly the
+    bridge returns early, so the author has to be set here or it is lost.
+    """
+    original = baker.make(
+        Income,
+        user=user,
+        household=household,
+        created_by=user,
+        name="Salário",
+        amount=Decimal("8000.00"),
+        month=date(2026, 6, 1),
+        is_recurring=True,
+        recurrence_start=date(2026, 6, 1),
+        recurrence_end=date(2026, 8, 1),
+    )
+
+    apply_income_recurrence(original)
+
+    copies = Income.objects.for_household(household).filter(name="Salário").exclude(pk=original.pk)
+    assert copies.count() == 2
+    assert not copies.filter(created_by=None).exists()
+    assert all(c.household == household for c in copies)

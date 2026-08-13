@@ -1,20 +1,4 @@
-import pytest
-from django.test import Client
-from model_bakery import baker
-
-
-@pytest.fixture
-def user(db):
-    return baker.make("core.CustomUser", username="vagner")
-
-
-@pytest.fixture
-def other_user(db):
-    return baker.make("core.CustomUser", username="amanda")
-
-
-@pytest.fixture
-def logged_client(user):
-    client = Client()
-    client.force_login(user)
-    return client
+# `user`, `other_user`, `household`, `other_household` and `logged_client` all
+# live in the root `src/backend/conftest.py` — one definition, reachable from
+# every app's tests. Do not shadow `logged_client` here: a copy that omits the
+# `household` dependency makes household-scoped view tests pass vacuously.

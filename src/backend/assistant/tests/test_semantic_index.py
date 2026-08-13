@@ -31,16 +31,21 @@ def _readable(plan: str) -> str:
 
 
 @pytest.fixture
-def haystack(user):
+def haystack(user, household):
     """One known needle plus enough noise that a seq scan is the wrong plan."""
     rng = random.Random(20260808)  # noqa: S311 — synthetic vectors, not crypto
     needle_vector = _vector(rng)
     needle = MemoryEmbedding.objects.create(
-        user=user, text="mercado cosmos é alimentação", embedding=needle_vector
+        user=user,
+        household=household,
+        text="mercado cosmos é alimentação",
+        embedding=needle_vector,
     )
     MemoryEmbedding.objects.bulk_create(
         [
-            MemoryEmbedding(user=user, text=f"ruído {i}", embedding=_vector(rng))
+            MemoryEmbedding(
+                user=user, household=household, text=f"ruído {i}", embedding=_vector(rng)
+            )
             for i in range(3000)
         ],
         batch_size=500,
@@ -65,36 +70,41 @@ def test_hnsw_index_exists():
 
 
 @pytest.mark.django_db
-def test_exact_match_is_found(user, haystack):
+def test_exact_match_is_found(scope, haystack):
     needle, needle_vector = haystack
-    matches = find_semantic_matches(user, needle_vector, threshold=0.8, limit=5)
+    matches = find_semantic_matches(scope, needle_vector, threshold=0.8, limit=5)
     assert needle.id in [m.id for m in matches]
 
 
 @pytest.mark.django_db
-def test_threshold_still_excludes_distant_rows(user, haystack):
+def test_threshold_still_excludes_distant_rows(scope, haystack):
     """A near-orthogonal probe must return nothing, index or no index."""
     _, needle_vector = haystack
     orthogonal = [-value for value in needle_vector]
-    assert find_semantic_matches(user, orthogonal, threshold=0.99, limit=5) == []
+    assert find_semantic_matches(scope, orthogonal, threshold=0.99, limit=5) == []
 
 
 @pytest.mark.django_db
-def test_limit_is_respected(user, haystack):
+def test_limit_is_respected(scope, haystack):
     _, needle_vector = haystack
-    assert len(find_semantic_matches(user, needle_vector, threshold=0.0, limit=3)) <= 3
+    assert len(find_semantic_matches(scope, needle_vector, threshold=0.0, limit=3)) <= 3
 
 
 @pytest.mark.django_db
-def test_results_are_scoped_to_the_user(user, other_user, haystack):
+def test_results_are_scoped_to_the_household(scope, other_user, other_household, haystack):
     _, needle_vector = haystack
-    MemoryEmbedding.objects.create(user=other_user, text="vizinho", embedding=needle_vector)
-    matches = find_semantic_matches(user, needle_vector, threshold=0.0, limit=50)
-    assert all(m.user_id == user.id for m in matches)
+    MemoryEmbedding.objects.create(
+        user=other_user,
+        household=other_household,
+        text="vizinho",
+        embedding=needle_vector,
+    )
+    matches = find_semantic_matches(scope, needle_vector, threshold=0.0, limit=50)
+    assert all(m.household_id == scope.household.id for m in matches)
 
 
 @pytest.mark.django_db
-def test_the_nearest_neighbour_query_uses_the_hnsw_index(user, haystack):
+def test_the_nearest_neighbour_query_uses_the_hnsw_index(scope, haystack):
     """The ORDER BY … LIMIT shape is the only one HNSW can answer.
 
     Asserted on raw SQL rather than through find_semantic_matches so the test

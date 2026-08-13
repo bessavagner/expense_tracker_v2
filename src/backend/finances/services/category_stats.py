@@ -33,7 +33,7 @@ def _median(values: list[Decimal]) -> Decimal:
     return ((xs[mid - 1] + xs[mid]) / 2).quantize(_CENTS, rounding=ROUND_HALF_UP)
 
 
-def monthly_diverse_total_median(user, window=6, as_of=None) -> Decimal:
+def monthly_diverse_total_median(household, window=6, as_of=None) -> Decimal:
     """Robust estimate of a typical month's "diversas" (regular) spend.
 
     Median of the total regular spend per month over the ``window`` complete
@@ -45,9 +45,8 @@ def monthly_diverse_total_median(user, window=6, as_of=None) -> Decimal:
     as_of = as_of or date.today()
     months = _window_months(as_of, window)
     rows = (
-        Entry.objects.filter(
-            user=user, amount__gt=0, entry_type=EntryType.REGULAR, billing_month__in=months
-        )
+        Entry.objects.for_household(household)
+        .filter(amount__gt=0, entry_type=EntryType.REGULAR, billing_month__in=months)
         .exclude(category__name__icontains=ADJUSTMENT_CATEGORY_PATTERN)
         .values("billing_month")
         .annotate(total=Sum("amount"))
@@ -56,7 +55,7 @@ def monthly_diverse_total_median(user, window=6, as_of=None) -> Decimal:
     return _median(totals)
 
 
-def diverse_savings_for_month(user, billing_month, window=6) -> dict:
+def diverse_savings_for_month(household, billing_month, window=6) -> dict:
     """Economia em diversas vs o padrão histórico robusto.
 
     baseline = mediana das diversas dos ``window`` meses anteriores (robusta a
@@ -64,9 +63,8 @@ def diverse_savings_for_month(user, billing_month, window=6) -> dict:
     ``billing_month``. economia = baseline - actual (>0 => gastou menos que o
     habitual).
     """
-    baseline = monthly_diverse_total_median(user, window=window, as_of=billing_month)
-    actual = Entry.objects.filter(
-        user=user,
+    baseline = monthly_diverse_total_median(household, window=window, as_of=billing_month)
+    actual = Entry.objects.for_household(household).filter(
         amount__gt=0,
         entry_type=EntryType.REGULAR,
         billing_month=billing_month,
@@ -81,7 +79,7 @@ def diverse_savings_for_month(user, billing_month, window=6) -> dict:
     }
 
 
-def monthly_diverse_total_ceiling(user) -> Decimal:
+def monthly_diverse_total_ceiling(household) -> Decimal:
     """Planned diversas ceiling: Σ budgets + ceilings of un-budgeted categories.
 
     The "teto" alternative to ``monthly_diverse_total_median`` for the projection.
@@ -89,14 +87,16 @@ def monthly_diverse_total_ceiling(user) -> Decimal:
     """
     from finances.services.budget_stats import total_diverse_ceiling
 
-    return total_diverse_ceiling(user)
+    return total_diverse_ceiling(household)
 
 
-def category_moving_averages(user, window=3, as_of=None, entry_type=None) -> dict:
+def category_moving_averages(household, window=3, as_of=None, entry_type=None) -> dict:
     as_of = as_of or date.today()
     months = _window_months(as_of, window)
-    qs = Entry.objects.filter(user=user, amount__gt=0, billing_month__in=months).exclude(
-        category__name__icontains=ADJUSTMENT_CATEGORY_PATTERN
+    qs = (
+        Entry.objects.for_household(household)
+        .filter(amount__gt=0, billing_month__in=months)
+        .exclude(category__name__icontains=ADJUSTMENT_CATEGORY_PATTERN)
     )
     if entry_type is not None:
         qs = qs.filter(entry_type=entry_type)
@@ -114,14 +114,14 @@ def category_moving_averages(user, window=3, as_of=None, entry_type=None) -> dic
     }
 
 
-def category_moving_averages_named(user, window=3, as_of=None, entry_type=None) -> list:
+def category_moving_averages_named(household, window=3, as_of=None, entry_type=None) -> list:
     as_of = as_of or date.today()
     months = _window_months(as_of, window)
-    avgs = category_moving_averages(user, window, as_of, entry_type)
-    qs = Entry.objects.filter(user=user, amount__gt=0, billing_month__in=months)
+    avgs = category_moving_averages(household, window, as_of, entry_type)
+    qs = Entry.objects.for_household(household).filter(amount__gt=0, billing_month__in=months)
     if entry_type is not None:
         qs = qs.filter(entry_type=entry_type)
-    names = dict(Category.objects.filter(user=user).values_list("id", "name"))
+    names = dict(Category.objects.for_household(household).values_list("id", "name"))
     out = [
         {
             "id": cid,

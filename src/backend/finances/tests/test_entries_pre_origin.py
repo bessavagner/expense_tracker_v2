@@ -9,17 +9,9 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from django.test import Client
 from model_bakery import baker
 
 from finances.views.entries import compute_entry_summary
-
-
-@pytest.fixture
-def logged_client(user):
-    client = Client()
-    client.force_login(user)
-    return client
 
 
 def _regular(user, d, amount, billing_month):
@@ -37,11 +29,11 @@ def _regular(user, d, amount, billing_month):
 
 @pytest.mark.django_db
 class TestPreOriginSummary:
-    def test_summary_before_origin_does_not_raise(self, user):
+    def test_summary_before_origin_does_not_raise(self, user, household):
         # October 2025 precedes the projection origin (nov/2025).
         _regular(user, date(2025, 10, 15), "100.00", date(2025, 10, 1))
 
-        summary = compute_entry_summary(user, 2025, 10)
+        summary = compute_entry_summary(household, 2025, 10)
 
         assert summary["before_origin"] is True
         assert summary["total_lancado"] == Decimal("100.00")
@@ -52,10 +44,10 @@ class TestPreOriginSummary:
         assert summary["acumulado"] == Decimal("0")
         assert summary["origin_month"] == date(2025, 11, 1)
 
-    def test_summary_in_origin_not_flagged(self, user):
+    def test_summary_in_origin_not_flagged(self, user, household):
         _regular(user, date(2026, 1, 10), "100.00", date(2026, 1, 1))
 
-        summary = compute_entry_summary(user, 2026, 1)
+        summary = compute_entry_summary(household, 2026, 1)
 
         assert summary["before_origin"] is False
         assert summary["total_gastos"] == Decimal("100.00")

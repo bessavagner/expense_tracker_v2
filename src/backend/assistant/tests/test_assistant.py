@@ -67,9 +67,9 @@ def test_no_delegation_tools():
 @pytest.mark.django_db
 class TestRuns:
     @pytest.mark.anyio
-    async def test_runs_under_testmodel(self, seeded_user):
+    async def test_runs_under_testmodel(self, seeded_user, seeded_scope):
         with agents_override(TestModel()):
-            result = await assistant_agent.run("gastei 50 no cosmos", deps=seeded_user)
+            result = await assistant_agent.run("gastei 50 no cosmos", deps=seeded_scope)
             assert result.output
 
 
@@ -94,22 +94,22 @@ class TestPendingReceiptDirective:
             status=ReceiptDraftStatus.PENDING,
         )
 
-    def test_directive_present_when_draft_pending(self, user):
+    def test_directive_present_when_draft_pending(self, user, scope):
         from assistant.agents.tools import build_pending_receipt_directive
 
         self._make_pending(user)
-        out = build_pending_receipt_directive(user)
+        out = build_pending_receipt_directive(scope)
         assert "commit_receipt" in out
         assert "MATEUS SUPERMERCADOS" in out
         assert "NUNCA diga que registrou" in out
         assert "delegate_registro" not in out
 
-    def test_directive_empty_when_no_pending(self, user):
+    def test_directive_empty_when_no_pending(self, user, scope):
         from assistant.agents.tools import build_pending_receipt_directive
 
-        assert build_pending_receipt_directive(user) == ""
+        assert build_pending_receipt_directive(scope) == ""
 
-    def test_directive_empty_when_already_registered(self, user):
+    def test_directive_empty_when_already_registered(self, user, scope):
         from assistant.agents.tools import build_pending_receipt_directive
         from assistant.models import ReceiptDraft, ReceiptDraftStatus
 
@@ -118,4 +118,4 @@ class TestPendingReceiptDirective:
             payload={"store": "X", "items": []},
             status=ReceiptDraftStatus.REGISTERED,
         )
-        assert build_pending_receipt_directive(user) == ""
+        assert build_pending_receipt_directive(scope) == ""

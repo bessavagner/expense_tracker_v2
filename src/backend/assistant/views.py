@@ -12,6 +12,7 @@ from assistant.agents.extraction import (
     extraction_to_prompt,
     receipt_needs_review,
 )
+from assistant.agents.scope import AgentScope
 from assistant.models import (
     AssistantUsageEvent,
     AssistantUsageKind,
@@ -61,7 +62,7 @@ def _check_auth(request):
     return None
 
 
-async def _load_history(user):
+async def _load_history(scope):
     """Histórico PydanticAI (exclui a última msg, que vira o prompt atual)."""
     from pydantic_ai.messages import (
         ModelRequest,
@@ -71,7 +72,7 @@ async def _load_history(user):
     )
 
     history_qs = (
-        ChatMessage.objects.filter(user=user)
+        ChatMessage.objects.for_household(scope.household)
         .order_by("-created_at")[: settings.ASSISTANT_MAX_HISTORY]
         .values("role", "content")
     )
@@ -87,7 +88,7 @@ async def _load_history(user):
     return pydantic_messages
 
 
-def _sse_response(user, agent, prompt, *, message_history, user_text=None, model=None):
+def _sse_response(scope, agent, prompt, *, message_history, user_text=None, model=None):
     """Monta a StreamingHttpResponse SSE para qualquer agente/prompt.
 
     Se ``user_text`` for dado, emite um evento ``user_text`` antes dos tokens
@@ -106,7 +107,7 @@ def _sse_response(user, agent, prompt, *, message_history, user_text=None, model
         data_changed = False
         try:
             async with agent.run_stream(
-                prompt, deps=user, message_history=message_history, model=model
+                prompt, deps=scope, message_history=message_history, model=model
             ) as stream:
                 async for text in stream.stream_text(delta=True):
                     full_response += text
@@ -121,7 +122,9 @@ def _sse_response(user, agent, prompt, *, message_history, user_text=None, model
             full_response = error_msg
 
         assistant_msg = await ChatMessage.objects.acreate(
-            user=user,
+            user=scope.user,  # still NOT NULL until phase 4
+            household=scope.household,
+            created_by=scope.user,
             role=MessageRole.ASSISTANT,
             content=full_response,
         )
@@ -182,6 +185,13 @@ async def chat_view(request):
     if not user.is_authenticated:
         return JsonResponse({"error": "Authentication required"}, status=403)
 
+    # Built from the already-awaited user rather than `AgentScope.for_request`:
+    # this view is async and resolves its user with `aget_user`, which does not
+    # populate `request.user`. `request.household` is set by the sync middleware
+    # Django has already adapted and run, so reading it here is just an
+    # attribute access — no ORM call in async context.
+    scope = AgentScope(household=getattr(request, "household", None), user=user)
+
     content_type = request.content_type or ""
     is_multipart = content_type.startswith("multipart/form-data")
     # The kind is decided here, before any model work, because the image budget
@@ -204,21 +214,22 @@ async def chat_view(request):
         return denial
 
     if is_multipart:
-        return await _handle_multipart(request, user)
-    return await _handle_json(request, user)
+        return await _handle_multipart(request, scope)
+    return await _handle_json(request, scope)
 
 
-async def _pending_receipt(user):
+async def _pending_receipt(scope):
     from assistant.models import ReceiptDraft, ReceiptDraftStatus
 
     return await (
-        ReceiptDraft.objects.filter(user=user, status=ReceiptDraftStatus.PENDING)
+        ReceiptDraft.objects.for_household(scope.household)
+        .filter(status=ReceiptDraftStatus.PENDING)
         .order_by("-created_at")
         .afirst()
     )
 
 
-async def _handle_json(request, user):
+async def _handle_json(request, scope):
     try:
         body = json.loads(request.body)
         message = body.get("message", "").strip()
@@ -228,14 +239,20 @@ async def _handle_json(request, user):
     if not message:
         return JsonResponse({"error": "Message is required"}, status=400)
 
-    await ChatMessage.objects.acreate(user=user, role=MessageRole.USER, content=message)
-    if await _pending_receipt(user):
-        return _sse_response(user, assistant_agent, message, message_history=None)
-    history = await _load_history(user)
-    return _sse_response(user, assistant_agent, message, message_history=history)
+    await ChatMessage.objects.acreate(
+        user=scope.user,  # still NOT NULL until phase 4
+        household=scope.household,
+        created_by=scope.user,
+        role=MessageRole.USER,
+        content=message,
+    )
+    if await _pending_receipt(scope):
+        return _sse_response(scope, assistant_agent, message, message_history=None)
+    history = await _load_history(scope)
+    return _sse_response(scope, assistant_agent, message, message_history=history)
 
 
-async def _handle_multipart(request, user):
+async def _handle_multipart(request, scope):
     caption = (request.POST.get("message") or "").strip()
     images = request.FILES.getlist("image")
     audio = request.FILES.get("audio")
@@ -246,19 +263,25 @@ async def _handle_multipart(request, user):
         return JsonResponse({"error": "Nada para processar."}, status=400)
 
     if images:
-        return await _handle_images(request, user, images, caption)
+        return await _handle_images(request, scope, images, caption)
     if audio:
-        return await _handle_audio(request, user, audio, caption)
+        return await _handle_audio(request, scope, audio, caption)
 
     # multipart só com texto: trata como mensagem normal
-    await ChatMessage.objects.acreate(user=user, role=MessageRole.USER, content=caption)
-    if await _pending_receipt(user):
-        return _sse_response(user, assistant_agent, caption, message_history=None)
-    history = await _load_history(user)
-    return _sse_response(user, assistant_agent, caption, message_history=history)
+    await ChatMessage.objects.acreate(
+        user=scope.user,  # still NOT NULL until phase 4
+        household=scope.household,
+        created_by=scope.user,
+        role=MessageRole.USER,
+        content=caption,
+    )
+    if await _pending_receipt(scope):
+        return _sse_response(scope, assistant_agent, caption, message_history=None)
+    history = await _load_history(scope)
+    return _sse_response(scope, assistant_agent, caption, message_history=history)
 
 
-async def _handle_audio(request, user, audio, caption):
+async def _handle_audio(request, scope, audio, caption):
     max_bytes = settings.ASSISTANT_MAX_AUDIO_MB * 1024 * 1024
     if audio.size > max_bytes:
         return JsonResponse({"error": "Áudio muito grande."}, status=400)
@@ -280,16 +303,24 @@ async def _handle_audio(request, user, audio, caption):
         )
 
     message = f"{caption}\n{text}".strip() if caption else text
-    await ChatMessage.objects.acreate(user=user, role=MessageRole.USER, content=message)
-    if await _pending_receipt(user):
+    await ChatMessage.objects.acreate(
+        user=scope.user,  # still NOT NULL until phase 4
+        household=scope.household,
+        created_by=scope.user,
+        role=MessageRole.USER,
+        content=message,
+    )
+    if await _pending_receipt(scope):
         return _sse_response(
-            user, assistant_agent, message, message_history=None, user_text=message
+            scope, assistant_agent, message, message_history=None, user_text=message
         )
-    history = await _load_history(user)
-    return _sse_response(user, assistant_agent, message, message_history=history, user_text=message)
+    history = await _load_history(scope)
+    return _sse_response(
+        scope, assistant_agent, message, message_history=history, user_text=message
+    )
 
 
-async def _dispatch_extraction(user, chat_msg, extraction, caption, user_label):
+async def _dispatch_extraction(scope, chat_msg, extraction, caption, user_label):
     """Rota comum após uma extração bem-sucedida.
 
     Se a foto parece um recibo JÁ REGISTRADO (reenvio para corrigir/identificar),
@@ -304,27 +335,33 @@ async def _dispatch_extraction(user, chat_msg, extraction, caption, user_label):
     )
 
     payload = extraction.model_dump(mode="json")
-    dup = await sync_to_async(find_registered_duplicate)(user, payload)
+    dup = await sync_to_async(find_registered_duplicate)(scope, payload)
     if dup is not None:
-        directive = await sync_to_async(build_duplicate_receipt_directive)(user, payload, dup)
+        directive = await sync_to_async(build_duplicate_receipt_directive)(scope, payload, dup)
         if caption:
             directive = f"{directive}\n\nMensagem do usuário: {caption}"
-        history = await _load_history(user)
+        history = await _load_history(scope)
         return _sse_response(
-            user,
+            scope,
             assistant_agent,
             directive,
             message_history=history,
             user_text=user_label,
         )
 
-    await ReceiptDraft.objects.acreate(user=user, chat_message=chat_msg, payload=payload)
+    await ReceiptDraft.objects.acreate(
+        user=scope.user,  # still NOT NULL until phase 4
+        household=scope.household,
+        created_by=scope.user,
+        chat_message=chat_msg,
+        payload=payload,
+    )
     needs_review = receipt_needs_review(extraction, settings.ASSISTANT_RECEIPT_MIN_CONFIDENCE)
     prompt = extraction_to_prompt(extraction, caption, needs_review=needs_review)
-    return _sse_response(user, assistant_agent, prompt, message_history=None, user_text=user_label)
+    return _sse_response(scope, assistant_agent, prompt, message_history=None, user_text=user_label)
 
 
-async def _handle_images(request, user, images, caption):
+async def _handle_images(request, scope, images, caption):
     if len(images) > settings.ASSISTANT_MAX_IMAGES:
         return JsonResponse(
             {"error": f"Envie no máximo {settings.ASSISTANT_MAX_IMAGES} imagens."},
@@ -348,7 +385,11 @@ async def _handle_images(request, user, images, caption):
     else:
         user_label = "📷 [foto enviada]" if n == 1 else f"📷 [{noun} enviadas]"
     chat_msg = await ChatMessage.objects.acreate(
-        user=user, role=MessageRole.USER, content=user_label
+        user=scope.user,  # still NOT NULL until phase 4
+        household=scope.household,
+        created_by=scope.user,
+        role=MessageRole.USER,
+        content=user_label,
     )
 
     from assistant.agents.tools import (
@@ -360,10 +401,10 @@ async def _handle_images(request, user, images, caption):
     # Nova foto = novo recibo: abandona qualquer pendente anterior, garantindo no
     # máximo UM draft pendente (evita ressuscitar drafts órfãos num commit
     # posterior — bug real do frete pós-commit que regravou um draft antigo).
-    await sync_to_async(discard_pending_receipts)(user)
+    await sync_to_async(discard_pending_receipts)(scope)
 
-    cats = await sync_to_async(list_categories)(user)
-    pms = await sync_to_async(list_payment_methods)(user)
+    cats = await sync_to_async(list_categories)(scope)
+    pms = await sync_to_async(list_payment_methods)(scope)
 
     # Fase 1: extração estruturada (combina todas as imagens num recibo).
     extraction = None
@@ -373,7 +414,7 @@ async def _handle_images(request, user, images, caption):
         logger.exception("Falha na extração estruturada do recibo; tentando com modelo de visão.")
 
     if extraction is not None:
-        return await _dispatch_extraction(user, chat_msg, extraction, caption, user_label)
+        return await _dispatch_extraction(scope, chat_msg, extraction, caption, user_label)
 
     # Fallback: tenta UMA vez a extração com o modelo de visão; sem sucesso,
     # pede reenvio (nunca grava direto).
@@ -397,7 +438,11 @@ async def _handle_images(request, user, images, caption):
             )
             yield json.dumps({"type": "token", "content": msg}, ensure_ascii=False) + "\n"
             assistant_msg = await ChatMessage.objects.acreate(
-                user=user, role=MessageRole.ASSISTANT, content=msg
+                user=scope.user,  # still NOT NULL until phase 4
+                household=scope.household,
+                created_by=scope.user,
+                role=MessageRole.ASSISTANT,
+                content=msg,
             )
             yield (
                 json.dumps(
@@ -412,7 +457,7 @@ async def _handle_images(request, user, images, caption):
         resp["X-Accel-Buffering"] = "no"
         return resp
 
-    return await _dispatch_extraction(user, chat_msg, extraction, caption, user_label)
+    return await _dispatch_extraction(scope, chat_msg, extraction, caption, user_label)
 
 
 @require_GET
@@ -423,7 +468,7 @@ def history_view(request):
         return auth_error
 
     messages = (
-        ChatMessage.objects.filter(user=request.user)
+        ChatMessage.objects.for_request(request)
         .order_by("-created_at")[:50]
         .values("id", "role", "content", "created_at")
     )

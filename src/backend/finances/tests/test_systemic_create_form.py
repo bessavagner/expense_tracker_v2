@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 from model_bakery import baker
 
+from accounts.resolution import household_for_user
 from finances.forms import SystemicExpenseCreateForm
 from finances.models import Category, Entry, PaymentMethod, SystemicExpense
 from finances.models.entry import EntryType
@@ -12,9 +13,10 @@ from finances.models.entry import EntryType
 @pytest.fixture
 def ctx(db):
     user = baker.make("core.CustomUser")
-    cat = baker.make(Category, user=user)
-    pm = baker.make(PaymentMethod, user=user, is_active=True)
-    return user, cat, pm
+    household = household_for_user(user)
+    cat = baker.make(Category, user=user, household=household)
+    pm = baker.make(PaymentMethod, user=user, household=household, is_active=True)
+    return user, household, cat, pm
 
 
 def _data(cat, pm, **over):
@@ -30,24 +32,24 @@ def _data(cat, pm, **over):
 
 @pytest.mark.django_db
 def test_non_recurring_creates_template_only(ctx):
-    user, cat, pm = ctx
-    form = SystemicExpenseCreateForm(_data(cat, pm), user=user)
+    user, household, cat, pm = ctx
+    form = SystemicExpenseCreateForm(_data(cat, pm), household=household)
     assert form.is_valid(), form.errors
-    systemic, launched = form.save_for_user(user)
-    assert SystemicExpense.objects.filter(user=user).count() == 1
+    systemic, launched = form.save_for_household(household, user)
+    assert SystemicExpense.objects.for_household(household).count() == 1
     assert launched == 0
     assert Entry.objects.filter(systemic_expense=systemic).count() == 0
 
 
 @pytest.mark.django_db
 def test_recurring_launches_n_months(ctx):
-    user, cat, pm = ctx
+    user, household, cat, pm = ctx
     form = SystemicExpenseCreateForm(
         _data(cat, pm, is_recurring="on", months="3", start_month="2026-06-01"),
-        user=user,
+        household=household,
     )
     assert form.is_valid(), form.errors
-    systemic, launched = form.save_for_user(user)
+    systemic, launched = form.save_for_household(household, user)
     assert launched == 3
     months = sorted(
         Entry.objects.filter(systemic_expense=systemic, entry_type=EntryType.SYSTEMIC).values_list(
@@ -60,10 +62,10 @@ def test_recurring_launches_n_months(ctx):
 
 @pytest.mark.django_db
 def test_recurring_requires_payment_method(ctx):
-    user, cat, pm = ctx
+    _user, household, cat, pm = ctx
     form = SystemicExpenseCreateForm(
         _data(cat, pm, payment_method="", is_recurring="on", months="2", start_month="2026-06-01"),
-        user=user,
+        household=household,
     )
     assert not form.is_valid()
     assert "payment_method" in form.errors

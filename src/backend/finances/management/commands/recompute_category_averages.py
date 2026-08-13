@@ -19,8 +19,10 @@ class Command(BaseCommand):
         )
         changed = 0
         for cat in Category.objects.all():
-            q = category_moving_averages(cat.user, window=3, as_of=as_of).get(cat.id)
-            h = category_moving_averages(cat.user, window=1200, as_of=as_of).get(cat.id)
+            # The category's own household, not its author's: a household's
+            # averages must be the same figure whichever member wrote the rows.
+            q = category_moving_averages(cat.household, window=3, as_of=as_of).get(cat.id)
+            h = category_moving_averages(cat.household, window=1200, as_of=as_of).get(cat.id)
             if opts["apply"]:
                 cat.quarterly_avg = q
                 cat.historical_avg = h

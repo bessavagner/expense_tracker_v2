@@ -24,17 +24,19 @@ from finances.services.income_recurrence import apply_income_recurrence
 from finances.views.mixins import HtmxLoginRequiredMixin
 
 
-def categories_tab_context(user):
-    averages = category_moving_averages(user, window=3)
-    total_ceiling = Category.objects.filter(user=user).aggregate(t=Sum("budget_ceiling"))["t"]
+def categories_tab_context(household):
+    averages = category_moving_averages(household, window=3)
+    total_ceiling = Category.objects.for_household(household).aggregate(t=Sum("budget_ceiling"))[
+        "t"
+    ]
     total_avg = sum(averages.values(), Decimal("0"))
     return {
-        "categories": Category.objects.filter(user=user).select_related("budget"),
+        "categories": Category.objects.for_household(household).select_related("budget"),
         "form": CategoryCreateForm(),
         "category_averages": averages,
         "total_ceiling": total_ceiling,
         "total_avg_3m": total_avg or None,
-        "budgets": Budget.objects.filter(user=user),
+        "budgets": Budget.objects.for_household(household),
     }
 
 
@@ -52,15 +54,15 @@ class SettingsView(HtmxLoginRequiredMixin, TemplateView):
 # --- Income ---
 
 
-def income_groups(user):
-    """Group a user's incomes by name into one summary row each.
+def income_groups(household):
+    """Group a household's incomes by name into one summary row each.
 
     Recurring incomes create one Income row per month; the Settings list groups
     them so the tab shows sources, not a wall of near-identical rows. Per-month
     values are edited in the monthly cockpit (Entradas).
     """
     groups: dict[str, dict] = {}
-    for inc in Income.objects.filter(user=user).order_by("name", "month"):
+    for inc in Income.objects.for_household(household).order_by("name", "month"):
         g = groups.get(inc.name)
         if g is None:
             g = groups[inc.name] = {
@@ -85,8 +87,8 @@ def income_groups(user):
     return result
 
 
-def _income_tab_context(user):
-    return {"income_groups": income_groups(user), "form": IncomeForm()}
+def _income_tab_context(household):
+    return {"income_groups": income_groups(household), "form": IncomeForm()}
 
 
 class IncomeTabView(HtmxLoginRequiredMixin, TemplateView):
@@ -97,7 +99,7 @@ class IncomeTabView(HtmxLoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context.update(_income_tab_context(self.request.user))
+        context.update(_income_tab_context(self.request.household))
         return context
 
 
@@ -106,14 +108,16 @@ class IncomeCreateView(HtmxLoginRequiredMixin, View):
         form = IncomeForm(request.POST)
         if form.is_valid():
             income = form.save(commit=False)
-            income.user = request.user
+            income.user = request.user  # still NOT NULL until phase 4
+            income.household = request.household
+            income.created_by = request.user
             income.save()
             apply_income_recurrence(income)
         return self._render_tab(request)
 
     def _render_tab(self, request):
         html = render_to_string(
-            "settings/_income_tab.html", _income_tab_context(request.user), request=request
+            "settings/_income_tab.html", _income_tab_context(request.household), request=request
         )
         response = HttpResponse(html)
         response["HX-Trigger"] = '{"showToast": {"message": "Renda salva!", "type": "success"}}'
@@ -125,9 +129,9 @@ class IncomeGroupDeleteView(HtmxLoginRequiredMixin, View):
 
     def post(self, request):
         name = request.POST.get("name", "")
-        Income.objects.filter(user=request.user, name=name).delete()
+        Income.objects.for_request(request).filter(name=name).delete()
         html = render_to_string(
-            "settings/_income_tab.html", _income_tab_context(request.user), request=request
+            "settings/_income_tab.html", _income_tab_context(request.household), request=request
         )
         response = HttpResponse(html)
         response["HX-Trigger"] = '{"showToast": {"message": "Renda removida!", "type": "success"}}'
@@ -136,7 +140,7 @@ class IncomeGroupDeleteView(HtmxLoginRequiredMixin, View):
 
 class IncomeUpdateView(HtmxLoginRequiredMixin, View):
     def get(self, request, pk):
-        income = Income.objects.filter(user=request.user, pk=pk).first()
+        income = Income.objects.for_request(request).filter(pk=pk).first()
         if not income:
             raise Http404
         form = IncomeForm(instance=income)
@@ -145,7 +149,7 @@ class IncomeUpdateView(HtmxLoginRequiredMixin, View):
         return HttpResponse(html)
 
     def post(self, request, pk):
-        income = Income.objects.filter(user=request.user, pk=pk).first()
+        income = Income.objects.for_request(request).filter(pk=pk).first()
         if not income:
             raise Http404
         form = IncomeForm(request.POST, instance=income)
@@ -153,7 +157,7 @@ class IncomeUpdateView(HtmxLoginRequiredMixin, View):
             form.save()
             apply_income_recurrence(form.instance)
         html = render_to_string(
-            "settings/_income_tab.html", _income_tab_context(request.user), request=request
+            "settings/_income_tab.html", _income_tab_context(request.household), request=request
         )
         response = HttpResponse(html)
         response["HX-Trigger"] = (
@@ -171,28 +175,30 @@ class SystemicsTabView(HtmxLoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["systemics"] = SystemicExpense.objects.filter(
-            user=self.request.user
-        ).select_related("category", "payment_method")
-        context["form"] = SystemicExpenseForm(user=self.request.user)
+        context["systemics"] = SystemicExpense.objects.for_request(self.request).select_related(
+            "category", "payment_method"
+        )
+        context["form"] = SystemicExpenseForm(household=self.request.household)
         return context
 
 
 class SystemicCreateView(HtmxLoginRequiredMixin, View):
     def post(self, request):
-        form = SystemicExpenseForm(request.POST, user=request.user)
+        form = SystemicExpenseForm(request.POST, household=request.household)
         if form.is_valid():
             systemic = form.save(commit=False)
-            systemic.user = request.user
+            systemic.user = request.user  # still NOT NULL until phase 4
+            systemic.household = request.household
+            systemic.created_by = request.user
             systemic.save()
         return self._render_tab(request)
 
     def _render_tab(self, request):
         context = {
-            "systemics": SystemicExpense.objects.filter(user=request.user).select_related(
+            "systemics": SystemicExpense.objects.for_request(request).select_related(
                 "category", "payment_method"
             ),
-            "form": SystemicExpenseForm(user=request.user),
+            "form": SystemicExpenseForm(household=request.household),
         }
         html = render_to_string("settings/_systemics_tab.html", context, request=request)
         response = HttpResponse(html)
@@ -217,10 +223,10 @@ class SystemicEditModalView(HtmxLoginRequiredMixin, View):
     shared #entry-modal."""
 
     def get(self, request, pk):
-        systemic = SystemicExpense.objects.filter(user=request.user, pk=pk).first()
+        systemic = SystemicExpense.objects.for_request(request).filter(pk=pk).first()
         if not systemic:
             raise Http404
-        form = SystemicTemplateEditForm(instance=systemic, user=request.user)
+        form = SystemicTemplateEditForm(instance=systemic, household=request.household)
         today = date.today().replace(day=1)
         form.fields["recurrence_start"].initial = today
         form.fields["recurrence_end"].initial = date(today.year, 12, 1)
@@ -234,10 +240,12 @@ class SystemicEditModalView(HtmxLoginRequiredMixin, View):
 
 class SystemicEditView(HtmxLoginRequiredMixin, View):
     def post(self, request, pk):
-        systemic = SystemicExpense.objects.filter(user=request.user, pk=pk).first()
+        systemic = SystemicExpense.objects.for_request(request).filter(pk=pk).first()
         if not systemic:
             raise Http404
-        form = SystemicTemplateEditForm(request.POST, instance=systemic, user=request.user)
+        form = SystemicTemplateEditForm(
+            request.POST, instance=systemic, household=request.household
+        )
         if not form.is_valid():
             html = render_to_string(
                 "partials/_modal_edit_form.html",
@@ -249,10 +257,10 @@ class SystemicEditView(HtmxLoginRequiredMixin, View):
         html = render_to_string(
             "settings/_systemics_tab.html",
             {
-                "systemics": SystemicExpense.objects.filter(user=request.user).select_related(
+                "systemics": SystemicExpense.objects.for_request(request).select_related(
                     "category", "payment_method"
                 ),
-                "form": SystemicExpenseForm(user=request.user),
+                "form": SystemicExpenseForm(household=request.household),
             },
             request=request,
         )
@@ -268,7 +276,7 @@ class SystemicEditView(HtmxLoginRequiredMixin, View):
 
 class SystemicToggleView(HtmxLoginRequiredMixin, View):
     def patch(self, request, pk):
-        systemic = SystemicExpense.objects.filter(user=request.user, pk=pk).first()
+        systemic = SystemicExpense.objects.for_request(request).filter(pk=pk).first()
         if not systemic:
             raise Http404
         systemic.is_active = not systemic.is_active
@@ -276,10 +284,10 @@ class SystemicToggleView(HtmxLoginRequiredMixin, View):
         html = render_to_string(
             "settings/_systemics_tab.html",
             {
-                "systemics": SystemicExpense.objects.filter(user=request.user).select_related(
+                "systemics": SystemicExpense.objects.for_request(request).select_related(
                     "category", "payment_method"
                 ),
-                "form": SystemicExpenseForm(user=request.user),
+                "form": SystemicExpenseForm(household=request.household),
             },
             request=request,
         )
@@ -300,7 +308,7 @@ class PaymentMethodsTabView(HtmxLoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["payment_methods"] = PaymentMethod.objects.filter(user=self.request.user)
+        context["payment_methods"] = PaymentMethod.objects.for_request(self.request)
         context["form"] = PaymentMethodForm()
         return context
 
@@ -310,10 +318,12 @@ class PaymentMethodCreateView(HtmxLoginRequiredMixin, View):
         form = PaymentMethodForm(request.POST)
         if form.is_valid():
             pm = form.save(commit=False)
-            pm.user = request.user
+            pm.user = request.user  # still NOT NULL until phase 4
+            pm.household = request.household
+            pm.created_by = request.user
             pm.save()
         context = {
-            "payment_methods": PaymentMethod.objects.filter(user=request.user),
+            "payment_methods": PaymentMethod.objects.for_request(request),
             "form": PaymentMethodForm(),
         }
         html = render_to_string("settings/_payment_methods_tab.html", context, request=request)
@@ -326,14 +336,14 @@ class PaymentMethodCreateView(HtmxLoginRequiredMixin, View):
 
 class PaymentMethodEditView(HtmxLoginRequiredMixin, View):
     def post(self, request, pk):
-        pm = PaymentMethod.objects.filter(user=request.user, pk=pk).first()
+        pm = PaymentMethod.objects.for_request(request).filter(pk=pk).first()
         if not pm:
             raise Http404
         form = PaymentMethodForm(request.POST, instance=pm)
         if form.is_valid():
             form.save()
         context = {
-            "payment_methods": PaymentMethod.objects.filter(user=request.user),
+            "payment_methods": PaymentMethod.objects.for_request(request),
             "form": PaymentMethodForm(),
         }
         html = render_to_string("settings/_payment_methods_tab.html", context, request=request)
@@ -346,13 +356,13 @@ class PaymentMethodEditView(HtmxLoginRequiredMixin, View):
 
 class PaymentMethodToggleView(HtmxLoginRequiredMixin, View):
     def patch(self, request, pk):
-        pm = PaymentMethod.objects.filter(user=request.user, pk=pk).first()
+        pm = PaymentMethod.objects.for_request(request).filter(pk=pk).first()
         if not pm:
             raise Http404
         pm.is_active = not pm.is_active
         pm.save()
         context = {
-            "payment_methods": PaymentMethod.objects.filter(user=request.user),
+            "payment_methods": PaymentMethod.objects.for_request(request),
             "form": PaymentMethodForm(),
         }
         html = render_to_string("settings/_payment_methods_tab.html", context, request=request)
@@ -369,7 +379,7 @@ class CategoriesTabView(HtmxLoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context.update(categories_tab_context(self.request.user))
+        context.update(categories_tab_context(self.request.household))
         return context
 
 
@@ -378,9 +388,11 @@ class CategoryCreateView(HtmxLoginRequiredMixin, View):
         form = CategoryCreateForm(request.POST)
         if form.is_valid():
             cat = form.save(commit=False)
-            cat.user = request.user
+            cat.user = request.user  # still NOT NULL until phase 4
+            cat.household = request.household
+            cat.created_by = request.user
             cat.save()
-        context = categories_tab_context(request.user)
+        context = categories_tab_context(request.household)
         html = render_to_string("settings/_categories_tab.html", context, request=request)
         response = HttpResponse(html)
         response["HX-Trigger"] = (
@@ -391,13 +403,13 @@ class CategoryCreateView(HtmxLoginRequiredMixin, View):
 
 class CategoryEditView(HtmxLoginRequiredMixin, View):
     def post(self, request, pk):
-        cat = Category.objects.filter(user=request.user, pk=pk).first()
+        cat = Category.objects.for_request(request).filter(pk=pk).first()
         if not cat:
             raise Http404
         form = CategoryBudgetForm(request.POST, instance=cat)
         if form.is_valid():
             form.save()
-        context = categories_tab_context(request.user)
+        context = categories_tab_context(request.household)
         html = render_to_string("settings/_categories_tab.html", context, request=request)
         response = HttpResponse(html)
         response["HX-Trigger"] = '{"showToast": {"message": "Teto atualizado!", "type": "success"}}'
@@ -406,7 +418,7 @@ class CategoryEditView(HtmxLoginRequiredMixin, View):
 
 class CategoryDeleteView(HtmxLoginRequiredMixin, View):
     def delete(self, request, pk):
-        cat = Category.objects.filter(user=request.user, pk=pk).first()
+        cat = Category.objects.for_request(request).filter(pk=pk).first()
         if not cat:
             raise Http404
         if cat.is_system:
@@ -423,20 +435,20 @@ class CategoryDeleteView(HtmxLoginRequiredMixin, View):
                 status=400,
                 content_type="application/json",
             )
-        context = categories_tab_context(request.user)
+        context = categories_tab_context(request.household)
         html = render_to_string("settings/_categories_tab.html", context, request=request)
         return HttpResponse(html)
 
 
 class CategoryAssignBudgetView(HtmxLoginRequiredMixin, View):
     def post(self, request, pk):
-        cat = Category.objects.filter(user=request.user, pk=pk).first()
+        cat = Category.objects.for_request(request).filter(pk=pk).first()
         if not cat:
             raise Http404
         raw = request.POST.get("budget") or None
-        cat.budget = Budget.objects.filter(user=request.user, pk=raw).first() if raw else None
+        cat.budget = Budget.objects.for_request(request).filter(pk=raw).first() if raw else None
         cat.save(update_fields=["budget", "updated_at"])
-        context = categories_tab_context(request.user)
+        context = categories_tab_context(request.household)
         html = render_to_string("settings/_categories_tab.html", context, request=request)
         response = HttpResponse(html)
         response["HX-Trigger"] = json.dumps(
@@ -448,11 +460,11 @@ class CategoryAssignBudgetView(HtmxLoginRequiredMixin, View):
 # --- Budgets ---
 
 
-def _budgets_tab_context(user):
+def _budgets_tab_context(household):
     from finances.services.budget_stats import seed_amount_from_ceilings
 
     budgets = []
-    for b in Budget.objects.filter(user=user).prefetch_related("categories"):
+    for b in Budget.objects.for_household(household).prefetch_related("categories"):
         budgets.append(
             {
                 "obj": b,
@@ -471,7 +483,7 @@ def _budgets_tab_context(user):
 
 def _render_budgets_tab(request, message=None, toast_type="success"):
     html = render_to_string(
-        "settings/_budgets_tab.html", _budgets_tab_context(request.user), request=request
+        "settings/_budgets_tab.html", _budgets_tab_context(request.household), request=request
     )
     response = HttpResponse(html)
     if message:
@@ -485,7 +497,7 @@ class BudgetsTabView(HtmxLoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context.update(_budgets_tab_context(self.request.user))
+        context.update(_budgets_tab_context(self.request.household))
         return context
 
 
@@ -495,7 +507,9 @@ class BudgetCreateView(HtmxLoginRequiredMixin, View):
         if not form.is_valid():
             return _render_budgets_tab(request)
         b = form.save(commit=False)
-        b.user = request.user
+        b.user = request.user  # still NOT NULL until phase 4
+        b.household = request.household
+        b.created_by = request.user
         try:
             b.validate_unique()
         except ValidationError:
@@ -506,11 +520,11 @@ class BudgetCreateView(HtmxLoginRequiredMixin, View):
         return _render_budgets_tab(request, "Orçamento criado!")
 
 
-def _budget_modal_context(user, budget, form=None):
+def _budget_modal_context(household, budget, form=None):
     return {
         "budget": budget,
         "form": form or BudgetForm(instance=budget),
-        "categories": Category.objects.filter(user=user).select_related("budget"),
+        "categories": Category.objects.for_household(household).select_related("budget"),
     }
 
 
@@ -518,7 +532,7 @@ def _render_budget_modal(request, budget, form=None, error=None):
     """Render the edit modal back into the dialog. HX-Retarget points the swap at
     the modal body so a validation error re-shows the modal instead of replacing
     the settings tab."""
-    ctx = _budget_modal_context(request.user, budget, form=form)
+    ctx = _budget_modal_context(request.household, budget, form=form)
     if error:
         ctx["error"] = error
     html = render_to_string("settings/_budget_edit_modal.html", ctx, request=request)
@@ -533,12 +547,12 @@ class BudgetEditModalView(HtmxLoginRequiredMixin, View):
     #entry-modal — opened by clicking a budget row."""
 
     def get(self, request, pk):
-        b = Budget.objects.filter(user=request.user, pk=pk).first()
+        b = Budget.objects.for_request(request).filter(pk=pk).first()
         if not b:
             raise Http404
         html = render_to_string(
             "settings/_budget_edit_modal.html",
-            _budget_modal_context(request.user, b),
+            _budget_modal_context(request.household, b),
             request=request,
         )
         return HttpResponse(html)
@@ -546,14 +560,15 @@ class BudgetEditModalView(HtmxLoginRequiredMixin, View):
 
 class BudgetEditView(HtmxLoginRequiredMixin, View):
     def post(self, request, pk):
-        b = Budget.objects.filter(user=request.user, pk=pk).first()
+        b = Budget.objects.for_request(request).filter(pk=pk).first()
         if not b:
             raise Http404
         form = BudgetForm(request.POST, instance=b)
         if not form.is_valid():
             return _render_budget_modal(request, b, form=form, error="Dados inválidos.")
         updated = form.save(commit=False)
-        updated.user = request.user
+        updated.user = request.user  # still NOT NULL until phase 4
+        updated.household = request.household
         try:
             updated.validate_unique()
         except ValidationError:
@@ -563,7 +578,7 @@ class BudgetEditView(HtmxLoginRequiredMixin, View):
         updated.save()
         self._reconcile_categories(request, b)
         html = render_to_string(
-            "settings/_budgets_tab.html", _budgets_tab_context(request.user), request=request
+            "settings/_budgets_tab.html", _budgets_tab_context(request.household), request=request
         )
         response = HttpResponse(html)
         response["HX-Trigger"] = json.dumps(
@@ -579,7 +594,7 @@ class BudgetEditView(HtmxLoginRequiredMixin, View):
         previously belonged to it. Categories in OTHER budgets that were not checked
         are left untouched (one category belongs to one budget)."""
         selected = set(request.POST.getlist("categories"))
-        for cat in Category.objects.filter(user=request.user):
+        for cat in Category.objects.for_request(request):
             cid = str(cat.id)
             if cid in selected and cat.budget_id != budget.id:
                 cat.budget = budget
@@ -593,7 +608,7 @@ class BudgetRecalcView(HtmxLoginRequiredMixin, View):
     def post(self, request, pk):
         from finances.services.budget_stats import seed_amount_from_ceilings
 
-        b = Budget.objects.filter(user=request.user, pk=pk).first()
+        b = Budget.objects.for_request(request).filter(pk=pk).first()
         if not b:
             raise Http404
         b.amount = seed_amount_from_ceilings(b)
@@ -603,7 +618,7 @@ class BudgetRecalcView(HtmxLoginRequiredMixin, View):
 
 class BudgetDeleteView(HtmxLoginRequiredMixin, View):
     def delete(self, request, pk):
-        b = Budget.objects.filter(user=request.user, pk=pk).first()
+        b = Budget.objects.for_request(request).filter(pk=pk).first()
         if not b:
             raise Http404
         b.delete()
