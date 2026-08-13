@@ -1,18 +1,12 @@
 from django.contrib import admin
 
-from assistant.models import ChatMessage, MemoryRule
+from assistant.models import MemoryRule
 
-
-@admin.register(ChatMessage)
-class ChatMessageAdmin(admin.ModelAdmin):
-    list_display = ("household", "created_by", "role", "content_preview", "created_at")
-    list_filter = ("role", "created_at")
-    search_fields = ("content",)
-
-    def content_preview(self, obj):
-        return obj.content[:80]
-
-    content_preview.short_description = "Conteúdo"
+# ChatMessage is deliberately not registered (E05 S05-5). It holds every
+# user's raw conversation with the assistant — receipts, salaries, arguments
+# about money — and an admin list view of it is a standing invitation to read
+# them. E17 owns the deliberate, consented, logged way to look at a customer's
+# account.
 
 
 @admin.register(MemoryRule)

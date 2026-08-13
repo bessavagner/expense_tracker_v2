@@ -8,6 +8,7 @@ credential check, not the URL.
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from django.conf import settings as django_settings
 from django.contrib.auth import authenticate
 from django.test import Client, RequestFactory
 from django.utils import timezone
@@ -204,26 +205,37 @@ class TestBackendEnforcement:
 
 
 @pytest.mark.django_db
-class TestAdminLoginIsProtected:
-    """The lockout must be live on whatever login view is wired today."""
+class TestThereIsOnlyOneDoorAndItIsProtected:
+    """The lockout must be live on whatever login view is wired today.
 
-    def test_repeated_admin_login_failures_lock_the_account(self, account, settings):
+    E01 wrote this class against `/admin/login/`, which was then the family's
+    only door. E05 closed it: admin moved to an env-var path behind
+    `core.admin_gate`, which 404s anonymous requests — so Django's admin login
+    form is no longer reachable by anyone, staff included. Staff sign in at the
+    app's login page like everybody else and arrive at admin already
+    authenticated.
+
+    That makes the original assertion untestable and, more importantly, moot:
+    the door it guarded does not exist. What replaces it is the assertion that
+    the remaining door is covered, and that the closed one is really closed.
+    """
+
+    def test_the_admin_login_form_is_no_longer_reachable(self, account):
+        assert Client().get("/admin/login/").status_code == 404
+        admin_login = "/" + django_settings.ADMIN_URL_PATH.lstrip("/") + "login/"
+        assert Client().get(admin_login).status_code == 404
+
+    def test_repeated_failures_at_the_one_remaining_door_lock_the_account(self, account, settings):
         settings.LOGIN_FAILURE_LIMIT = 3
         client = Client()
         for _ in range(3):
-            client.post(
-                "/admin/login/",
-                {"username": "alvo", "password": "errada", "next": "/admin/"},
-            )
+            client.post("/accounts/login/", {"login": IDENTIFIER, "password": "errada"})
+
         response = client.post(
-            "/admin/login/",
-            {
-                "username": "alvo",
-                "password": "senha-correta-longa-o-suficiente",
-                "next": "/admin/",
-            },
+            "/accounts/login/",
+            {"login": IDENTIFIER, "password": "senha-correta-longa-o-suficiente"},
         )
         # Still on the login form rather than redirected in — the correct
         # password was never checked.
         assert response.status_code == 200
-        assert LoginAttempt.objects.filter(username="alvo").count() == 3
+        assert LoginAttempt.objects.filter(username=IDENTIFIER).count() == 3

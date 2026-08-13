@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path
 from django.views.generic import RedirectView
@@ -37,7 +38,10 @@ urlpatterns = [
     # chance.
     path("accounts/login/", AppLoginView.as_view(), name="account_login"),
     path("accounts/", include("allauth.urls")),
-    path("admin/", admin.site.urls),
+    # Not "admin/". The path is an environment variable and the middleware
+    # above 404s anyone who is not staff with a second factor — two
+    # independent controls, because this service is public by necessity.
+    path(settings.ADMIN_URL_PATH, admin.site.urls),
     path("api/assistant/", include("assistant.urls")),
     path("sw.js", ServiceWorkerView.as_view(), name="service-worker"),
     path("offline/", OfflineView.as_view(), name="offline"),

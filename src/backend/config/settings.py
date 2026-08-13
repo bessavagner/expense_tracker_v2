@@ -73,6 +73,8 @@ MIDDLEWARE = [
     # never have cost us a membership query.
     "allauth.account.middleware.AccountMiddleware",
     "accounts.middleware.active_household_middleware",
+    # Reads request.user, so it must follow AuthenticationMiddleware.
+    "core.admin_gate.admin_staff_only_middleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -210,6 +212,18 @@ ACCOUNT_LOGOUT_REDIRECT_URL = "/accounts/login/"
 AUTHENTICATION_BACKENDS = ["core.auth_backends.LockoutAuthenticationBackend"]
 LOGIN_FAILURE_LIMIT = int(os.environ.get("LOGIN_FAILURE_LIMIT", "10"))
 LOGIN_FAILURE_WINDOW_MINUTES = int(os.environ.get("LOGIN_FAILURE_WINDOW_MINUTES", "15"))
+
+# --- Staff isolation (E05 S05-5) ----------------------------------------
+# Admin holds every household's financial records and every user's raw chat,
+# on a service deployed --allow-unauthenticated because the product needs to
+# be. Two independent controls: an unguessable path so it is not enumerable,
+# and `core.admin_gate` so guessing it correctly still yields a 404 to anyone
+# who is not staff with a second factor.
+#
+# The path is an env var, never a literal in a committed file. The dev default
+# is deliberately not "admin/" so that a missing env var is loud in tests
+# rather than silently restoring the old front door.
+ADMIN_URL_PATH = os.environ.get("ADMIN_URL_PATH", "gestao-dev/").strip("/") + "/"
 
 # --- Identity (E05 / ADR-007) -------------------------------------------
 # Email is the login identifier. `username` stays on CustomUser because ten

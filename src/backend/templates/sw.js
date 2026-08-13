@@ -43,7 +43,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;        // cross-origin (fonts, CDN) -> network
   const p = url.pathname;
-  if (p.startsWith('/api/') || p.startsWith('/admin/') || p === '/healthz/') return; // SSE/admin/health
+  if (p.startsWith('/api/') || p.startsWith('/{{ admin_url_path }}') || p === '/healthz/') return; // SSE/admin/health
   if (p.startsWith('/static/')) {                         // immutable hashed assets
     event.respondWith(cacheFirst(req));
     return;

@@ -77,6 +77,14 @@ class ServiceWorkerView(TemplateView):
     template_name = "sw.js"
     content_type = "application/javascript"
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # The admin path is an env var (E05 S05-5), so the worker's bypass list
+        # cannot hardcode it — a stale `/admin/` there would be protecting a
+        # path that no longer exists.
+        context["admin_url_path"] = settings.ADMIN_URL_PATH
+        return context
+
     def render_to_response(self, context, **response_kwargs):
         response = super().render_to_response(context, **response_kwargs)
         response["Service-Worker-Allowed"] = "/"

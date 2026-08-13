@@ -162,19 +162,40 @@ class TestTheFrontDoorMoved:
         assert response.status_code == 302
         assert response["Location"] == LOGIN_URL
 
-    def test_the_admin_login_still_works_for_the_admin(self, account):
-        """Moving the family's door must not lock the maintainer out of /admin/.
+    def test_the_maintainer_reaches_admin_through_this_same_door(self, account):
+        """Moving the family's door must not lock the maintainer out of admin.
 
-        Django's admin form names its field `username`; the *value* it carries
-        is the address now, because that is what resolves to an account.
+        E05 also closed `/admin/login/` — the gate 404s anonymous requests —
+        so staff sign in here, like everyone else. What is different for them
+        is what happens next: with an authenticator enrolled, allauth answers
+        the correct password with the 2FA challenge rather than a session. The
+        admin path therefore sits behind password *and* second factor, and this
+        test is what says the second half is really enforced at login and not
+        only checked by the gate afterwards.
         """
+        from allauth.mfa.totp.internal import auth as totp_auth
+
         account.is_staff = True
         account.is_superuser = True
         account.save()
+        totp_auth.TOTP.activate(account, totp_auth.generate_totp_secret())
+
         client = Client()
-        response = client.post(
-            "/admin/login/",
-            {"username": IDENTIFIER, "password": SENHA, "next": "/admin/"},
-        )
+        response = client.post(LOGIN_URL, {"login": IDENTIFIER, "password": SENHA})
+        assert response.status_code == 302
+        assert "2fa" in response["Location"], response["Location"]
+        assert not client.session.get("_auth_user_id"), "the password alone signed them in"
+
+    def test_a_maintainer_without_a_second_factor_signs_in_normally(self, account):
+        """Enrolment is demanded by the admin gate, not by the login page.
+
+        Staff who have not enrolled yet still get into the *app* — they are
+        redirected to enrol only when they reach for admin. Otherwise the first
+        operator could never enrol at all.
+        """
+        account.is_staff = True
+        account.save()
+        client = Client()
+        response = client.post(LOGIN_URL, {"login": IDENTIFIER, "password": SENHA})
         assert response.status_code == 302
         assert client.session.get("_auth_user_id")

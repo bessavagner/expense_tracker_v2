@@ -832,21 +832,33 @@ Expected after the repair: zero rows.
 
 ## Signing in, and clearing a lockout
 
-The family's login page is **`/login/`**. It used to be `/admin/login/`, which is
-why the app opened on a Django admin screen; that URL still exists and still
-works, but it is the maintainer's door now. `LOGIN_URL` and `LogoutView` both
-point at `/login/`, so an unauthenticated request to any page lands there with
-`?next=` preserved.
+The family's login page is **`/accounts/login/`**, and it is now the *only*
+one. It was `/admin/login/` before E01, then `/login/` after it; E05 moved it
+to allauth's URL, because allauth owns signup, verification and password reset
+and the login form has to share their session flow. `/login/` still answers —
+as a permanent redirect, because the installed Android TWA points at it and
+there is no way to push a URL change to a phone that already has the app.
+
+`/admin/login/` is **closed**: see *Reaching the admin*. Staff sign in at the
+same page as everyone else.
 
 **After deploying this change, tell the family nothing.** Their bookmarks and the
 installed TWA point at `/`, which redirects correctly. Only a bookmark saved
 directly on `/admin/login/` keeps working as-is (it does; it just skips the
 branded page).
 
-Brute-force lockout is **10 failed attempts in 15 minutes**, counted by username
-*and* by IP, enforced in `core.auth_backends.LockoutModelBackend`. While locked,
-even the correct password is refused, and `/login/` now says so in Portuguese
-instead of showing the same message as a typo.
+Brute-force lockout is **10 failed attempts in 15 minutes**, counted by
+identifier *and* by IP, enforced in
+`core.auth_backends.LockoutAuthenticationBackend`. While locked, even the
+correct password is refused, and the login page says so in Portuguese instead
+of showing the same message as a typo.
+
+From E05 the identifier is the **email address**, not the username — allauth
+keys the submitted credential by the login method, so `LoginAttempt.username`
+holds an address for anything submitted through the login page. allauth's own
+login throttle is switched off (`ACCOUNT_RATE_LIMITS = {"login_failed": None}`)
+because it is stricter than this one and would fire first, showing its own
+generic error and hiding the explanation.
 
 Clear a lockout for one person:
 
@@ -893,6 +905,76 @@ print(h, '->', u)
 
 Their **oldest** membership is the default household, so if they already have
 one of their own from a first login, that one keeps winning until they switch.
+
+## Reaching the admin
+
+**`/admin/` is gone, and that is deliberate.** It answers 404 now, to everyone,
+forever. The service is deployed `--allow-unauthenticated` because the product
+needs to be, so admin — which holds every household's financial records and
+every user's raw chat with the assistant — was sitting on the open internet at
+the first path any scanner tries.
+
+Two independent controls replaced it:
+
+1. **An unguessable path**, from the `ADMIN_URL_PATH` env var.
+2. **`core.admin_gate.admin_staff_only_middleware`**, which answers **404** —
+   not 403 — to anyone who is not staff. A 403 would confirm the path is
+   admin; a 404 tells a scanner nothing, which is the whole value of moving it.
+
+Guessing the path correctly still gets you nothing, and being staff on the
+wrong path still gets you nothing.
+
+### Set the path on Cloud Run
+
+```bash
+gcloud run services update expense-tracker --region=southamerica-east1 \
+  --project=expense-tracker-482807 \
+  --set-env-vars=ADMIN_URL_PATH=gestao-4f9c2a/
+```
+
+Pick your own suffix; do not reuse the one above, and do not commit it. The dev
+default is `gestao-dev/` — deliberately not `admin/`, so a missing env var is
+loud rather than a silent restoration of the old front door.
+
+### Enrol a second factor BEFORE the first admin visit
+
+Staff without an authenticator are redirected to enrolment rather than 404'd —
+locking the only operator out of their own admin with no explanation is how
+this feature gets reverted at 2am. But the enrolment page itself asks you to
+re-authenticate first, so do this while you still remember the password:
+
+1. Sign in normally at `/accounts/login/`.
+2. Go to **`/accounts/2fa/totp/activate/`**. Confirm the password when asked.
+3. Scan the QR with your authenticator app and enter the code.
+4. Go to **`/accounts/2fa/recovery-codes/`** and save the codes **somewhere
+   that is not the phone holding the TOTP app**. A phone is a single point of
+   failure for both halves otherwise, and there is no other way back in.
+
+From the next login, the correct password alone does not sign staff in: allauth
+answers it with the 2FA challenge.
+
+### Failure modes, and what they actually mean
+
+| What you see | What it means |
+|---|---|
+| 404 at the admin path while signed in | The account is not `is_staff`. The gate cannot tell you that, by design. |
+| Redirect loop to the MFA page | The authenticator was never *activated* — a scanned QR that was never confirmed with a code leaves no `Authenticator` row. Finish step 3. The gate is not broken. |
+| 404 at `/admin/` | Correct. That path is retired. |
+| Signed in fine but admin still 404s | Wrong path — check `ADMIN_URL_PATH` on the revision matches the URL you typed, trailing slash included. |
+
+### What gets logged
+
+Every staff request admin actually answers writes an `AdminAccessLog` row —
+actor, path, method, IP, timestamp — readable at
+`<ADMIN_URL_PATH>core/adminaccesslog/` and **not** deletable or editable from
+admin. Refused requests are deliberately not logged: a 404 disclosed nothing,
+and logging those would drown the rows that record a human actually reading
+someone's money.
+
+**`ChatMessage` is no longer registered in admin at all.** Raw conversations
+with the assistant — receipts, salaries, arguments about money — are not an
+admin list column. E17 owns the deliberate, consented, logged way to look at a
+customer's account.
 
 ## Transactional email
 

@@ -1,0 +1,133 @@
+"""Admin holds every household's money and every user's raw chat.
+
+Three properties, and the first one is why the other two matter: the service
+is deployed --allow-unauthenticated because the product needs to be, so
+"admin is on the internet" is not a deployment mistake to fix later, it is the
+default this middleware exists to override.
+
+404 rather than 403 throughout. A 403 confirms the path is admin; a 404 says
+nothing, and an admin path nobody can confirm is one nobody can enumerate.
+"""
+
+import pytest
+from django.conf import settings
+from django.test import Client
+from model_bakery import baker
+
+from core.models import AdminAccessLog
+
+
+def _admin_url(suffix=""):
+    return "/" + settings.ADMIN_URL_PATH.lstrip("/") + suffix
+
+
+def _with_totp(user):
+    """Give ``user`` a real, activated TOTP authenticator."""
+    from allauth.mfa.totp.internal import auth as totp_auth
+
+    secret = totp_auth.generate_totp_secret()
+    return totp_auth.TOTP.activate(user, secret)
+
+
+@pytest.fixture
+def staff(db):
+    return baker.make(
+        "core.CustomUser", email="operador@example.com", is_staff=True, is_superuser=True
+    )
+
+
+@pytest.mark.django_db
+class TestTheOldPathIsGone:
+    def test_slash_admin_no_longer_routes(self):
+        """The path every scanner tries first must not be the real one."""
+        assert settings.ADMIN_URL_PATH != "admin/"
+        assert Client().get("/admin/").status_code == 404
+
+    def test_slash_admin_login_no_longer_routes(self):
+        assert Client().get("/admin/login/").status_code == 404
+
+
+@pytest.mark.django_db
+class TestOnlyStaffReachAdmin:
+    def test_an_anonymous_request_gets_404_not_a_login_page(self):
+        """The epic's sixth observable assertion, anonymous half."""
+        assert Client().get(_admin_url()).status_code == 404
+
+    def test_an_authenticated_non_staff_user_gets_404(self, user):
+        """The epic's sixth observable assertion, verbatim."""
+        client = Client()
+        client.force_login(user)
+        assert client.get(_admin_url()).status_code == 404
+
+    def test_a_non_staff_user_cannot_reach_a_model_page_either(self, user):
+        client = Client()
+        client.force_login(user)
+        assert client.get(_admin_url("core/customuser/")).status_code == 404
+
+    def test_staff_with_a_second_factor_get_in(self, staff):
+        _with_totp(staff)
+        client = Client()
+        client.force_login(staff)
+        assert client.get(_admin_url()).status_code == 200
+
+
+@pytest.mark.django_db
+class TestStaffWithoutASecondFactor:
+    def test_they_are_sent_to_enrol_rather_than_stonewalled(self, staff):
+        """404ing the only operator out of their own admin, with no
+        explanation, is how this feature gets reverted at 2am."""
+        client = Client()
+        client.force_login(staff)
+        response = client.get(_admin_url())
+        assert response.status_code == 302
+        assert "2fa" in response["Location"] or "totp" in response["Location"]
+
+
+@pytest.mark.django_db
+class TestStaffAccessIsLogged:
+    def test_a_staff_request_writes_a_row_with_actor_target_and_time(self, staff):
+        _with_totp(staff)
+        client = Client()
+        client.force_login(staff)
+        client.get(_admin_url("core/customuser/"))
+
+        entry = AdminAccessLog.objects.latest("created_at")
+        assert entry.actor == staff
+        assert "core/customuser" in entry.path
+        assert entry.created_at is not None
+
+    def test_a_refused_request_is_not_logged_as_access(self, user):
+        client = Client()
+        client.force_login(user)
+        client.get(_admin_url())
+        assert not AdminAccessLog.objects.filter(actor=user).exists()
+
+    def test_the_log_cannot_be_edited_or_deleted_from_admin(self):
+        """An audit log a staff member can delete is not an audit log."""
+        from django.contrib import admin
+
+        options = admin.site._registry[AdminAccessLog]
+        assert options.has_add_permission(None) is False
+        assert options.has_change_permission(None) is False
+        assert options.has_delete_permission(None) is False
+
+
+@pytest.mark.django_db
+class TestChatIsNotInAdmin:
+    def test_chatmessage_is_not_registered(self):
+        """S05-5: raw conversation content is not an admin list column."""
+        from django.contrib import admin
+
+        from assistant.models import ChatMessage
+
+        assert ChatMessage not in admin.site._registry
+
+
+@pytest.mark.django_db
+class TestTheServiceWorkerFollowsThePath:
+    def test_sw_js_bypasses_the_real_admin_path_not_the_old_one(self):
+        """`sw.js` must not cache admin pages. It hardcoded `/admin/`, which
+        after this task is a path that does not exist — so the bypass would
+        have been protecting nothing."""
+        body = Client().get("/sw.js").content.decode()
+        assert f"/{settings.ADMIN_URL_PATH}" in body
