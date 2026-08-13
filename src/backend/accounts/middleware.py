@@ -8,6 +8,7 @@ choice lives here, because a session value is user-controlled input.
 from django.core.exceptions import ValidationError
 
 from accounts.models import Membership
+from accounts.resolution import household_for_user
 
 ACTIVE_HOUSEHOLD_SESSION_KEY = "active_household_id"
 
@@ -38,7 +39,22 @@ def resolve_active_household(request):
             return chosen.household
 
     fallback = memberships.first()
-    return fallback.household if fallback is not None else None
+    if fallback is not None:
+        return fallback.household
+
+    # No membership at all. `createsuperuser` and the Django admin both create
+    # users this way, and the runbook tells the operator to run the former
+    # right after deploying. Phase 4 deleted accounts/bridge.py, whose
+    # `household_for_writer` minted such a user their own household on first
+    # write, and made `household` NOT NULL in the same commit — so without this
+    # fallback every write they attempt is an unhandled 500 on a NOT NULL
+    # violation, while every read fails closed to none() and looks merely empty.
+    #
+    # Giving them their own household is the fail-closed answer, and the same
+    # rule accounts/0003 seeded with. Borrowing an existing one would be the
+    # leak. `household_for_user` is idempotent, and this branch is only reached
+    # for a user who has no membership, so it costs no query in the normal case.
+    return household_for_user(user)
 
 
 def active_household_middleware(get_response):

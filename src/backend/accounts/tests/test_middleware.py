@@ -91,11 +91,41 @@ def test_resolution_is_written_back_to_the_session(rf, django_user_model):
     assert request.session[ACTIVE_HOUSEHOLD_SESSION_KEY] == str(household.id)
 
 
-def test_user_with_no_membership_gets_none(rf, django_user_model):
-    """A user created before the seed migration, or by createsuperuser after
-    it. Fails closed rather than borrowing somebody's ledger."""
+def test_user_with_no_membership_gets_their_own_household(rf, django_user_model):
+    """A user created before the seed migration, or by createsuperuser after it.
+
+    This asserted ``is None`` until phase 4. That was safe only while
+    accounts/bridge.py existed to mint such a user a household on their first
+    write; phase 4 deleted the bridge and made ``household`` NOT NULL in the
+    same commit, which turned "no household" into an unhandled 500 on every
+    write — see test_membershipless_user_can_write.py.
+
+    The invariant the old assertion was protecting is *"fails closed rather
+    than borrowing somebody's ledger"*, and that is what is asserted here
+    directly. Creating them their own household satisfies it; returning None
+    was only ever the mechanism, not the point.
+    """
+    stranger_household = baker.make(Household, name="Casa alheia")
     request = rf.get("/")
     request.user = baker.make(django_user_model)
     request.session = {}
 
-    assert _run_middleware(request) is None
+    resolved = _run_middleware(request)
+
+    assert resolved is not None
+    assert resolved != stranger_household, "borrowed an existing ledger"
+    assert Membership.objects.get(user=request.user, household=resolved).role == Role.OWNER
+
+
+def test_resolving_a_household_twice_does_not_mint_a_second(rf, django_user_model):
+    """The fallback is idempotent — a membership-less user browsing three pages
+    must end up with one household, not three."""
+    user = baker.make(django_user_model)
+
+    for _ in range(3):
+        request = rf.get("/")
+        request.user = user
+        request.session = {}
+        _run_middleware(request)
+
+    assert Membership.objects.filter(user=user).count() == 1
