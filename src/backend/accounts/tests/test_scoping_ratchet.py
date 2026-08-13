@@ -13,12 +13,12 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 
 # Every file that scoped by user at the start of E04 phase 1 (2026-08-11).
 # Strike entries as phases 3 and 4 convert them. Never add one.
-BASELINE = {
-    "src/backend/assistant/agents/analytics.py",
-    "src/backend/assistant/agents/memory.py",
-    "src/backend/assistant/agents/tools.py",
-    "src/backend/assistant/views.py",
-}
+#
+# Empty as of phase 3 (2026-08-12): all 25 entries converted. The assignment
+# stays so `test_baseline_has_no_stale_entries` keeps meaning something and a
+# regression cannot quietly re-add one. Phase 4 deletes it and turns this file
+# into the flat "no domain query scopes by user" assertion S04-2 asked for.
+BASELINE = set()
 
 # Tenancy-transition tooling. Deliberately *not* in BASELINE, which may only
 # ever shrink: these files are not legacy leaks awaiting conversion, they read

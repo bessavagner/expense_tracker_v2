@@ -103,3 +103,29 @@ def test_a_tool_cannot_widen_its_scope_through_an_argument(
     assert not Entry.objects.filter(description="Feira").exists()
     assert "Segredo" in result
     assert "não encontrada" in result
+
+
+def test_agent_deps_type_is_the_scope():
+    """Pinned deliberately: if someone reverts deps to a User, every tool
+    silently starts scoping by the actor again."""
+    from assistant.agents.assistant import assistant_agent
+
+    assert assistant_agent._deps_type is AgentScope
+
+
+def test_chat_history_is_household_scoped(
+    logged_client, user, household, other_user, other_household
+):
+    from django.urls import reverse
+
+    baker.make(
+        "assistant.ChatMessage",
+        user=other_user,
+        household=other_household,
+        role="user",
+        content="segredo do vizinho",
+    )
+
+    body = logged_client.get(reverse("assistant:chat")).content.decode()
+
+    assert "segredo do vizinho" not in body

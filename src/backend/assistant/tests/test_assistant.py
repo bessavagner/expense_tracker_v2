@@ -11,12 +11,10 @@ from assistant.agents.assistant import agents_override, assistant_agent
 
 
 def _tools(agent):
-
     return set(agent._function_toolset.tools.keys())
 
 
 def test_agent_exposes_full_toolset():
-
     t = _tools(assistant_agent)
     expected = {
         # write
@@ -62,7 +60,6 @@ def test_agent_exposes_full_toolset():
 
 
 def test_no_delegation_tools():
-
     t = _tools(assistant_agent)
     assert not any(name.startswith("delegate_") for name in t)
 
@@ -70,10 +67,9 @@ def test_no_delegation_tools():
 @pytest.mark.django_db
 class TestRuns:
     @pytest.mark.anyio
-    async def test_runs_under_testmodel(self, seeded_user):
-
+    async def test_runs_under_testmodel(self, seeded_user, seeded_scope):
         with agents_override(TestModel()):
-            result = await assistant_agent.run("gastei 50 no cosmos", deps=seeded_user)
+            result = await assistant_agent.run("gastei 50 no cosmos", deps=seeded_scope)
             assert result.output
 
 
@@ -86,7 +82,6 @@ class TestPendingReceiptDirective:
     """
 
     def _make_pending(self, user):
-
         from assistant.models import ReceiptDraft, ReceiptDraftStatus
 
         return ReceiptDraft.objects.create(
