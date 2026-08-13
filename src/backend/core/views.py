@@ -1,5 +1,5 @@
+from allauth.account.views import LoginView
 from django.conf import settings
-from django.contrib.auth.views import LoginView
 from django.db import connection
 from django.http import JsonResponse
 from django.views import View
@@ -23,30 +23,28 @@ def health_check(request):
 
 
 class AppLoginView(LoginView):
-    """The family's front door — the E05 login page ``core.auth_backends`` was
-    written in anticipation of.
+    """The family's front door.
 
-    Before this, ``LOGIN_URL`` pointed at ``/admin/login/``: the app opened on a
-    Django admin screen, signing in landed on ``/admin/`` rather than the
-    dashboard, and ``/login`` 404'd. ``/admin/login/`` still works; it is just
-    the maintainer's door now, not everyone's.
+    Subclasses allauth's login view rather than Django's: from E05 the
+    identifier is an email address, and allauth owns that resolution along
+    with signup, verification and reset. What this class adds is the one thing
+    allauth does not know about — E01's lockout, which lives in
+    `core.auth_backends` and refuses a locked credential without checking it.
 
-    The lockout itself stays where E01 put it, in the authentication backend —
-    this view only *explains* it. Naming the lockout leaks nothing, because a
-    failed attempt is recorded for any username, existing or not, so the message
-    does not tell an attacker that an account exists.
+    Naming the lockout leaks nothing: a failed attempt is recorded for any
+    identifier, existing or not, so the message cannot tell an attacker that an
+    account exists.
     """
 
-    template_name = "registration/login.html"
-    redirect_authenticated_user = True
+    template_name = "account/login.html"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["lockout_minutes"] = settings.LOGIN_FAILURE_WINDOW_MINUTES
         # Preserved by hand: the form posts to an explicit action, so ?next=
         # would otherwise be dropped on a re-render after a failed attempt.
-        context["next_url"] = self.get_redirect_url()
-        context["locked_out"] = False
+        context["next_url"] = self.get_success_url() if self.request.GET.get("next") else ""
+        context.setdefault("locked_out", False)
         return context
 
     def form_invalid(self, form):
@@ -58,8 +56,9 @@ class AppLoginView(LoginView):
         situation that makes someone keep trying.
         """
         response = super().form_invalid(form)
-        username = form.data.get("username", "")
-        if is_locked(username, client_ip(self.request)):
+        # allauth's field is `login`, not `username`.
+        identifier = form.data.get("login", "")
+        if is_locked(identifier, client_ip(self.request)):
             response.context_data["locked_out"] = True
         return response
 

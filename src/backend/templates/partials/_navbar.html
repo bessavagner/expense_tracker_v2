@@ -15,8 +15,14 @@
                 @click="theme = theme === 'ledger-dark' ? 'ledger' : 'ledger-dark'; document.documentElement.setAttribute('data-theme', theme); try { localStorage.setItem('theme', theme); } catch (e) {}">
             <span x-text="theme === 'ledger-dark' ? '☀️' : '🌙'">🌙</span>
         </button>
-        <span class="text-sm opacity-70 truncate max-w-32 hidden sm:inline">{{ request.user.username }}</span>
-        <form method="post" action="{% url 'logout' %}" class="inline">
+        {# The email, not the username: from E05 the username is a slug allauth #}
+        {# derived from the address and nobody ever chose or saw.               #}
+        <span class="text-sm opacity-70 truncate max-w-32 hidden sm:inline"
+              title="{{ request.user.email }}">{{ request.user.email }}</span>
+        {# `account_logout`, not the `/logout/` redirect: a 301 cannot carry a  #}
+        {# POST body, so posting at the old path lands on a confirmation page   #}
+        {# still signed in.                                                     #}
+        <form method="post" action="{% url 'account_logout' %}" class="inline">
             {% csrf_token %}
             <button type="submit" class="btn btn-ghost btn-sm" title="Sair">Sair</button>
         </form>

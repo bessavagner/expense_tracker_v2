@@ -1,14 +1,14 @@
 """The app's own login page.
 
-Until now the family signed in through ``/admin/login/``: ``LOGIN_URL`` pointed
-at it, ``LogoutView`` sent people back to it, and there was no app login view at
-all — ``GET /login`` returned 404 in production. That is why the app opened on a
-Django admin screen, and why signing in landed on ``/admin/`` instead of the
-dashboard.
+E01 built this page to replace ``/admin/login/`` — before it, the app opened on
+a Django admin screen and signing in landed on ``/admin/``. E05 moved it again,
+from ``/login/`` to allauth's ``/accounts/login/``, because allauth now owns
+signup, verification and password reset and the login form has to be the one
+that shares their form classes and their session flow.
 
-This is the E05 login page the lockout backend was written in anticipation of
-(see ``core/auth_backends.py``). ``/admin/login/`` still exists and still works;
-it is just no longer the family's front door.
+What did *not* move is the reason this view exists rather than allauth's stock
+one: E01's lockout, and the page that explains it. ``/login/`` survives as a
+301 for the installed TWA — see ``test_front_door.py``.
 """
 
 import pytest
@@ -18,30 +18,42 @@ from model_bakery import baker
 from core.models import LoginAttempt
 
 SENHA = "senha-correta-longa-o-suficiente"
-# From E05 the identifier is the email address, not the username. The form
-# field is still called `username` here — this is Django's AuthenticationForm,
-# which Task 6 replaces with allauth's `login` field — but the *value* has to
-# be the address, because that is what resolves to an account now.
+# From E05 the identifier is the address. allauth's form field is `login`.
 IDENTIFIER = "vagner@example.com"
+LOGIN_URL = "/accounts/login/"
 
 
 @pytest.fixture
 def account(db):
+    """An account that can actually sign in.
+
+    The verified `EmailAddress` is not decoration: with
+    `ACCOUNT_EMAIL_VERIFICATION = "mandatory"` allauth checks that table, not
+    `CustomUser.email`, so a user built without one is bounced to
+    "confirme seu e-mail" no matter how right the password is. Production's
+    pre-E05 accounts get theirs from `core/0004_seed_email_addresses`; a row
+    made inside a test has to say so itself.
+    """
+    from allauth.account.models import EmailAddress
+
     user = baker.make("core.CustomUser", username="vagner", email=IDENTIFIER)
     user.set_password(SENHA)
     user.save()
+    EmailAddress.objects.update_or_create(
+        user=user, email=IDENTIFIER, defaults={"verified": True, "primary": True}
+    )
     return user
 
 
 @pytest.mark.django_db
 class TestLoginPageRenders:
     def test_get_renders_the_app_login_page(self):
-        response = Client().get("/login/")
+        response = Client().get(LOGIN_URL)
         assert response.status_code == 200
-        assert "registration/login.html" in [t.name for t in response.templates]
+        assert "account/login.html" in [t.name for t in response.templates]
 
     def test_page_is_in_portuguese_and_not_the_django_admin(self):
-        body = Client().get("/login/").content.decode()
+        body = Client().get(LOGIN_URL).content.decode()
         assert "Entrar" in body
         assert "Django" not in body
 
@@ -52,7 +64,7 @@ class TestLoginPageRenders:
         one and Django answers 403 — over an app that had already loaded. The
         guard is what stops the second tap being sent.
         """
-        body = Client().get("/login/").content.decode()
+        body = Client().get(LOGIN_URL).content.decode()
         assert "addEventListener('submit'" in body, "the guard script is missing"
         assert '<form method="post"' in body
         assert "data-no-submit-guard" not in body.split("<script>")[0], (
@@ -62,38 +74,44 @@ class TestLoginPageRenders:
 
     def test_page_advertises_the_pwa(self):
         """It is the unauthenticated landing, so install must be offered here."""
-        body = Client().get("/login/").content.decode()
+        body = Client().get(LOGIN_URL).content.decode()
         assert 'rel="manifest"' in body
         assert "/manifest.webmanifest" in body
         assert "serviceWorker" in body
         assert "#147874" in body
 
+    def test_page_offers_the_two_ways_out_of_a_dead_end(self):
+        """A door with no bell and no spare key is the problem E05 exists for."""
+        body = Client().get(LOGIN_URL).content.decode()
+        assert "/accounts/signup/" in body
+        assert "/accounts/password/reset/" in body
+
 
 @pytest.mark.django_db
 class TestSigningIn:
     def test_correct_credentials_land_on_the_dashboard(self, account):
-        response = Client().post("/login/", {"username": IDENTIFIER, "password": SENHA})
+        response = Client().post(LOGIN_URL, {"login": IDENTIFIER, "password": SENHA})
         assert response.status_code == 302
         assert response["Location"] == "/"
 
     def test_next_is_honoured(self, account):
         response = Client().post(
-            "/login/?next=/entries/", {"username": IDENTIFIER, "password": SENHA}
+            f"{LOGIN_URL}?next=/entries/", {"login": IDENTIFIER, "password": SENHA}
         )
         assert response.status_code == 302
         assert response["Location"] == "/entries/"
 
     def test_wrong_password_re_renders_with_a_portuguese_error(self, account):
         client = Client()
-        response = client.post("/login/", {"username": IDENTIFIER, "password": "errada"})
+        response = client.post(LOGIN_URL, {"login": IDENTIFIER, "password": "errada"})
         assert response.status_code == 200
-        assert "Usuário ou senha incorretos." in response.content.decode()
+        assert "E-mail ou senha incorretos." in response.content.decode()
         assert not client.session.get("_auth_user_id")
 
     def test_an_authenticated_visitor_is_sent_on_rather_than_shown_the_form(self, account):
         client = Client()
         client.force_login(account)
-        response = client.get("/login/")
+        response = client.get(LOGIN_URL)
         assert response.status_code == 302
 
 
@@ -104,7 +122,7 @@ class TestLockoutIsVisible:
     Through the admin form a locked-out user saw the stock "please enter a
     correct username and password" — indistinguishable from a typo, so the
     natural response was to keep trying and keep extending nothing. Saying so
-    leaks nothing: a failed attempt is recorded for any username, existing or
+    leaks nothing: a failed attempt is recorded for any identifier, existing or
     not, so a lockout message does not reveal that an account exists.
     """
 
@@ -112,20 +130,20 @@ class TestLockoutIsVisible:
         settings.LOGIN_FAILURE_LIMIT = 3
         client = Client()
         for _ in range(3):
-            client.post("/login/", {"username": IDENTIFIER, "password": "errada"})
+            client.post(LOGIN_URL, {"login": IDENTIFIER, "password": "errada"})
 
-        response = client.post("/login/", {"username": IDENTIFIER, "password": SENHA})
+        response = client.post(LOGIN_URL, {"login": IDENTIFIER, "password": SENHA})
         body = response.content.decode()
         assert response.status_code == 200
         assert "Muitas tentativas" in body
-        assert "Usuário ou senha incorretos." not in body
+        assert "E-mail ou senha incorretos." not in body
         assert not client.session.get("_auth_user_id"), "the lockout let them in"
 
     def test_a_locked_out_attempt_does_not_extend_the_lockout(self, account, settings):
         settings.LOGIN_FAILURE_LIMIT = 3
         client = Client()
         for _ in range(5):
-            client.post("/login/", {"username": IDENTIFIER, "password": "errada"})
+            client.post(LOGIN_URL, {"login": IDENTIFIER, "password": "errada"})
         assert LoginAttempt.objects.filter(username=IDENTIFIER).count() == 3
 
 
@@ -134,18 +152,22 @@ class TestTheFrontDoorMoved:
     def test_a_protected_page_bounces_to_the_app_login(self):
         response = Client().get("/entries/")
         assert response.status_code == 302
-        assert response["Location"].startswith("/login/")
+        assert response["Location"].startswith(LOGIN_URL)
         assert "next=/entries/" in response["Location"]
 
     def test_logging_out_returns_to_the_app_login_page(self, account):
         client = Client()
         client.force_login(account)
-        response = client.post("/logout/")
+        response = client.post("/accounts/logout/")
         assert response.status_code == 302
-        assert response["Location"] == "/login/"
+        assert response["Location"] == LOGIN_URL
 
     def test_the_admin_login_still_works_for_the_admin(self, account):
-        """Moving the family's door must not lock the maintainer out of /admin/."""
+        """Moving the family's door must not lock the maintainer out of /admin/.
+
+        Django's admin form names its field `username`; the *value* it carries
+        is the address now, because that is what resolves to an account.
+        """
         account.is_staff = True
         account.is_superuser = True
         account.save()

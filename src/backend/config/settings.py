@@ -196,11 +196,12 @@ TAILWIND_CLI_DIST_CSS = "css/tailwind.css"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-LOGIN_URL = "/login/"
+LOGIN_URL = "/accounts/login/"
 # Signing in belongs on the dashboard, not on Django's admin index. Without
 # this, Django's default sends people to /accounts/profile/, which does not
 # exist here.
 LOGIN_REDIRECT_URL = "/"
+ACCOUNT_LOGOUT_REDIRECT_URL = "/accounts/login/"
 
 # Brute-force protection lives in the authentication backend, not a view, so it
 # applies to every door: the allauth login page and the admin's own form.
@@ -228,6 +229,17 @@ ACCOUNT_EMAIL_SUBJECT_PREFIX = ""
 ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION = True
 ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 3
 ACCOUNT_ADAPTER = "allauth.account.adapter.DefaultAccountAdapter"
+# allauth ships its own login throttle (`10/m/ip, 5/300s/key`, cache-backed).
+# It is switched off because E01's lockout already answers this question, and
+# two throttles with different windows is worse than either alone: allauth's is
+# the stricter of the two, so it would fire first, show its own generic error,
+# and the login page's "muitas tentativas, espere N minutos" — the whole point
+# of explaining a lockout rather than letting people keep guessing — would
+# never be reached. E01's also covers Django's admin form, which allauth's
+# documentation is explicit about not covering. Every OTHER allauth rate limit
+# (password reset, email management, reauthentication) stays on: those guard
+# endpoints the lockout does not.
+ACCOUNT_RATE_LIMITS = {"login_failed": None}
 
 # The second factor Task 15 demands of staff. Recovery codes are on by
 # default and stay on: losing a phone must not lock the only operator out of

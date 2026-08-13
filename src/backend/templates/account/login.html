@@ -17,22 +17,25 @@
         </div>
         {% elif form.errors %}
         <div class="alert alert-error mb-4">
-            <span>Usuário ou senha incorretos.</span>
+            <span>E-mail ou senha incorretos.</span>
         </div>
         {% endif %}
 
-        <form method="post" action="{% url 'login' %}{% if next_url %}?next={{ next_url|urlencode }}{% endif %}"
+        <form method="post" action="{% url 'account_login' %}{% if next_url %}?next={{ next_url|urlencode }}{% endif %}"
               class="space-y-3">
             {% csrf_token %}
             <div class="form-control">
-                <label class="label" for="{{ form.username.id_for_label }}">
-                    <span class="label-text">Usuário</span>
+                <label class="label" for="{{ form.login.id_for_label }}">
+                    <span class="label-text">E-mail</span>
                 </label>
-                <input type="text" name="{{ form.username.html_name }}"
-                       id="{{ form.username.id_for_label }}"
+                {# allauth's field is `login`, and it holds an address now — so #}
+                {# type/inputmode/autocomplete all say email, which is what     #}
+                {# gets a phone keyboard to offer @ without a long-press.       #}
+                <input type="email" name="{{ form.login.html_name }}"
+                       id="{{ form.login.id_for_label }}"
                        class="input input-bordered w-full"
-                       autocomplete="username" autocapitalize="none"
-                       value="{{ form.username.value|default:'' }}" required autofocus>
+                       autocomplete="email" autocapitalize="none" inputmode="email"
+                       value="{{ form.login.value|default:'' }}" required autofocus>
             </div>
             <div class="form-control">
                 <label class="label" for="{{ form.password.id_for_label }}">
@@ -43,8 +46,17 @@
                        class="input input-bordered w-full"
                        autocomplete="current-password" required>
             </div>
+            {% if redirect_field_value %}
+            <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
+            {% endif %}
             <button type="submit" class="btn btn-accent w-full" data-pending="Entrando…">Entrar</button>
         </form>
+
+        {# A front door with no way to sign up, and no way back from a forgotten #}
+        {# password, is the problem this epic exists to fix — restated.          #}
+        <a href="{% url 'account_reset_password' %}" class="link link-hover text-sm text-center mt-3">Esqueceu a senha?</a>
+        <div class="divider text-xs opacity-60">ou</div>
+        <a href="{% url 'account_signup' %}" class="btn btn-ghost btn-sm w-full">Criar conta</a>
     </div>
 </div>
 {% endblock %}
