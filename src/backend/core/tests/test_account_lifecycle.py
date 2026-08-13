@@ -20,8 +20,8 @@ from django.urls import reverse
 from accounts.models import Membership, Role
 
 EMAIL = "estranho@example.com"
-FIRST_PASSWORD = "primeira-senha-longa-7"
-SECOND_PASSWORD = "segunda-senha-longa-42"
+PRIMEIRA_SENHA = "primeira-senha-longa-7"
+SEGUNDA_SENHA = "segunda-senha-longa-42"
 
 
 def _link_from(message, fragment):
@@ -43,8 +43,8 @@ class TestAccountLifecycle:
             {
                 "email": EMAIL,
                 "email2": EMAIL,
-                "password1": FIRST_PASSWORD,
-                "password2": FIRST_PASSWORD,
+                "password1": PRIMEIRA_SENHA,
+                "password2": PRIMEIRA_SENHA,
             },
         )
         assert response.status_code == 302
@@ -52,7 +52,7 @@ class TestAccountLifecycle:
 
         # --- verification is mandatory ---------------------------------
         fresh = Client()
-        fresh.post(reverse("account_login"), {"login": EMAIL, "password": FIRST_PASSWORD})
+        fresh.post(reverse("account_login"), {"login": EMAIL, "password": PRIMEIRA_SENHA})
         assert "_auth_user_id" not in fresh.session, "unverified account logged in"
 
         # --- verify ----------------------------------------------------
@@ -61,7 +61,7 @@ class TestAccountLifecycle:
         assert fresh.post(path).status_code in (302, 200)
 
         # --- log in ----------------------------------------------------
-        fresh.post(reverse("account_login"), {"login": EMAIL, "password": FIRST_PASSWORD})
+        fresh.post(reverse("account_login"), {"login": EMAIL, "password": PRIMEIRA_SENHA})
         assert "_auth_user_id" in fresh.session
 
         # --- the signup owns a household -------------------------------
@@ -82,15 +82,15 @@ class TestAccountLifecycle:
         landed = anonymous.get(reset_path, follow=True)
         assert landed.status_code == 200
         form_path = landed.request["PATH_INFO"]
-        anonymous.post(form_path, {"password1": SECOND_PASSWORD, "password2": SECOND_PASSWORD})
+        anonymous.post(form_path, {"password1": SEGUNDA_SENHA, "password2": SEGUNDA_SENHA})
 
         # --- the old password is dead, the new one works ---------------
         stale = Client()
-        stale.post(reverse("account_login"), {"login": EMAIL, "password": FIRST_PASSWORD})
+        stale.post(reverse("account_login"), {"login": EMAIL, "password": PRIMEIRA_SENHA})
         assert "_auth_user_id" not in stale.session
 
         final = Client()
-        final.post(reverse("account_login"), {"login": EMAIL, "password": SECOND_PASSWORD})
+        final.post(reverse("account_login"), {"login": EMAIL, "password": SEGUNDA_SENHA})
         assert "_auth_user_id" in final.session
 
 

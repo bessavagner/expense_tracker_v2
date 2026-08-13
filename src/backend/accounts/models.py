@@ -134,3 +134,54 @@ def household_owned_models():
         for model in apps.get_models()
         if issubclass(model, HouseholdOwnedModel) and not model._meta.abstract
     ]
+
+
+class Invitation(AuthoredHouseholdModel):
+    """A pending offer to join a household.
+
+    Inherits ``AuthoredHouseholdModel`` rather than ``models.Model`` so the
+    tenant column is the same one every other domain row carries: E04's
+    ratchet test enumerates by base class, so this model is covered by the
+    cross-household isolation suite the moment it exists, without anyone
+    adding it to a list.
+
+    ``created_by`` is the inviter. SET_NULL, like everywhere else — an owner
+    who deletes their account must not take the household's invitation history
+    with them.
+
+    The raw token is never stored. ``token_hash`` holds its SHA-256, so a
+    database read — a leaked backup, an over-broad admin query — yields
+    nothing redeemable. See ``accounts.invitations``.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    email = models.EmailField("e-mail convidado")
+    role = models.CharField(max_length=20, choices=Role.choices, default=Role.MEMBER)
+    token_hash = models.CharField(max_length=64, unique=True, editable=False)
+    expires_at = models.DateTimeField()
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "convite"
+        verbose_name_plural = "convites"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["household", "-created_at"], name="invite_household_recent_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.email} → {self.household}"
+
+    def is_expired(self, now=None) -> bool:
+        """Clock injected: `docs/testing-conventions.md` — a boundary test must
+        not have to straddle two reads of `timezone.now()`."""
+        from django.utils import timezone
+
+        return self.expires_at <= (now or timezone.now())
+
+    @property
+    def is_pending(self) -> bool:
+        """Redeemable right now: not accepted, not revoked, not expired."""
+        return self.accepted_at is None and self.revoked_at is None and not self.is_expired()
