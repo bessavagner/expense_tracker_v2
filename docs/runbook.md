@@ -544,15 +544,23 @@ and will not migrate.
 
 ### Rehearsing the E04 tenancy migration
 
-E04 phase 2 gives all 13 domain models a `household` column and back-fills it
-from `user`. It runs over real financial records, so it gets rehearsed against a
-throwaway copy of production before it goes anywhere near the live database.
+E04 moves tenancy from `user` to `household`: phase 2 adds the column and
+back-fills it, phase 4 makes it `NOT NULL` and drops `user` outright. Production
+is still pre-E04 — it has no `household` column at all — so the next deploy
+applies **the whole chain in one go**, over real financial records:
+
+- `accounts/0001` – `0003`
+- `finances/0013` – `0019`
+- `assistant/0010` – `0016`
+
+That chain is what this script rehearses, against a throwaway copy, before any
+of it goes near the live database.
 
 Row counts do not prove a migration was lossless — this project has a documented
 history of reconciliation issues where the counts matched and the balances did
 not. The rehearsal therefore compares **balances and the monthly acumulado**, via
-`manage.py dump_ledger_totals --json`. Phase 2 changes no read path, so the two
-fingerprints must be **byte-identical**.
+`manage.py dump_ledger_totals --json`. No E04 phase changes what a read path
+*reports*, so the two fingerprints must match exactly.
 
 Required env — libpq variables, **never** a connection URL, because the password
 contains a space (Common failure #2 above). Take them from
@@ -573,22 +581,40 @@ restores into a **throwaway local container** (`ledger_rehearsal`, bound to
 `127.0.0.1:55432`), fingerprints it, migrates it, fingerprints it again, and
 diffs. Nothing creates, migrates or drops a database on the production server.
 
-**The fingerprint command is pinned; the migrations are not.** The rehearsal
-varies the schema and holds the observer constant — so `dump_ledger_totals` runs
-from `FINGERPRINT_REF` (default `de143a1`, the phase-2 merge) in a temporary
-worktree, while `migrate` runs from your working tree. Phase 2 got away without
-this because its `dump_ledger_totals` read `user`, a column both sides of the
-migration have. Phase 3 points the acumulado at `build_projection(household,…)`,
-so a working-tree fingerprint can no longer read the pre-E04 schema `REWIND=1`
-produces, and the BEFORE run dies on:
+**Two observers, one experiment — and the keys are normalised between them.**
+Through phases 2 and 3 the observer was pinned and only the schema varied.
+Phase 4 drops `user`, so no single version of `dump_ledger_totals` can read both
+sides: the pinned one reads `finances_entry.user_id`, gone after the migration;
+the working-tree one reads `household_id`, absent before it. Each side is
+therefore read by the observer that fits its schema:
 
-```
-django.db.utils.ProgrammingError: column finances_income.household_id does not exist
-```
+| side | observer | keyed by |
+|---|---|---|
+| BEFORE | `BEFORE_REF` (default `de143a1`, the phase-2 merge) in a temporary worktree | username |
+| AFTER | your working tree | household name |
 
-Phase 4 drops `user` and re-points the command — bump `FINGERPRINT_REF` in that
-same commit, or retire the script. Set `FINGERPRINT_REF=` (empty) to use the
-working tree, which is only safe without `REWIND=1`.
+The script's `normalise_before` maps the BEFORE keys through the rule the seed
+migration used — `accounts/migrations_helpers.py::_household_name_for`, which
+names a household `Casa de <username>`, clipped to 120 characters. The **values**
+are byte-identical in shape between the two versions; only the key changes.
+
+**So a fingerprint diff is not automatically a data problem.** If the two sides
+differ only in their keys, the normalisation is wrong, not the ledger. The
+commonest cause by far: **someone renamed a household** in the app, so its name
+is no longer `Casa de <username>`. Check that before suspecting the migration.
+Set `BEFORE_REF=` (empty) to use the working tree on both sides, which is only
+meaningful against a source that is already migrated.
+
+**`REWIND=1` is dead as of phase 4, and the script now refuses it.** It used to
+roll an already-migrated copy back with `migrate finances 0012` /
+`migrate assistant 0009`. Since `finances/0018_drop_user` that rewind re-adds
+`user` as an **all-NULL** column — 0018 threw the data away, exactly as its
+docstring says. The BEFORE observer then reports zero entries for every user (a
+clean-looking file full of zeros); `finances/0014_backfill_household` has no
+`user` to derive `household` from; and `finances/0017_household_required`'s
+NOT NULL guard fails the migrate. It looks like corruption and is not.
+Rehearse against a genuinely pre-E04 source instead — production is one, or
+restore a pre-E04 dump into a scratch database and point `SOURCE_DB` at it.
 
 The dump holds every row of the real ledger, so it is written to a `0700` temp
 directory that an `EXIT` trap removes on **any** exit — including the
@@ -601,18 +627,44 @@ expected and tolerated — vanilla Postgres has neither those extensions nor tho
 roles. What matters is the `public` schema, which is where every Django table
 lives; the printed entry counts are the check that it arrived.
 
-**Ran for real against production on 2026-08-12**: 3 users, 2320 entries,
-sum 344529.48. Production had neither E04 phase, so `migrate` applied
+**Ran for real against production on 2026-08-12** (phase 2): 3 users, 2320
+entries, sum 344529.48. Production had neither E04 phase, so `migrate` applied
 `accounts.0001`–`0003` and both phases' six migrations in one go; fingerprint
 identical, no unfilled rows, six indexes present.
 
-Three outputs to check:
+**Ran for real against production on 2026-08-13** (the whole chain, phases 2 and
+4 together): 3 households, **2324 entries, sum 344718.86**; fingerprint
+identical, `unfilled rows: none`, all six index assertions as listed below.
+`migrate` applied 17 migrations in one pass — `accounts.0001`–`0003`,
+`assistant.0010`–`0016`, `finances.0013`–`0019` — which is exactly what the next
+deploy will do.
+
+Four entries and R$189.38 more than the 2026-08-12 phase-2 run: the ledger grew,
+as expected. What matters is that BEFORE and AFTER matched *within* the run.
+
+The two empty households (`Casa de claude-bessavagner`, `Casa de tester`)
+normalised as cleanly as the populated one, which is the check that the
+`Casa de <username>` rule holds for every user and not just the busy one.
+
+Six outputs to check:
 
 1. `OK — counts, sums and acumulado identical across the migration.`
 2. `unfilled rows: none`
 3. six index rows: `entry_hh_billing_type_idx`, `entry_hh_date_recent_idx`,
    `income_hh_month_idx`, `chat_hh_recent_idx`, `draft_hh_status_recent_idx`,
    `usage_hh_kind_recent_idx`
+4. one row for `usage_user_kind_recent_idx` — the actor-scoped index, deliberately
+   still leading with `user`, because the throttle counts per *person*. Scoping it
+   by household would give two members one shared rate-limit budget.
+5. **no** rows for the five user-leading indexes (`entry_user_billing_type_idx`,
+   `entry_user_date_recent_idx`, `income_user_month_idx`, `chat_user_recent_idx`,
+   `draft_user_status_recent_idx`) — they went with the column they led on.
+6. **no** rows for a standalone index on `household_id`. E03 removed Django's
+   implicit per-FK index on the tenant column for Entry, Income, ChatMessage and
+   ReceiptDraft; E04 phase 2 silently re-created all four by adding `household` as
+   an ordinary `ForeignKey`, and only a product-scale measurement caught it.
+   Dropped again in `finances/0019` and `assistant/0016`. The check matches by
+   index *definition*, not name — Django's name carries a hash suffix.
 
 **A non-empty diff means the back-fill is wrong. Never apply to production on a
 non-empty diff.** Read it instead: a changed `acumulado` with an unchanged
@@ -629,22 +681,24 @@ long after 2026-08-12, update `FIXED_TODAY` in the command. `--months` is a
 *floor*, not a cap: the window always stretches to cover the newest entry or
 income, so the ledger's tail can never silently drop out of the comparison.
 
-**Rehearsing without Supabase credentials.** The same script runs against the
-local ledger copy. It is already migrated, so it needs rewinding first —
-`REWIND=1` does that (`migrate finances 0012`, `migrate assistant 0009`) before
-the BEFORE fingerprint:
+**Rehearsing without Supabase credentials.** The script can dump any database,
+not just production — `SOURCE_DB` names it (`postgres` on Supabase,
+`expense_tracker` locally):
 
 ```bash
 PGHOST=172.17.0.1 PGPORT=5433 PGUSER=postgres PGPASSWORD=postgres \
-PGSSLMODE=prefer SOURCE_DB=expense_tracker REWIND=1 \
+PGSSLMODE=prefer SOURCE_DB=<a pre-E04 database> \
   scripts/rehearse-e04-migration.sh
 ```
 
 `172.17.0.1`, not `localhost`: `pg_dump` runs inside a container, where
-`localhost` is the container itself. `SOURCE_DB` names the database to dump —
-`postgres` on Supabase, `expense_tracker` locally. Weaker evidence than the real
-thing, since the local copy may lag production, but it exercises the whole
-migration path on real records.
+`localhost` is the container itself.
+
+**The source must be genuinely pre-E04.** The local dev ledger is already
+migrated and cannot be rewound into one — see the `REWIND=1` note above. To
+rehearse locally you need a pre-E04 dump restored into a scratch database on
+`:5433`. Weaker evidence than the real thing either way, since the local copy
+lags production, but it exercises the whole migration path on real records.
 
 ### Proving E04 phase 3 moved no money
 

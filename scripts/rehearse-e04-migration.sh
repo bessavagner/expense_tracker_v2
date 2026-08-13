@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Rehearse E04 phase 2 against a COPY of production Supabase data.
+# Rehearse the WHOLE E04 tenancy chain against a COPY of production Supabase
+# data — accounts/0001-0003, finances/0013-0019, assistant/0010-0016, in one go,
+# which is exactly what the next deploy applies.
 #
 # The epic's Definition of Done: "entry counts, balances, and the monthly
-# acumulado match before and after". Phase 2 changes no read path, so the
-# fingerprint must be byte-identical — any diff is corruption.
+# acumulado match before and after". No E04 phase changes what a read path
+# *reports*, so the two fingerprints must match — any diff is corruption.
 #
 # Production is touched exactly once, read-only, by pg_dump. The copy is
 # restored into a throwaway LOCAL container, so nothing here can create,
@@ -16,31 +18,29 @@
 # Credentials come from libpq/Django env vars, never a URL: the production
 # password contains a space (docs/runbook.md, "Common failure #2").
 #
-# The fingerprint code is PINNED, the migrations are not. This experiment varies
-# the schema and holds the observer constant; running `dump_ledger_totals` from
-# the working tree would vary both at once. It went unnoticed through phase 2
-# only because that command was schema-agnostic then — it read `user`, a column
-# both sides of the migration have. Phase 3 points its acumulado at
-# `build_projection(household, ...)`, so the working-tree command can no longer
-# read the pre-E04 schema REWIND=1 produces, and the BEFORE fingerprint dies on
-# `column finances_income.household_id does not exist`.
-#
-# FINGERPRINT_REF therefore defaults to the phase-2 merge, the last commit whose
-# `dump_ledger_totals` reads a column every schema in this epic has. Phase 4
-# drops `user` and re-points the command; bump this ref in the same commit, or
-# delete the script if the epic no longer needs it.
+# TWO OBSERVERS, ONE EXPERIMENT. Through phases 2 and 3 the observer was pinned
+# and the schema varied. Phase 4 drops `user` outright, so no single version of
+# `dump_ledger_totals` can read both sides: the pinned one reads
+# `finances_entry.user_id` (gone after the migration), the working-tree one
+# reads `household_id` (absent before it). Each side is therefore read by the
+# observer that fits its schema, and the BEFORE keys — usernames — are mapped
+# through the same rule the seed migration used, so the two reports compare.
+# See `normalise_before` below.
 #
 # To prove phase 3 itself moved no money — a *code*-version question, not a
 # schema one — use scripts/verify-e04-phase3-money.sh instead.
 #
 # Required env: PGHOST PGPORT PGUSER PGPASSWORD PGSSLMODE
+# Optional env: BEFORE_REF SOURCE_DB COPY LOCAL_PORT IMAGE CLIENT_IMAGE
 # Usage: scripts/rehearse-e04-migration.sh
 set -euo pipefail
 umask 077
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# de143a1 = "Merge E04 phase 2 leftovers"; set to "" to use the working tree.
-FINGERPRINT_REF="${FINGERPRINT_REF-de143a1}"
+# The BEFORE observer: the last commit whose `dump_ledger_totals` reads `user`.
+# de143a1 = "Merge E04 phase 2 leftovers"; set to "" to use the working tree,
+# which only makes sense against a source that is already migrated.
+BEFORE_REF="${BEFORE_REF-de143a1}"
 COPY="${COPY:-ledger_rehearsal}"
 SOURCE_DB="${SOURCE_DB:-postgres}"  # Supabase's database is `postgres`
 IMAGE="${IMAGE:-pgvector/pgvector:pg17}"
@@ -56,7 +56,7 @@ DUMP="$WORK/ledger-prod.dump"
 BEFORE="$WORK/e04-before.json"
 AFTER="$WORK/e04-after.json"
 
-FP_TREE="$ROOT"  # where the fingerprint command is run from; see FINGERPRINT_REF
+FP_TREE="$ROOT"  # where the BEFORE fingerprint is run from; see BEFORE_REF
 
 cleanup() {
   docker rm -f "$LOCAL_CONTAINER" >/dev/null 2>&1 || true
@@ -89,14 +89,26 @@ on_copy_at() {  # run manage.py from a given source tree, against the local copy
 on_copy() {  # the migrations under test always come from the working tree
   on_copy_at "$ROOT" "$@"
 }
-fingerprint() {  # ...but the observer is pinned, so only the schema varies
-  on_copy_at "$FP_TREE" dump_ledger_totals --json
+normalise_before() {  # username-keyed JSON on stdin -> household-name-keyed on stdout
+  # accounts/migrations_helpers.py::_household_name_for names a seeded household
+  # `Casa de <username>`, clipped to 120 chars. The mapping is exact and
+  # mechanical — but it is a *rule*, not a lookup: renaming a household in the
+  # app makes this normalisation wrong and the diff a false alarm.
+  python3 -c '
+import json, sys
+report = json.load(sys.stdin)
+print(json.dumps({f"Casa de {k}"[:120]: v for k, v in report.items()},
+                 indent=2, sort_keys=True))
+'
 }
 
-if [[ -n "$FINGERPRINT_REF" ]]; then
-  echo "==> pinning the fingerprint command to $FINGERPRINT_REF"
+fingerprint_before() { on_copy_at "$FP_TREE" dump_ledger_totals --json | normalise_before; }
+fingerprint_after()  { on_copy    dump_ledger_totals --json; }
+
+if [[ -n "$BEFORE_REF" ]]; then
+  echo "==> pinning the BEFORE fingerprint command to $BEFORE_REF"
   FP_TREE="$WORK/fingerprint-code"
-  git -C "$ROOT" worktree add --detach "$FP_TREE" "$FINGERPRINT_REF" >/dev/null
+  git -C "$ROOT" worktree add --detach "$FP_TREE" "$BEFORE_REF" >/dev/null
   cp "$ROOT/.env" "$FP_TREE/.env" 2>/dev/null || true
 fi
 
@@ -119,22 +131,38 @@ local_pg17 pg_restore -d "$COPY" --no-owner --no-acl "$DUMP" || \
   echo "   (pg_restore errors on Supabase's own schemas are expected — checking data instead)"
 
 if [[ "${REWIND:-0}" == "1" ]]; then
-  echo "==> rewinding the copy to pre-E04 (REWIND=1)"
-  # For rehearsing against a source that is ALREADY migrated — the local dev
-  # ledger, say. Production is still pre-E04, so it needs no rewind.
-  on_copy migrate finances 0012
-  on_copy migrate assistant 0009
+  cat >&2 <<'DEAD'
+!! REWIND=1 stopped working at E04 phase 4, and it fails in a way that looks
+   like data corruption. Do not re-enable it without reading this.
+
+   It rewound an already-migrated copy with `migrate finances 0012` /
+   `migrate assistant 0009`. Since finances/0018_drop_user that rewind re-adds
+   `user` as an ALL-NULL column — 0018 threw the data away, exactly as its
+   docstring says. Three things then go wrong, in order:
+
+     1. The BEFORE observer filters `Entry.objects.filter(user=user)`, so it
+        reports zero entries for every user: a clean-looking file full of zeros.
+     2. finances/0014_backfill_household derives `household` from the user's
+        owner Membership. With `user` NULL there is nothing to derive from.
+     3. finances/0017_household_required's NOT NULL guard then fails the migrate.
+
+   Rehearse against a source that is genuinely pre-E04 instead. Production is
+   one — it has no `household` column at all — so it needs no rewind and is the
+   stronger test anyway. Failing that, restore a pre-E04 dump into a scratch
+   database and point SOURCE_DB at it, with no REWIND.
+DEAD
+  exit 2
 fi
 
-echo "==> BEFORE fingerprint"
-fingerprint > "$BEFORE"
-python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print('  users:',len(d));[print(f\"  {u}: {v['entry_count']} entries, sum {v['entry_sum']}\") for u,v in d.items()]" "$BEFORE"
+echo "==> BEFORE fingerprint (pre-E04 schema, user-keyed, normalised)"
+fingerprint_before > "$BEFORE"
+python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print('  households:',len(d));[print(f\"  {u}: {v['entry_count']} entries, sum {v['entry_sum']}\") for u,v in d.items()]" "$BEFORE"
 
 echo "==> migrating the copy"
 on_copy migrate
 
-echo "==> AFTER fingerprint"
-fingerprint > "$AFTER"
+echo "==> AFTER fingerprint (post-E04 schema, household-keyed)"
+fingerprint_after > "$AFTER"
 
 echo "==> diff"
 if diff -u "$BEFORE" "$AFTER"; then
@@ -162,5 +190,33 @@ local_pg17 psql -tAc "
                        'draft_hh_status_recent_idx','usage_hh_kind_recent_idx')
    ORDER BY indexname;"
 echo "   (expect six rows)"
+
+echo "==> the actor-leading index survives"
+# Not an oversight among the five below: the throttle counts per person, so
+# scoping it by household would give two members one shared rate-limit budget.
+local_pg17 psql -tAc "
+  SELECT indexname FROM pg_indexes WHERE indexname = 'usage_user_kind_recent_idx';"
+echo "   (expect ONE row — the only user-leading index left anywhere)"
+
+echo "==> the user-leading indexes are gone"
+local_pg17 psql -tAc "
+  SELECT indexname FROM pg_indexes
+   WHERE indexname IN ('entry_user_billing_type_idx','entry_user_date_recent_idx',
+                       'income_user_month_idx','chat_user_recent_idx',
+                       'draft_user_status_recent_idx');"
+echo "   (expect NO rows — dropped by finances/0018 and assistant/0015 with the column)"
+
+echo "==> no redundant standalone index on household_id"
+# E03 removed Django's implicit per-FK index on the tenant column for these
+# four; E04 phase 2 re-created it under `household_id` by adding an ordinary
+# ForeignKey, and only a product-scale measurement caught it. Matched by
+# definition rather than by name — the name carries a Django hash suffix.
+local_pg17 psql -tAc "
+  SELECT indexname FROM pg_indexes
+   WHERE schemaname = 'public'
+     AND tablename IN ('finances_entry','finances_income',
+                       'assistant_chatmessage','assistant_receiptdraft')
+     AND indexdef ~ '\(household_id\)\$';"
+echo "   (expect NO rows — dropped by finances/0019 and assistant/0016)"
 
 echo "Rehearsal complete."  # the EXIT trap removes the container and the dump
