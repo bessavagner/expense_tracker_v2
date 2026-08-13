@@ -11,15 +11,10 @@ pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
-def user(django_user_model):
-    return baker.make(django_user_model)
-
-
-@pytest.fixture
-def entry(user):
+def entry(household):
     return baker.make(
         Entry,
-        user=user,
+        household=household,
         entry_type=EntryType.REGULAR,
         amount="10.00",
         description="Old desc",
@@ -68,7 +63,9 @@ def test_post_invalid_returns_form_with_errors(client, user, entry):
     assert entry.description == "Old desc"
 
 
-def test_cannot_edit_other_users_entry(client, django_user_model, entry):
+def test_cannot_edit_another_households_entry(client, django_user_model, entry):
+    """The boundary is tenancy, not identity: a logged-in stranger who is not a
+    member of this household gets a 404, while its own members (above) get 200."""
     other = baker.make(django_user_model)
     client.force_login(other)
     url = reverse("finances:entry_edit_modal", args=[entry.id])

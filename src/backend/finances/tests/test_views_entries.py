@@ -10,13 +10,13 @@ from finances.models.entry import EntryType
 
 
 @pytest.fixture
-def sample_entries(user):
-    category = baker.make("finances.Category", user=user, name="Alimentação")
-    pix = baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")
+def sample_entries(household):
+    category = baker.make("finances.Category", household=household, name="Alimentação")
+    pix = baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
     entries = [
         baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             date=date(2026, 3, d),
             amount=Decimal("50.00"),
             description=f"Entry {d}",
@@ -29,7 +29,7 @@ def sample_entries(user):
     # Entry in different month
     baker.make(
         "finances.Entry",
-        user=user,
+        household=household,
         date=date(2026, 2, 15),
         amount=Decimal("30.00"),
         description="Feb entry",
@@ -67,15 +67,21 @@ class TestEntryListView:
         entries = response.context["entries"]
         assert not any(e.description == "Feb entry" for e in entries)
 
-    def test_credit_purchase_appears_in_launch_month_not_billing_month(self, logged_client, user):
-        cat = baker.make("finances.Category", user=user, name="Cartão")
+    def test_credit_purchase_appears_in_launch_month_not_billing_month(
+        self, logged_client, household
+    ):
+        cat = baker.make("finances.Category", household=household, name="Cartão")
         card = baker.make(
-            "finances.PaymentMethod", user=user, name="Visa", type="credit_card", closing_day=10
+            "finances.PaymentMethod",
+            household=household,
+            name="Visa",
+            type="credit_card",
+            closing_day=10,
         )
         # Compra em 20/jun → fatura paga em agosto (billing_month=2026-08-01).
         baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             date=date(2026, 6, 20),
             amount=Decimal("200.00"),
             description="Compra crédito",
@@ -87,20 +93,27 @@ class TestEntryListView:
         assert any(e.description == "Compra crédito" for e in june)
         assert not any(e.description == "Compra crédito" for e in august)
 
-    def test_other_user_entries_not_visible(self, logged_client, other_user, sample_entries):
-        other_cat = baker.make("finances.Category", user=other_user)
-        other_pm = baker.make("finances.PaymentMethod", user=other_user, type="pix")
+    def test_another_households_entries_are_not_visible(
+        self, logged_client, other_household, sample_entries
+    ):
+        """The boundary is tenancy, not identity: the neighbours' March entry is
+        absent while ours are all present."""
+        other_cat = baker.make("finances.Category", household=other_household)
+        other_pm = baker.make("finances.PaymentMethod", household=other_household, type="pix")
         baker.make(
             "finances.Entry",
-            user=other_user,
+            household=other_household,
             date=date(2026, 3, 5),
+            description="Compra do vizinho",
             category=other_cat,
             payment_method=other_pm,
             billing_month=date(2026, 3, 1),
         )
         response = logged_client.get("/entries/2026/3/")
         entries = response.context["entries"]
-        assert len(entries) == 3
+        descriptions = {e.description for e in entries}
+        assert {"Entry 1", "Entry 10", "Entry 20"} <= descriptions
+        assert "Compra do vizinho" not in descriptions
 
     def test_context_has_summary(self, logged_client, sample_entries):
         response = logged_client.get("/entries/2026/3/")
@@ -121,12 +134,14 @@ class TestEntryListView:
         response = client.get("/entries/2026/3/")
         assert response.status_code == 302
 
-    def test_credit_row_shows_future_invoice_badge(self, logged_client, user):
-        cat = baker.make("finances.Category", user=user)
-        card = baker.make("finances.PaymentMethod", user=user, type="credit_card", closing_day=10)
+    def test_credit_row_shows_future_invoice_badge(self, logged_client, household):
+        cat = baker.make("finances.Category", household=household)
+        card = baker.make(
+            "finances.PaymentMethod", household=household, type="credit_card", closing_day=10
+        )
         baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             date=date(2026, 6, 20),
             amount=Decimal("200.00"),
             description="crédito",
@@ -141,16 +156,16 @@ class TestEntryListView:
         response = logged_client.get("/entries/2026/3/")
         assert "form" in response.context
 
-    def test_only_regular_entries_shown(self, logged_client, user, sample_entries):
+    def test_only_regular_entries_shown(self, logged_client, household, sample_entries):
         """SYSTEMIC and INSTALLMENT entries must not appear in the Lançamentos list."""
         from finances.models.entry import EntryType
 
-        category = baker.make("finances.Category", user=user)
-        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+        category = baker.make("finances.Category", household=household)
+        pm = baker.make("finances.PaymentMethod", household=household, type="pix")
         # Create a systemic entry for the same billing month
         baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             date=date(2026, 3, 5),
             amount=Decimal("200.00"),
             description="Aluguel sistemático",
@@ -163,7 +178,7 @@ class TestEntryListView:
         # Create an installment entry for the same billing month
         baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             date=date(2026, 3, 5),
             amount=Decimal("100.00"),
             description="Notebook parcela",
@@ -181,9 +196,9 @@ class TestEntryListView:
 
 @pytest.mark.django_db
 class TestEntryCreateView:
-    def test_create_entry_via_inline(self, logged_client, user):
-        category = baker.make("finances.Category", user=user)
-        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+    def test_create_entry_via_inline(self, logged_client, household):
+        category = baker.make("finances.Category", household=household)
+        pm = baker.make("finances.PaymentMethod", household=household, type="pix")
         response = logged_client.post(
             "/entries/create/",
             data={
@@ -198,9 +213,9 @@ class TestEntryCreateView:
         assert response.status_code == 200
         from finances.models import Entry
 
-        assert Entry.objects.filter(user=user, description="Test inline").exists()
+        assert Entry.objects.for_household(household).filter(description="Test inline").exists()
 
-    def test_create_entry_invalid_returns_form(self, logged_client, user):
+    def test_create_entry_invalid_returns_form(self, logged_client, household):
         response = logged_client.post(
             "/entries/create/",
             data={},
@@ -212,12 +227,12 @@ class TestEntryCreateView:
 
 @pytest.mark.django_db
 class TestEntryUpdateView:
-    def test_get_edit_form(self, logged_client, user):
-        category = baker.make("finances.Category", user=user)
-        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+    def test_get_edit_form(self, logged_client, household):
+        category = baker.make("finances.Category", household=household)
+        pm = baker.make("finances.PaymentMethod", household=household, type="pix")
         entry = baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             date=date(2026, 3, 15),
             category=category,
             payment_method=pm,
@@ -227,12 +242,12 @@ class TestEntryUpdateView:
         assert response.status_code == 200
         assert "entries/_entry_edit_row.html" in [t.name for t in response.templates]
 
-    def test_post_edit_updates_entry(self, logged_client, user):
-        category = baker.make("finances.Category", user=user)
-        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+    def test_post_edit_updates_entry(self, logged_client, household):
+        category = baker.make("finances.Category", household=household)
+        pm = baker.make("finances.PaymentMethod", household=household, type="pix")
         entry = baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             date=date(2026, 3, 15),
             amount=Decimal("50.00"),
             description="Old",
@@ -256,12 +271,12 @@ class TestEntryUpdateView:
         assert entry.description == "Updated"
         assert entry.amount == Decimal("75.00")
 
-    def test_cannot_edit_other_user_entry(self, logged_client, other_user):
-        category = baker.make("finances.Category", user=other_user)
-        pm = baker.make("finances.PaymentMethod", user=other_user, type="pix")
+    def test_cannot_edit_another_households_entry(self, logged_client, other_household):
+        category = baker.make("finances.Category", household=other_household)
+        pm = baker.make("finances.PaymentMethod", household=other_household, type="pix")
         entry = baker.make(
             "finances.Entry",
-            user=other_user,
+            household=other_household,
             category=category,
             payment_method=pm,
             billing_month=date(2026, 3, 1),
@@ -272,12 +287,12 @@ class TestEntryUpdateView:
 
 @pytest.mark.django_db
 class TestEntryDeleteView:
-    def test_delete_entry(self, logged_client, user):
-        category = baker.make("finances.Category", user=user)
-        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+    def test_delete_entry(self, logged_client, household):
+        category = baker.make("finances.Category", household=household)
+        pm = baker.make("finances.PaymentMethod", household=household, type="pix")
         entry = baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             category=category,
             payment_method=pm,
             billing_month=date(2026, 3, 1),
@@ -288,12 +303,12 @@ class TestEntryDeleteView:
 
         assert not Entry.objects.filter(id=entry.id).exists()
 
-    def test_cannot_delete_other_user_entry(self, logged_client, other_user):
-        category = baker.make("finances.Category", user=other_user)
-        pm = baker.make("finances.PaymentMethod", user=other_user, type="pix")
+    def test_cannot_delete_another_households_entry(self, logged_client, other_household):
+        category = baker.make("finances.Category", household=other_household)
+        pm = baker.make("finances.PaymentMethod", household=other_household, type="pix")
         entry = baker.make(
             "finances.Entry",
-            user=other_user,
+            household=other_household,
             category=category,
             payment_method=pm,
             billing_month=date(2026, 3, 1),
@@ -309,11 +324,11 @@ class TestModalEntryForm:
         assert response.status_code == 200
         assert "partials/_modal_entry_form.html" in [t.name for t in response.templates]
 
-    def test_create_installment_via_modal(self, logged_client, user):
-        category = baker.make("finances.Category", user=user)
+    def test_create_installment_via_modal(self, logged_client, household):
+        category = baker.make("finances.Category", household=household)
         pm = baker.make(
             "finances.PaymentMethod",
-            user=user,
+            household=household,
             type="credit_card",
             closing_day=25,
         )
@@ -334,13 +349,13 @@ class TestModalEntryForm:
         assert response.status_code == 200
         from finances.models import Entry, InstallmentPlan
 
-        assert InstallmentPlan.objects.filter(user=user).count() == 1
-        assert Entry.objects.filter(user=user, entry_type="installment").count() == 3
+        assert InstallmentPlan.objects.for_household(household).count() == 1
+        assert Entry.objects.for_household(household).filter(entry_type="installment").count() == 3
         assert "entry-saved" in response.headers.get("HX-Trigger", "")
 
-    def test_create_regular_via_modal_closes_modal(self, logged_client, user):
-        category = baker.make("finances.Category", user=user)
-        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+    def test_create_regular_via_modal_closes_modal(self, logged_client, household):
+        category = baker.make("finances.Category", household=household)
+        pm = baker.make("finances.PaymentMethod", household=household, type="pix")
         response = logged_client.post(
             "/entries/modal/",
             data={
@@ -356,7 +371,7 @@ class TestModalEntryForm:
         assert response.status_code == 200
         from finances.models import Entry
 
-        assert Entry.objects.filter(user=user, description="Almoço").count() == 1
+        assert Entry.objects.for_household(household).filter(description="Almoço").count() == 1
         # HX-Trigger must include entry-saved so base.html closes the modal.
         assert "entry-saved" in response.headers.get("HX-Trigger", "")
 
@@ -366,9 +381,9 @@ class TestModalEntryForm:
         assert "Sistemático" in html
         assert 'value="2026-06-01"' in html  # seeded start month
 
-    def test_modal_post_systemic_creates_template(self, logged_client, user):
-        cat = baker.make("finances.Category", user=user)
-        pm = baker.make("finances.PaymentMethod", user=user, is_active=True)
+    def test_modal_post_systemic_creates_template(self, logged_client, household):
+        cat = baker.make("finances.Category", household=household)
+        pm = baker.make("finances.PaymentMethod", household=household, is_active=True)
         response = logged_client.post(
             "/entries/modal/",
             {
@@ -382,14 +397,14 @@ class TestModalEntryForm:
         assert response.status_code == 200
         from finances.models import SystemicExpense
 
-        assert SystemicExpense.objects.filter(user=user, name="Spotify").exists()
+        assert SystemicExpense.objects.for_household(household).filter(name="Spotify").exists()
         assert "entry-saved" in response.headers.get("HX-Trigger", "")
 
-    def test_modal_post_systemic_recurring_launches(self, logged_client, user):
+    def test_modal_post_systemic_recurring_launches(self, logged_client, household):
         from finances.models import Entry, SystemicExpense
 
-        cat = baker.make("finances.Category", user=user)
-        pm = baker.make("finances.PaymentMethod", user=user, is_active=True)
+        cat = baker.make("finances.Category", household=household)
+        pm = baker.make("finances.PaymentMethod", household=household, is_active=True)
         response = logged_client.post(
             "/entries/modal/",
             {
@@ -404,7 +419,7 @@ class TestModalEntryForm:
             },
         )
         assert response.status_code == 200
-        s = SystemicExpense.objects.get(user=user, name="Academia")
+        s = SystemicExpense.objects.for_household(household).get(name="Academia")
         assert Entry.objects.filter(systemic_expense=s).count() == 2
 
 
@@ -414,7 +429,6 @@ def test_entry_list_excludes_other_households(
 ):
     baker.make(
         "finances.Entry",
-        user=other_user,
         household=other_household,
         description="Compra do vizinho",
         date=date(2026, 3, 10),
@@ -432,7 +446,6 @@ def test_entry_list_excludes_other_households(
 def test_entry_edit_404s_across_households(logged_client, other_user, other_household):
     theirs = baker.make(
         "finances.Entry",
-        user=other_user,
         household=other_household,
         date=date(2026, 3, 10),
         billing_month=date(2026, 3, 1),

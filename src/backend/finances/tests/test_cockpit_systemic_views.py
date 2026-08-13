@@ -14,11 +14,11 @@ class TestCockpitSystemicViews(TestCase):
     def setUp(self):
         self.user = baker.make(CustomUser)
         self.client.force_login(self.user)
-        self.cat = baker.make(Category, user=self.user)
-        self.pm = baker.make(PaymentMethod, user=self.user)
+        self.cat = baker.make(Category, household=household_for_user(self.user))
+        self.pm = baker.make(PaymentMethod, household=household_for_user(self.user))
         self.s = baker.make(
             SystemicExpense,
-            user=self.user,
+            household=household_for_user(self.user),
             name="Aluguel",
             category=self.cat,
             payment_method=self.pm,

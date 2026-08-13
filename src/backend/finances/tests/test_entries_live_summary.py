@@ -7,13 +7,13 @@ from model_bakery import baker
 
 
 @pytest.fixture
-def march_setup(user):
-    category = baker.make("finances.Category", user=user, name="Alimentação")
-    pix = baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")
+def march_setup(household):
+    category = baker.make("finances.Category", household=household, name="Alimentação")
+    pix = baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
     for d, amount in [(1, "50.00"), (10, "50.00"), (20, "50.00")]:
         baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             date=date(2026, 3, d),
             amount=Decimal(amount),
             description=f"Entry {d}",
@@ -24,7 +24,7 @@ def march_setup(user):
     # A refund (negative) in the same month.
     baker.make(
         "finances.Entry",
-        user=user,
+        household=household,
         date=date(2026, 3, 25),
         amount=Decimal("-20.00"),
         description="Estorno",
@@ -66,12 +66,12 @@ class TestEntriesSummaryView:
         assert "Total retornos" not in body
         assert "Líquido" not in body
 
-    def test_scoped_to_user(self, logged_client, other_user):
-        cat = baker.make("finances.Category", user=other_user)
-        pm = baker.make("finances.PaymentMethod", user=other_user, type="pix")
+    def test_scoped_to_household(self, logged_client, other_household, march_setup):
+        cat = baker.make("finances.Category", household=other_household)
+        pm = baker.make("finances.PaymentMethod", household=other_household, type="pix")
         baker.make(
             "finances.Entry",
-            user=other_user,
+            household=other_household,
             date=date(2026, 3, 5),
             amount=Decimal("999.00"),
             category=cat,
@@ -79,14 +79,17 @@ class TestEntriesSummaryView:
             billing_month=date(2026, 3, 1),
         )
         response = logged_client.get("/entries/2026/3/summary/", HTTP_HX_REQUEST="true")
-        assert response.context["summary"]["total_lancado"] == Decimal("0")
+        # Ours are all there; the neighbours' 999 never joins the total.
+        assert response.context["summary"]["total_lancado"] == Decimal("130.00")
 
-    def test_credit_value_counts_in_billing_month_not_launch_month(self, logged_client, user):
-        cat = baker.make("finances.Category", user=user)
-        card = baker.make("finances.PaymentMethod", user=user, type="credit_card", closing_day=10)
+    def test_credit_value_counts_in_billing_month_not_launch_month(self, logged_client, household):
+        cat = baker.make("finances.Category", household=household)
+        card = baker.make(
+            "finances.PaymentMethod", household=household, type="credit_card", closing_day=10
+        )
         baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             date=date(2026, 6, 20),
             amount=Decimal("200.00"),
             description="crédito",
@@ -106,24 +109,24 @@ class TestEntriesSummaryView:
         assert august["total_gastos"] == Decimal("200.00")
         assert august["total_lancado"] == Decimal("0")
 
-    def test_summary_reconciles_with_projection_current_month(self, logged_client, user, household):
+    def test_summary_reconciles_with_projection_current_month(self, logged_client, household):
         from django.db.models import Min
 
         from finances.models import Entry, Income
         from finances.services.projection import build_projection
 
-        cat = baker.make("finances.Category", user=user)
-        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+        cat = baker.make("finances.Category", household=household)
+        pm = baker.make("finances.PaymentMethod", household=household, type="pix")
         baker.make(
             "finances.Income",
-            user=user,
+            household=household,
             name="Salario",
             amount=Decimal("5000.00"),
             month=date(2026, 6, 1),
         )
         baker.make(
             "finances.SystemicExpense",
-            user=user,
+            household=household,
             is_active=True,
             default_amount=Decimal("300.00"),
             category=cat,
@@ -135,8 +138,8 @@ class TestEntriesSummaryView:
             "summary"
         ]
         # replicate production anchor logic
-        inc_min = Income.objects.filter(user=user).aggregate(m=Min("month"))["m"]
-        ent_min = Entry.objects.filter(user=user).aggregate(m=Min("billing_month"))["m"]
+        inc_min = Income.objects.for_household(household).aggregate(m=Min("month"))["m"]
+        ent_min = Entry.objects.for_household(household).aggregate(m=Min("billing_month"))["m"]
         cands = [d for d in (inc_min, ent_min) if d is not None]
         target = date(fy, fm, 1)
         anchor = min(cands).replace(day=1) if cands else target
@@ -149,24 +152,24 @@ class TestEntriesSummaryView:
         assert summary["saldo_projetado"] == row["saldo_projetado"]
         assert summary["acumulado"] == row["acumulado"]
 
-    def test_summary_reconciles_with_projection_future_month(self, logged_client, user, household):
+    def test_summary_reconciles_with_projection_future_month(self, logged_client, household):
         from django.db.models import Min
 
         from finances.models import Entry, Income
         from finances.services.projection import build_projection
 
-        cat = baker.make("finances.Category", user=user)
-        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+        cat = baker.make("finances.Category", household=household)
+        pm = baker.make("finances.PaymentMethod", household=household, type="pix")
         baker.make(
             "finances.Income",
-            user=user,
+            household=household,
             name="Salario",
             amount=Decimal("5000.00"),
             month=date(2026, 6, 1),
         )
         baker.make(
             "finances.SystemicExpense",
-            user=user,
+            household=household,
             is_active=True,
             default_amount=Decimal("300.00"),
             category=cat,
@@ -179,8 +182,8 @@ class TestEntriesSummaryView:
             "summary"
         ]
         # replicate production anchor logic
-        inc_min = Income.objects.filter(user=user).aggregate(m=Min("month"))["m"]
-        ent_min = Entry.objects.filter(user=user).aggregate(m=Min("billing_month"))["m"]
+        inc_min = Income.objects.for_household(household).aggregate(m=Min("month"))["m"]
+        ent_min = Entry.objects.for_household(household).aggregate(m=Min("billing_month"))["m"]
         cands = [d for d in (inc_min, ent_min) if d is not None]
         target = date(fy, fm, 1)
         anchor = min(cands).replace(day=1) if cands else target
@@ -198,14 +201,14 @@ class TestEntriesSummaryView:
 class TestMutationsTriggerSummaryRefresh:
     """Every entry mutation emits `entries-changed` so the top totals refresh."""
 
-    def _cat_pm(self, user):
+    def _cat_pm(self, household):
         return (
-            baker.make("finances.Category", user=user),
-            baker.make("finances.PaymentMethod", user=user, type="pix"),
+            baker.make("finances.Category", household=household),
+            baker.make("finances.PaymentMethod", household=household, type="pix"),
         )
 
-    def test_inline_create_triggers(self, logged_client, user):
-        cat, pm = self._cat_pm(user)
+    def test_inline_create_triggers(self, logged_client, household):
+        cat, pm = self._cat_pm(household)
         response = logged_client.post(
             "/entries/create/",
             data={
@@ -219,11 +222,11 @@ class TestMutationsTriggerSummaryRefresh:
         )
         assert "entries-changed" in response.headers.get("HX-Trigger", "")
 
-    def test_delete_triggers(self, logged_client, user):
-        cat, pm = self._cat_pm(user)
+    def test_delete_triggers(self, logged_client, household):
+        cat, pm = self._cat_pm(household)
         entry = baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             date=date(2026, 3, 15),
             category=cat,
             payment_method=pm,
@@ -232,11 +235,11 @@ class TestMutationsTriggerSummaryRefresh:
         response = logged_client.delete(f"/entries/{entry.id}/delete/", HTTP_HX_REQUEST="true")
         assert "entries-changed" in response.headers.get("HX-Trigger", "")
 
-    def test_inline_edit_triggers(self, logged_client, user):
-        cat, pm = self._cat_pm(user)
+    def test_inline_edit_triggers(self, logged_client, household):
+        cat, pm = self._cat_pm(household)
         entry = baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             date=date(2026, 3, 15),
             amount=Decimal("50.00"),
             category=cat,
@@ -256,8 +259,8 @@ class TestMutationsTriggerSummaryRefresh:
         )
         assert "entries-changed" in response.headers.get("HX-Trigger", "")
 
-    def test_modal_regular_create_triggers(self, logged_client, user):
-        cat, pm = self._cat_pm(user)
+    def test_modal_regular_create_triggers(self, logged_client, household):
+        cat, pm = self._cat_pm(household)
         response = logged_client.post(
             "/entries/modal/",
             data={
@@ -272,11 +275,11 @@ class TestMutationsTriggerSummaryRefresh:
         )
         assert "entries-changed" in response.headers.get("HX-Trigger", "")
 
-    def test_edit_modal_triggers(self, logged_client, user):
-        cat, pm = self._cat_pm(user)
+    def test_edit_modal_triggers(self, logged_client, household):
+        cat, pm = self._cat_pm(household)
         entry = baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             date=date(2026, 3, 15),
             amount=Decimal("50.00"),
             category=cat,

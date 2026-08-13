@@ -2,7 +2,6 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 from finances.models import Income
@@ -11,14 +10,9 @@ pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
-def user(db):
-    return get_user_model().objects.create_user(username="u", password="pw")
-
-
-@pytest.fixture
-def income(user):
+def income(household):
     return Income.objects.create(
-        user=user, name="Salário", amount=Decimal("5000"), month=date(2026, 6, 1)
+        household=household, name="Salário", amount=Decimal("5000"), month=date(2026, 6, 1)
     )
 
 
@@ -56,8 +50,10 @@ def test_post_invalid_returns_form(client, user, income):
     assert income.name == "Salário"
 
 
-def test_cross_user_404(client, income):
-    other = get_user_model().objects.create_user(username="o", password="pw")
+def test_cross_household_404(client, income, other_user):
+    """The boundary is tenancy, not identity: a member of another household
+    cannot open this one's income, while its own members (above) get 200."""
+    other = other_user
     client.force_login(other)
     url = reverse("finances:cockpit_income_edit_modal", args=[2026, 6, income.id])
     assert client.get(url).status_code == 404

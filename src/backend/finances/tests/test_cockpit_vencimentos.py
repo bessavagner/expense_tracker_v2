@@ -3,6 +3,7 @@ from datetime import date
 from django.test import TestCase
 from model_bakery import baker
 
+from accounts.resolution import household_for_user
 from core.models import CustomUser
 from finances.models import PaymentMethod
 from finances.models.payment_method import PaymentType
@@ -15,7 +16,7 @@ class TestCockpitVencimentos(TestCase):
         self.client.force_login(self.user)
         self.pm = baker.make(
             PaymentMethod,
-            user=self.user,
+            household=household_for_user(self.user),
             name="Nubank",
             type=PaymentType.CREDIT_CARD,
             closing_day=10,
@@ -23,7 +24,13 @@ class TestCockpitVencimentos(TestCase):
         )
 
     def test_section_lists_only_active_credit_cards(self):
-        baker.make(PaymentMethod, user=self.user, name="Pix", type=PaymentType.PIX, is_active=True)
+        baker.make(
+            PaymentMethod,
+            household=household_for_user(self.user),
+            name="Pix",
+            type=PaymentType.PIX,
+            is_active=True,
+        )
         resp = self.client.get("/cockpit/2026/10/vencimentos/")
         body = resp.content.decode()
         # Cell-anchored for the same reason as the income section test: a bare
@@ -64,11 +71,12 @@ class TestCockpitVencimentos(TestCase):
             ).exists()
         )
 
-    def test_cannot_set_another_users_payment_method(self):
+    def test_cannot_set_another_households_payment_method(self):
+        """The boundary is tenancy, not identity."""
         other = baker.make(CustomUser)
         other_pm = baker.make(
             PaymentMethod,
-            user=other,
+            household=household_for_user(other),
             name="Inter",
             type=PaymentType.CREDIT_CARD,
             closing_day=5,

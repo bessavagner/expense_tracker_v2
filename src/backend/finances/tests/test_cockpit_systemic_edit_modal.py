@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.test import TestCase
 from model_bakery import baker
 
+from accounts.resolution import household_for_user
 from core.models import CustomUser
 from finances.models import Category, PaymentMethod, SystemicExpense
 
@@ -12,11 +13,11 @@ class TestCockpitSystemicEditModal(TestCase):
     def setUp(self):
         self.user = baker.make(CustomUser)
         self.client.force_login(self.user)
-        self.cat = baker.make(Category, user=self.user)
-        self.pm = baker.make(PaymentMethod, user=self.user, is_active=True)
+        self.cat = baker.make(Category, household=household_for_user(self.user))
+        self.pm = baker.make(PaymentMethod, household=household_for_user(self.user), is_active=True)
         self.s = baker.make(
             SystemicExpense,
-            user=self.user,
+            household=household_for_user(self.user),
             name="Aluguel",
             category=self.cat,
             payment_method=self.pm,

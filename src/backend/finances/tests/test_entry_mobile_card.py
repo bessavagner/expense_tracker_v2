@@ -12,15 +12,10 @@ pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
-def user(django_user_model):
-    return baker.make(django_user_model)
-
-
-@pytest.fixture
-def entry(user):
+def entry(household):
     return baker.make(
         Entry,
-        user=user,
+        household=household,
         entry_type=EntryType.REGULAR,
         amount="10.00",
         description="Old desc",
@@ -42,13 +37,13 @@ def test_card_opens_edit_modal_and_has_delete(entry):
     assert "hx-swap-oob" not in html
 
 
-def test_card_shows_fatura_badge_when_billing_month_differs(user):
+def test_card_shows_fatura_badge_when_billing_month_differs(household):
     """Mobile parity with the desktop row: a credit-card purchase that lands on
     a later invoice must say so on the card too, otherwise the phone view looks
     like the expense hit the purchase month."""
     entry = baker.make(
         Entry,
-        user=user,
+        household=household,
         entry_type=EntryType.REGULAR,
         amount="10.00",
         description="Mercado Livre",

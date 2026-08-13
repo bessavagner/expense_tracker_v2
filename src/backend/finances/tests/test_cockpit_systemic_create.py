@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.test import TestCase
 from model_bakery import baker
 
+from accounts.resolution import household_for_user
 from core.models import CustomUser
 from finances.models import Category, PaymentMethod, SystemicExpense
 
@@ -12,8 +13,10 @@ class TestCockpitSystemicCreateView(TestCase):
     def setUp(self):
         self.user = baker.make(CustomUser)
         self.client.force_login(self.user)
-        self.cat = baker.make(Category, user=self.user, name="Moradia")
-        self.pm = baker.make(PaymentMethod, user=self.user, type="pix", name="Pix")
+        self.cat = baker.make(Category, household=household_for_user(self.user), name="Moradia")
+        self.pm = baker.make(
+            PaymentMethod, household=household_for_user(self.user), type="pix", name="Pix"
+        )
 
     def test_post_valid_creates_systemic_expense(self):
         resp = self.client.post(
@@ -52,7 +55,7 @@ class TestCockpitSystemicCreateView(TestCase):
         inline amount field was replaced by the shared edit modal)."""
         s = baker.make(
             SystemicExpense,
-            user=self.user,
+            household=household_for_user(self.user),
             name="Aluguel",
             category=self.cat,
             payment_method=self.pm,

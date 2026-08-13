@@ -25,14 +25,14 @@ class TestHtmxCsrfWiring:
         # Token must be interpolated, not the literal template tag.
         assert "{{ csrf_token }}" not in content
 
-    def test_income_delete_succeeds_with_csrf_header(self, user):
+    def test_income_delete_succeeds_with_csrf_header(self, user, household):
         """Browser sends X-CSRFToken (via base.html) → delete works."""
         client = Client(enforce_csrf_checks=True)
         client.force_login(user)
         client.get("/entries/2026/3/")  # sets the csrftoken cookie
         token = client.cookies["csrftoken"].value
         inc = baker.make(
-            "finances.Income", user=user, month=date(2026, 3, 1), amount=Decimal("100")
+            "finances.Income", household=household, month=date(2026, 3, 1), amount=Decimal("100")
         )
         response = client.delete(
             f"/cockpit/2026/3/income/{inc.id}/delete/",
@@ -44,12 +44,12 @@ class TestHtmxCsrfWiring:
 
         assert not Income.objects.filter(pk=inc.pk).exists()
 
-    def test_income_delete_rejected_without_csrf(self, user):
+    def test_income_delete_rejected_without_csrf(self, user, household):
         """Documents the bug: no token → 403 (what was happening before)."""
         client = Client(enforce_csrf_checks=True)
         client.force_login(user)
         inc = baker.make(
-            "finances.Income", user=user, month=date(2026, 3, 1), amount=Decimal("100")
+            "finances.Income", household=household, month=date(2026, 3, 1), amount=Decimal("100")
         )
         response = client.delete(f"/cockpit/2026/3/income/{inc.id}/delete/", HTTP_HX_REQUEST="true")
         assert response.status_code == 403

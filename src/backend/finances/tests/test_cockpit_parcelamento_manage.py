@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.test import TestCase
 from model_bakery import baker
 
+from accounts.resolution import household_for_user
 from core.models import CustomUser
 from finances.models import Category, Entry, PaymentMethod
 from finances.models.entry import EntryType
@@ -14,10 +15,12 @@ class TestCockpitParcelamentoManage(TestCase):
     def setUp(self):
         self.user = baker.make(CustomUser)
         self.client.force_login(self.user)
-        self.cat = baker.make(Category, user=self.user)
-        self.pm = baker.make(PaymentMethod, user=self.user, type="pix", is_active=True)
+        self.cat = baker.make(Category, household=household_for_user(self.user))
+        self.pm = baker.make(
+            PaymentMethod, household=household_for_user(self.user), type="pix", is_active=True
+        )
         self.plan = InstallmentPlan.objects.create(
-            user=self.user,
+            household=household_for_user(self.user),
             date=date(2026, 1, 1),
             description="Notebook",
             category=self.cat,

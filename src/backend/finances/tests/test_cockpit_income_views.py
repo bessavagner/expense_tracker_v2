@@ -4,6 +4,7 @@ from datetime import date
 from django.test import TestCase
 from model_bakery import baker
 
+from accounts.resolution import household_for_user
 from core.models import CustomUser
 from finances.models import Income
 
@@ -20,11 +21,28 @@ class TestCockpitIncomeViews(TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertIn("Salário", resp.content.decode())
-        self.assertEqual(Income.objects.filter(user=self.user, month=date(2026, 10, 1)).count(), 1)
+        self.assertEqual(
+            Income.objects.for_household(household_for_user(self.user))
+            .filter(month=date(2026, 10, 1))
+            .count(),
+            1,
+        )
 
     def test_section_lists_only_selected_month(self):
-        baker.make(Income, user=self.user, name="Out", amount="100", month=date(2026, 10, 1))
-        baker.make(Income, user=self.user, name="Nov", amount="200", month=date(2026, 11, 1))
+        baker.make(
+            Income,
+            household=household_for_user(self.user),
+            name="Out",
+            amount="100",
+            month=date(2026, 10, 1),
+        )
+        baker.make(
+            Income,
+            household=household_for_user(self.user),
+            name="Nov",
+            amount="200",
+            month=date(2026, 11, 1),
+        )
         resp = self.client.get("/cockpit/2026/10/income/")
         body = resp.content.decode()
         # Anchor on the rendered cell, not the whole document: a bare
@@ -34,14 +52,27 @@ class TestCockpitIncomeViews(TestCase):
         self.assertNotIn("<td>Nov</td>", body)
 
     def test_delete_income_removes_row(self):
-        inc = baker.make(Income, user=self.user, name="X", amount="100", month=date(2026, 10, 1))
+        inc = baker.make(
+            Income,
+            household=household_for_user(self.user),
+            name="X",
+            amount="100",
+            month=date(2026, 10, 1),
+        )
         resp = self.client.delete(f"/cockpit/2026/10/income/{inc.pk}/delete/")
         self.assertEqual(resp.status_code, 200)
         self.assertFalse(Income.objects.filter(pk=inc.pk).exists())
 
-    def test_user_cannot_touch_another_users_income(self):
+    def test_cannot_touch_another_households_income(self):
+        """The boundary is tenancy, not identity."""
         other = baker.make(CustomUser)
-        inc = baker.make(Income, user=other, name="X", amount="100", month=date(2026, 10, 1))
+        inc = baker.make(
+            Income,
+            household=household_for_user(other),
+            name="X",
+            amount="100",
+            month=date(2026, 10, 1),
+        )
         resp = self.client.delete(f"/cockpit/2026/10/income/{inc.pk}/delete/")
         self.assertEqual(resp.status_code, 404)
         self.assertTrue(Income.objects.filter(pk=inc.pk).exists())
