@@ -10,12 +10,20 @@ from model_bakery import baker
 from finances.models import Entry
 
 
-def _setup(user):
-    cat = baker.make("finances.Category", user=user, name="Saúde")
-    pix = baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")
+def _setup(user, household):
+    """The entry keeps a `user` beside its `household` on purpose.
+
+    `transfer_entries export` still reads `e.user.username` and filters on
+    `user__username` — decision 7 re-points it at `created_by` in Task 13, and
+    that is the commit that drops these `user=` kwargs. Until then a row with
+    no user makes the export raise rather than fail an assertion.
+    """
+    cat = baker.make("finances.Category", household=household, name="Saúde")
+    pix = baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
     baker.make(
         "finances.Entry",
         user=user,
+        household=household,
         date=date(2026, 6, 23),
         amount=Decimal("31.99"),
         description="Amazon - coletor",
@@ -26,8 +34,8 @@ def _setup(user):
 
 
 @pytest.mark.django_db
-def test_export_then_import_roundtrip_idempotent(user, tmp_path):
-    _setup(user)
+def test_export_then_import_roundtrip_idempotent(user, household, tmp_path):
+    _setup(user, household)
     path = tmp_path / "entries.json"
     call_command(
         "transfer_entries",
@@ -57,8 +65,8 @@ def test_export_then_import_roundtrip_idempotent(user, tmp_path):
 
 
 @pytest.mark.django_db
-def test_import_dry_run_writes_nothing(user, tmp_path):
-    _setup(user)
+def test_import_dry_run_writes_nothing(user, household, tmp_path):
+    _setup(user, household)
     path = tmp_path / "entries.json"
     call_command("transfer_entries", "export", "--file", str(path), stderr=StringIO())
     Entry.objects.all().delete()
@@ -69,8 +77,8 @@ def test_import_dry_run_writes_nothing(user, tmp_path):
 
 
 @pytest.mark.django_db
-def test_import_reports_missing_category(user, tmp_path):
-    baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")
+def test_import_reports_missing_category(user, household, tmp_path):
+    baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
     path = tmp_path / "entries.json"
     path.write_text(
         json.dumps(

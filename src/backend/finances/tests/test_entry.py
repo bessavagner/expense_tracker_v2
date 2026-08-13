@@ -8,20 +8,20 @@ from finances.models.entry import EntryType
 
 
 @pytest.fixture
-def category(user):
-    return baker.make("finances.Category", user=user, name="Alimentação")
+def category(household):
+    return baker.make("finances.Category", household=household, name="Alimentação")
 
 
 @pytest.fixture
-def pix(user):
-    return baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")
+def pix(household):
+    return baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
 
 
 @pytest.fixture
-def credit_card(user):
+def credit_card(household):
     return baker.make(
         "finances.PaymentMethod",
-        user=user,
+        household=household,
         name="Crédito Santander",
         type="credit_card",
         closing_day=30,
@@ -29,18 +29,22 @@ def credit_card(user):
 
 
 @pytest.fixture
-def credit_card_c6(user):
+def credit_card_c6(household):
     return baker.make(
-        "finances.PaymentMethod", user=user, name="Crédito C6", type="credit_card", closing_day=25
+        "finances.PaymentMethod",
+        household=household,
+        name="Crédito C6",
+        type="credit_card",
+        closing_day=25,
     )
 
 
 @pytest.mark.django_db
 class TestEntry:
-    def test_create_regular_entry(self, user, category, pix):
+    def test_create_regular_entry(self, household, category, pix):
         entry = baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             date=date(2026, 3, 1),
             amount=Decimal("42.00"),
             description="Heineken - bebida",
@@ -51,10 +55,10 @@ class TestEntry:
         assert entry.amount == Decimal("42.00")
         assert entry.entry_type == EntryType.REGULAR
 
-    def test_str_returns_description_and_amount(self, user, category, pix):
+    def test_str_returns_description_and_amount(self, household, category, pix):
         entry = baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             description="Supermercado Cosmos",
             amount=Decimal("119.61"),
             category=category,
@@ -64,10 +68,10 @@ class TestEntry:
         assert "Supermercado Cosmos" in result
         assert "119.61" in result
 
-    def test_negative_amount_is_refund(self, user, category, pix):
+    def test_negative_amount_is_refund(self, household, category, pix):
         entry = baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             amount=Decimal("-226.21"),
             description="Google Cloud - estorno",
             category=category,
@@ -75,11 +79,11 @@ class TestEntry:
         )
         assert entry.amount < 0
 
-    def test_billing_month_computed_on_save_pix(self, user, category, pix):
+    def test_billing_month_computed_on_save_pix(self, household, category, pix):
         from finances.models import Entry
 
         entry = Entry(
-            user=user,
+            household=household,
             date=date(2026, 3, 15),
             amount=Decimal("50.00"),
             description="Test",
@@ -90,11 +94,11 @@ class TestEntry:
         entry.save()
         assert entry.billing_month == date(2026, 3, 1)
 
-    def test_billing_month_credit_card_before_closing(self, user, category, credit_card_c6):
+    def test_billing_month_credit_card_before_closing(self, household, category, credit_card_c6):
         from finances.models import Entry
 
         entry = Entry(
-            user=user,
+            household=household,
             date=date(2026, 3, 20),
             amount=Decimal("50.00"),
             description="Test",
@@ -106,11 +110,11 @@ class TestEntry:
         # closing 25, purchase 20 (before) → invoice closes Mar, paid April.
         assert entry.billing_month == date(2026, 4, 1)
 
-    def test_billing_month_credit_card_after_closing(self, user, category, credit_card_c6):
+    def test_billing_month_credit_card_after_closing(self, household, category, credit_card_c6):
         from finances.models import Entry
 
         entry = Entry(
-            user=user,
+            household=household,
             date=date(2026, 3, 26),
             amount=Decimal("50.00"),
             description="Test",
@@ -122,11 +126,11 @@ class TestEntry:
         # closing 25, purchase 26 (after) → next invoice (Apr), paid May.
         assert entry.billing_month == date(2026, 5, 1)
 
-    def test_billing_month_override_preserved(self, user, category, credit_card_c6):
+    def test_billing_month_override_preserved(self, household, category, credit_card_c6):
         from finances.models import Entry
 
         entry = Entry(
-            user=user,
+            household=household,
             date=date(2026, 3, 26),
             amount=Decimal("50.00"),
             description="Test",
@@ -139,38 +143,38 @@ class TestEntry:
         entry.save()
         assert entry.billing_month == date(2026, 3, 1)
 
-    def test_ordering_by_date_desc(self, user, category, pix):
+    def test_ordering_by_date_desc(self, household, category, pix):
         from finances.models import Entry
 
         baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             date=date(2026, 3, 1),
             category=category,
             payment_method=pix,
         )
         baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             date=date(2026, 3, 15),
             category=category,
             payment_method=pix,
         )
         baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             date=date(2026, 3, 10),
             category=category,
             payment_method=pix,
         )
-        dates = list(Entry.objects.filter(user=user).values_list("date", flat=True))
+        dates = list(Entry.objects.for_household(household).values_list("date", flat=True))
         assert dates == sorted(dates, reverse=True)
 
-    def test_billing_month_recomputed_on_date_update(self, user, category, credit_card_c6):
+    def test_billing_month_recomputed_on_date_update(self, household, category, credit_card_c6):
         from finances.models import Entry
 
         entry = Entry(
-            user=user,
+            household=household,
             date=date(2026, 3, 20),
             amount=Decimal("50.00"),
             description="Test",

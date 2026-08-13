@@ -4,17 +4,17 @@ from model_bakery import baker
 
 @pytest.mark.django_db
 class TestPaymentMethod:
-    def test_create_pix(self, user):
-        pm = baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")
+    def test_create_pix(self, household):
+        pm = baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
         assert pm.name == "Pix"
         assert pm.type == "pix"
         assert pm.closing_day is None
         assert pm.is_active is True
 
-    def test_create_credit_card_with_closing_day(self, user):
+    def test_create_credit_card_with_closing_day(self, household):
         pm = baker.make(
             "finances.PaymentMethod",
-            user=user,
+            household=household,
             name="Crédito Santander",
             type="credit_card",
             closing_day=30,
@@ -22,14 +22,14 @@ class TestPaymentMethod:
         assert pm.closing_day == 30
         assert pm.type == "credit_card"
 
-    def test_str_returns_name(self, user):
-        pm = baker.make("finances.PaymentMethod", user=user, name="Crédito C6")
+    def test_str_returns_name(self, household):
+        pm = baker.make("finances.PaymentMethod", household=household, name="Crédito C6")
         assert str(pm) == "Crédito C6"
 
-    def test_closing_day_null_for_non_credit(self, user):
+    def test_closing_day_null_for_non_credit(self, household):
         pm = baker.make(
             "finances.PaymentMethod",
-            user=user,
+            household=household,
             name="Dinheiro",
             type="cash",
             closing_day=None,
@@ -43,8 +43,8 @@ class TestPaymentMethod:
         assert PaymentType.PIX == "pix"
         assert PaymentType.CREDIT_CARD == "credit_card"
 
-    def test_soft_delete_via_is_active(self, user):
-        pm = baker.make("finances.PaymentMethod", user=user, is_active=True)
+    def test_soft_delete_via_is_active(self, household):
+        pm = baker.make("finances.PaymentMethod", household=household, is_active=True)
         pm.is_active = False
         pm.save()
         pm.refresh_from_db()

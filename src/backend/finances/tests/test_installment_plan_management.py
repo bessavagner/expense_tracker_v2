@@ -4,13 +4,12 @@ from decimal import Decimal
 import pytest
 from model_bakery import baker
 
-from core.models import CustomUser
 from finances.models import Category, Entry, PaymentMethod
 from finances.models.installment_plan import InstallmentPlan
 
 
 @pytest.fixture
-def plan_factory(db):
+def plan_factory(db, household):
     def _make(
         num=3,
         total=Decimal("600.00"),
@@ -19,11 +18,10 @@ def plan_factory(db):
         pm_type="pix",
         closing_day=None,
     ):
-        user = baker.make(CustomUser)
-        cat = baker.make(Category, user=user)
-        pm = baker.make(PaymentMethod, user=user, type=pm_type, closing_day=closing_day)
+        cat = baker.make(Category, household=household)
+        pm = baker.make(PaymentMethod, household=household, type=pm_type, closing_day=closing_day)
         plan = InstallmentPlan.objects.create(
-            user=user,
+            household=household,
             date=start,
             description="Notebook",
             category=cat,

@@ -8,15 +8,15 @@ from finances.models import Entry, EntryType
 
 
 @pytest.fixture
-def category(user):
-    return baker.make("finances.Category", user=user, name="Trabalho")
+def category(household):
+    return baker.make("finances.Category", household=household, name="Trabalho")
 
 
 @pytest.fixture
-def credit_card(user):
+def credit_card(household):
     return baker.make(
         "finances.PaymentMethod",
-        user=user,
+        household=household,
         name="Crédito Santander",
         type="credit_card",
         closing_day=30,
@@ -24,18 +24,22 @@ def credit_card(user):
 
 
 @pytest.fixture
-def credit_card_c6(user):
+def credit_card_c6(household):
     return baker.make(
-        "finances.PaymentMethod", user=user, name="Crédito C6", type="credit_card", closing_day=25
+        "finances.PaymentMethod",
+        household=household,
+        name="Crédito C6",
+        type="credit_card",
+        closing_day=25,
     )
 
 
 @pytest.mark.django_db
 class TestInstallmentPlan:
-    def test_create_plan(self, user, category, credit_card):
+    def test_create_plan(self, household, category, credit_card):
         plan = baker.make(
             "finances.InstallmentPlan",
-            user=user,
+            household=household,
             date=date(2025, 12, 1),
             description="notebook",
             category=category,
@@ -47,10 +51,10 @@ class TestInstallmentPlan:
         assert plan.total_amount == Decimal("6699.00")
         assert plan.num_installments == 12
 
-    def test_str_returns_description_and_installments(self, user, category, credit_card):
+    def test_str_returns_description_and_installments(self, household, category, credit_card):
         plan = baker.make(
             "finances.InstallmentPlan",
-            user=user,
+            household=household,
             description="notebook",
             num_installments=12,
             category=category,
@@ -60,11 +64,11 @@ class TestInstallmentPlan:
         assert "notebook" in result
         assert "12x" in result
 
-    def test_generate_entries_creates_correct_count(self, user, category, credit_card):
+    def test_generate_entries_creates_correct_count(self, household, category, credit_card):
         from finances.models import InstallmentPlan
 
         plan = InstallmentPlan.objects.create(
-            user=user,
+            household=household,
             date=date(2025, 12, 1),
             description="notebook",
             category=category,
@@ -76,11 +80,11 @@ class TestInstallmentPlan:
         entries = plan.generate_entries()
         assert len(entries) == 12
 
-    def test_generated_entries_are_installment_type(self, user, category, credit_card):
+    def test_generated_entries_are_installment_type(self, household, category, credit_card):
         from finances.models import InstallmentPlan
 
         plan = InstallmentPlan.objects.create(
-            user=user,
+            household=household,
             date=date(2025, 12, 1),
             description="notebook",
             category=category,
@@ -93,11 +97,13 @@ class TestInstallmentPlan:
         assert all(e.entry_type == EntryType.INSTALLMENT for e in entries)
         assert all(e.installment_plan == plan for e in entries)
 
-    def test_generated_entries_have_sequential_billing_months(self, user, category, credit_card):
+    def test_generated_entries_have_sequential_billing_months(
+        self, household, category, credit_card
+    ):
         from finances.models import InstallmentPlan
 
         plan = InstallmentPlan.objects.create(
-            user=user,
+            household=household,
             date=date(2025, 12, 1),
             description="notebook",
             category=category,
@@ -111,11 +117,11 @@ class TestInstallmentPlan:
         # closing 30, purchase 01/dez (before) → 1ª parcela paga em jan.
         assert billing_months == [date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1)]
 
-    def test_generated_entries_descriptions_numbered(self, user, category, credit_card):
+    def test_generated_entries_descriptions_numbered(self, household, category, credit_card):
         from finances.models import InstallmentPlan
 
         plan = InstallmentPlan.objects.create(
-            user=user,
+            household=household,
             date=date(2025, 12, 1),
             description="notebook",
             category=category,
@@ -129,11 +135,11 @@ class TestInstallmentPlan:
         assert entries[1].description == "notebook (2/3)"
         assert entries[2].description == "notebook (3/3)"
 
-    def test_rounding_remainder_on_last_installment(self, user, category, credit_card):
+    def test_rounding_remainder_on_last_installment(self, household, category, credit_card):
         from finances.models import InstallmentPlan
 
         plan = InstallmentPlan.objects.create(
-            user=user,
+            household=household,
             date=date(2026, 1, 1),
             description="colchão",
             category=category,
@@ -149,11 +155,11 @@ class TestInstallmentPlan:
         total = sum(e.amount for e in entries)
         assert total == Decimal("100.00")
 
-    def test_billing_month_respects_closing_day(self, user, category, credit_card_c6):
+    def test_billing_month_respects_closing_day(self, household, category, credit_card_c6):
         from finances.models import InstallmentPlan
 
         plan = InstallmentPlan.objects.create(
-            user=user,
+            household=household,
             date=date(2026, 3, 26),
             description="tênis",
             category=category,
@@ -167,11 +173,11 @@ class TestInstallmentPlan:
         assert entries[0].billing_month == date(2026, 5, 1)
         assert entries[1].billing_month == date(2026, 6, 1)
 
-    def test_entries_persisted_to_database(self, user, category, credit_card):
+    def test_entries_persisted_to_database(self, household, category, credit_card):
         from finances.models import InstallmentPlan
 
         plan = InstallmentPlan.objects.create(
-            user=user,
+            household=household,
             date=date(2025, 12, 1),
             description="notebook",
             category=category,
@@ -183,11 +189,11 @@ class TestInstallmentPlan:
         plan.generate_entries()
         assert Entry.objects.filter(installment_plan=plan).count() == 3
 
-    def test_generate_entries_raises_on_double_call(self, user, category, credit_card):
+    def test_generate_entries_raises_on_double_call(self, household, category, credit_card):
         from finances.models import InstallmentPlan
 
         plan = InstallmentPlan.objects.create(
-            user=user,
+            household=household,
             date=date(2025, 12, 1),
             description="notebook",
             category=category,

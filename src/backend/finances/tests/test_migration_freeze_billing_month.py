@@ -12,11 +12,11 @@ freeze_credit_entries = _migration.freeze_credit_entries
 
 @pytest.mark.django_db
 class TestFreezeCreditEntries:
-    def _entry(self, user, pm, billing_month, entry_type="regular", override=False):
-        category = baker.make("finances.Category", user=user)
+    def _entry(self, household, pm, billing_month, entry_type="regular", override=False):
+        category = baker.make("finances.Category", household=household)
         return baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             date=date(2026, 3, 10),
             amount=Decimal("10.00"),
             category=category,
@@ -27,15 +27,17 @@ class TestFreezeCreditEntries:
             billing_month_override=override or True,
         )
 
-    def test_credit_entries_frozen_without_changing_month(self, user):
-        credit = baker.make("finances.PaymentMethod", user=user, type="credit_card", closing_day=25)
-        cash = baker.make("finances.PaymentMethod", user=user, type="cash")
+    def test_credit_entries_frozen_without_changing_month(self, household):
+        credit = baker.make(
+            "finances.PaymentMethod", household=household, type="credit_card", closing_day=25
+        )
+        cash = baker.make("finances.PaymentMethod", household=household, type="cash")
 
         # Simulate historical rows that were NOT yet frozen.
         from finances.models import Entry
 
-        credit_entry = self._entry(user, credit, date(2026, 3, 1))
-        cash_entry = self._entry(user, cash, date(2026, 3, 1))
+        credit_entry = self._entry(household, credit, date(2026, 3, 1))
+        cash_entry = self._entry(household, cash, date(2026, 3, 1))
         Entry.objects.filter(pk__in=[credit_entry.pk, cash_entry.pk]).update(
             billing_month_override=False
         )
@@ -52,10 +54,14 @@ class TestFreezeCreditEntries:
         assert credit_entry.billing_month_override is True
         assert cash_entry.billing_month_override is False
 
-    def test_already_frozen_entries_left_as_is(self, user):
-        credit = baker.make("finances.PaymentMethod", user=user, type="credit_card", closing_day=25)
+    def test_already_frozen_entries_left_as_is(self, household):
+        credit = baker.make(
+            "finances.PaymentMethod", household=household, type="credit_card", closing_day=25
+        )
         # An installment-style entry already frozen with a hand-picked month.
-        entry = self._entry(user, credit, date(2026, 5, 1), entry_type="installment", override=True)
+        entry = self._entry(
+            household, credit, date(2026, 5, 1), entry_type="installment", override=True
+        )
 
         freeze_credit_entries(global_apps, None)
 
