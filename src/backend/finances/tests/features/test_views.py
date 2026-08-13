@@ -6,6 +6,8 @@ from django.test import Client
 from model_bakery import baker
 from pytest_bdd import given, parsers, scenario, then, when
 
+from accounts.resolution import household_for_user
+
 
 @scenario("views.feature", "View entries for a specific month")
 def test_view_entries_for_month():
@@ -42,13 +44,14 @@ def given_user_with_march_entries(db, ctx):
     user = baker.make("core.CustomUser")
     client = Client()
     client.force_login(user)
+    household = household_for_user(user)
     cat = baker.make(
-        "finances.Category", user=user, name="Alimentação", budget_ceiling=Decimal("1300")
+        "finances.Category", household=household, name="Alimentação", budget_ceiling=Decimal("1300")
     )
-    pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+    pm = baker.make("finances.PaymentMethod", household=household, type="pix")
     baker.make(
         "finances.Entry",
-        user=user,
+        household=household,
         date=date(2026, 3, 5),
         amount=Decimal("100"),
         category=cat,
@@ -57,7 +60,7 @@ def given_user_with_march_entries(db, ctx):
     )
     baker.make(
         "finances.Entry",
-        user=user,
+        household=household,
         date=date(2026, 3, 15),
         amount=Decimal("200"),
         category=cat,
@@ -66,7 +69,7 @@ def given_user_with_march_entries(db, ctx):
     )
     baker.make(
         "finances.Entry",
-        user=user,
+        household=household,
         date=date(2026, 2, 10),
         amount=Decimal("50"),
         category=cat,
@@ -82,8 +85,9 @@ def given_user_with_cats_pms(db, ctx):
     user = baker.make("core.CustomUser")
     client = Client()
     client.force_login(user)
-    cat = baker.make("finances.Category", user=user, name="Alimentação")
-    pm = baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")
+    household = household_for_user(user)
+    cat = baker.make("finances.Category", household=household, name="Alimentação")
+    pm = baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
     ctx.update({"user": user, "client": client, "category": cat, "pm": pm})
     return ctx
 
@@ -93,8 +97,11 @@ def given_user_with_cc(db, ctx):
     user = baker.make("core.CustomUser")
     client = Client()
     client.force_login(user)
-    cat = baker.make("finances.Category", user=user, name="Trabalho")
-    pm = baker.make("finances.PaymentMethod", user=user, type="credit_card", closing_day=25)
+    household = household_for_user(user)
+    cat = baker.make("finances.Category", household=household, name="Trabalho")
+    pm = baker.make(
+        "finances.PaymentMethod", household=household, type="credit_card", closing_day=25
+    )
     ctx.update({"user": user, "client": client, "category": cat, "pm": pm})
     return ctx
 
@@ -104,16 +111,17 @@ def given_user_with_multi_cat(db, ctx):
     user = baker.make("core.CustomUser")
     client = Client()
     client.force_login(user)
+    household = household_for_user(user)
     cat1 = baker.make(
-        "finances.Category", user=user, name="Alimentação", budget_ceiling=Decimal("1300")
+        "finances.Category", household=household, name="Alimentação", budget_ceiling=Decimal("1300")
     )
     cat2 = baker.make(
-        "finances.Category", user=user, name="Combustível", budget_ceiling=Decimal("460")
+        "finances.Category", household=household, name="Combustível", budget_ceiling=Decimal("460")
     )
-    pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+    pm = baker.make("finances.PaymentMethod", household=household, type="pix")
     baker.make(
         "finances.Entry",
-        user=user,
+        household=household,
         date=date(2026, 3, 5),
         amount=Decimal("1400"),
         category=cat1,
@@ -122,7 +130,7 @@ def given_user_with_multi_cat(db, ctx):
     )
     baker.make(
         "finances.Entry",
-        user=user,
+        household=household,
         date=date(2026, 3, 10),
         amount=Decimal("200"),
         category=cat2,
@@ -141,8 +149,9 @@ def given_user_with_category(db, name, ceiling, ctx):
     user = baker.make("core.CustomUser")
     client = Client()
     client.force_login(user)
+    household = household_for_user(user)
     cat = baker.make(
-        "finances.Category", user=user, name=name, budget_ceiling=Decimal(str(ceiling))
+        "finances.Category", household=household, name=name, budget_ceiling=Decimal(str(ceiling))
     )
     ctx.update({"user": user, "client": client, "category": cat})
     return ctx

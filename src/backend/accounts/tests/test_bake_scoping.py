@@ -58,11 +58,6 @@ BAKE_BASELINE = {
     "src/backend/assistant/tests/test_throttling.py",
     "src/backend/assistant/tests/test_tools.py",
     "src/backend/assistant/tests/test_views.py",
-    "src/backend/finances/tests/features/test_billing_cycle.py",
-    "src/backend/finances/tests/features/test_installments.py",
-    "src/backend/finances/tests/features/test_views.py",
-    "src/backend/finances/tests/test_api_dashboard.py",
-    "src/backend/finances/tests/test_hot_path_query_counts.py",
     "src/backend/finances/tests/test_query_indexes.py",
 }
 

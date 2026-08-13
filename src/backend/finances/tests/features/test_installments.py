@@ -5,6 +5,7 @@ import pytest
 from model_bakery import baker
 from pytest_bdd import given, parsers, scenario, then, when
 
+from accounts.resolution import household_for_user
 from finances.models import InstallmentPlan
 
 
@@ -26,8 +27,13 @@ def context():
 @given(parsers.parse("a user with a credit card closing on day {day:d}"), target_fixture="context")
 def given_user_with_credit_card(db, day, context):
     user = baker.make("core.CustomUser")
+    household = household_for_user(user)
     pm = baker.make(
-        "finances.PaymentMethod", user=user, name="Cartão", type="credit_card", closing_day=day
+        "finances.PaymentMethod",
+        household=household,
+        name="Cartão",
+        type="credit_card",
+        closing_day=day,
     )
     context["user"] = user
     context["payment_method"] = pm
@@ -36,7 +42,9 @@ def given_user_with_credit_card(db, day, context):
 
 @given(parsers.parse('a category "{name}"'))
 def given_category(context, name):
-    category = baker.make("finances.Category", user=context["user"], name=name)
+    category = baker.make(
+        "finances.Category", household=household_for_user(context["user"]), name=name
+    )
     context["category"] = category
 
 
@@ -45,7 +53,7 @@ def when_create_plan_even(context, total, count):
     total_decimal = Decimal(total)
     installment = (total_decimal / count).quantize(Decimal("0.01"))
     plan = InstallmentPlan.objects.create(
-        user=context["user"],
+        household=household_for_user(context["user"]),
         date=date(2026, 3, 1),
         description="Test plan",
         category=context["category"],
@@ -65,7 +73,7 @@ def when_create_plan_even(context, total, count):
 )
 def when_create_plan_with_amount(context, total, count, each):
     plan = InstallmentPlan.objects.create(
-        user=context["user"],
+        household=household_for_user(context["user"]),
         date=date(2026, 3, 1),
         description="Test plan",
         category=context["category"],

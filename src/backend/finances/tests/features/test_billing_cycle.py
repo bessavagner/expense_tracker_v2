@@ -5,6 +5,7 @@ import pytest
 from model_bakery import baker
 from pytest_bdd import given, parsers, scenario, then, when
 
+from accounts.resolution import household_for_user
 from finances.models import Entry, EntryType
 
 
@@ -44,8 +45,9 @@ def context():
 )
 def given_user_with_payment_method(db, name, pm_type, context):
     user = baker.make("core.CustomUser")
-    pm = baker.make("finances.PaymentMethod", user=user, name=name, type=pm_type)
-    category = baker.make("finances.Category", user=user, name="Test")
+    household = household_for_user(user)
+    pm = baker.make("finances.PaymentMethod", household=household, name=name, type=pm_type)
+    category = baker.make("finances.Category", household=household, name="Test")
     context["user"] = user
     context["payment_method"] = pm
     context["category"] = category
@@ -55,14 +57,15 @@ def given_user_with_payment_method(db, name, pm_type, context):
 @given(parsers.parse("a user with a credit card closing on day {day:d}"), target_fixture="context")
 def given_user_with_credit_card(db, day, context):
     user = baker.make("core.CustomUser")
+    household = household_for_user(user)
     pm = baker.make(
         "finances.PaymentMethod",
-        user=user,
+        household=household,
         name="Cartão Teste",
         type="credit_card",
         closing_day=day,
     )
-    category = baker.make("finances.Category", user=user, name="Test")
+    category = baker.make("finances.Category", household=household, name="Test")
     context["user"] = user
     context["payment_method"] = pm
     context["category"] = category
@@ -73,7 +76,7 @@ def given_user_with_credit_card(db, day, context):
 def when_create_expense(context, date_str):
     entry_date = datetime.strptime(date_str, "%Y-%m-%d").date()
     entry = Entry.objects.create(
-        user=context["user"],
+        household=household_for_user(context["user"]),
         date=entry_date,
         amount=Decimal("100.00"),
         description="Test expense",

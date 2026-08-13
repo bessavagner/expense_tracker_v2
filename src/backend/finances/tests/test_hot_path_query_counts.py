@@ -23,16 +23,16 @@ BILLING_MONTH = date(2026, 3, 1)
 
 
 @pytest.fixture
-def scenario(user):
+def scenario(household):
     """Categories and payment methods; entries are added per measurement."""
     categories = [
-        baker.make("finances.Category", user=user, name=name)
+        baker.make("finances.Category", household=household, name=name)
         for name in ("Alimentação", "Lazer", "Casa", "Saúde")
     ]
-    pm = baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")
+    pm = baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
     baker.make(
         "finances.Income",
-        user=user,
+        household=household,
         name="Salário",
         amount=Decimal("5000"),
         month=BILLING_MONTH,
@@ -40,11 +40,11 @@ def scenario(user):
     return categories, pm
 
 
-def _add_entries(user, categories, pm, count):
+def _add_entries(household, categories, pm, count):
     Entry.objects.bulk_create(
         [
             Entry(
-                user=user,
+                household=household,
                 date=date(2026, 3, 1 + (i % 27)),
                 amount=Decimal("25.00"),
                 description=f"lançamento {i}",
@@ -85,14 +85,14 @@ HOT_PATHS = [
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("path", HOT_PATHS)
-def test_query_count_does_not_scale_with_rows(logged_client, user, scenario, path):
+def test_query_count_does_not_scale_with_rows(logged_client, household, scenario, path):
     categories, pm = scenario
 
-    _add_entries(user, categories, pm, 5)
+    _add_entries(household, categories, pm, 5)
     logged_client.get(path)  # warm any per-session work out of the measurement
     few = _queries_for(logged_client, path)
 
-    _add_entries(user, categories, pm, 95)
+    _add_entries(household, categories, pm, 95)
     many = _queries_for(logged_client, path)
 
     assert many <= few + 2, (
@@ -103,7 +103,7 @@ def test_query_count_does_not_scale_with_rows(logged_client, user, scenario, pat
 @pytest.mark.django_db
 @pytest.mark.parametrize("path", HOT_PATHS)
 def test_query_count_does_not_scale_with_categories_and_budgets(
-    logged_client, user, scenario, path
+    logged_client, household, scenario, path
 ):
     """The second dimension, and the one row count cannot see.
 
@@ -115,22 +115,22 @@ def test_query_count_does_not_scale_with_categories_and_budgets(
     against another with the same code, which is what prompted this guard.
     """
     categories, pm = scenario
-    _add_entries(user, categories, pm, 20)
+    _add_entries(household, categories, pm, 20)
     logged_client.get(path)
     few = _queries_for(logged_client, path)
 
     for i in range(20):
         budget = baker.make(
-            "finances.Budget", user=user, name=f"orçamento {i}", amount=Decimal(500)
+            "finances.Budget", household=household, name=f"orçamento {i}", amount=Decimal(500)
         )
         extra = baker.make(
             "finances.Category",
-            user=user,
+            household=household,
             name=f"categoria extra {i}",
             budget=budget,
             budget_ceiling=Decimal(100),
         )
-        _add_entries(user, [extra], pm, 2)
+        _add_entries(household, [extra], pm, 2)
     many = _queries_for(logged_client, path)
 
     assert many <= few + 2, (
