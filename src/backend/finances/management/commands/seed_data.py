@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django.core.management.base import BaseCommand, CommandError
 
+from accounts.resolution import household_for_user
 from core.models import CustomUser
 from finances.models import Category, PaymentMethod
 
@@ -56,12 +57,20 @@ class Command(BaseCommand):
             user = CustomUser.objects.get(username=username)
         except CustomUser.DoesNotExist as e:
             raise CommandError(f"User '{username}' does not exist.") from e
+        # The lookup key moves from (user, name) to (household, name): a second
+        # person joining must not get a duplicate catalogue seeded beside the
+        # one their household already has.
+        household = household_for_user(user)
         cat_created = 0
         for name, ceiling, is_system in CATEGORIES:
             category, created = Category.objects.get_or_create(
-                user=user,
+                household=household,
                 name=name,
-                defaults={"budget_ceiling": ceiling, "is_system": is_system},
+                defaults={
+                    "budget_ceiling": ceiling,
+                    "is_system": is_system,
+                    "created_by": user,
+                },
             )
             if created:
                 cat_created += 1
@@ -72,9 +81,13 @@ class Command(BaseCommand):
         pm_created = 0
         for name, pm_type, closing_day in PAYMENT_METHODS:
             _, created = PaymentMethod.objects.get_or_create(
-                user=user,
+                household=household,
                 name=name,
-                defaults={"type": pm_type, "closing_day": closing_day},
+                defaults={
+                    "type": pm_type,
+                    "closing_day": closing_day,
+                    "created_by": user,
+                },
             )
             if created:
                 pm_created += 1

@@ -45,7 +45,11 @@ class SystemicExpense(AuthoredHouseholdModel):
         from finances.models.entry import Entry, EntryType
 
         return Entry.objects.create(
-            user=self.user,
+            # The template carries its own tenancy down. Until phase 4 this
+            # relied on the write bridge filling household from user; the
+            # bridge is gone and a generated entry must not be tenant-less.
+            household=self.household,
+            created_by=self.created_by,
             date=month,
             amount=amount if amount is not None else self.default_amount,
             description=self.name,

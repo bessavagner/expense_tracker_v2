@@ -271,3 +271,23 @@ class TestChatEndpointThrottle:
         response = logged_client.post("/api/assistant/chat/", data={"audio": audio})
         assert response.status_code == 429
         assert calls == []
+
+
+@pytest.mark.django_db
+def test_an_admitted_turn_records_its_household(user, household):
+    """The usage event is household-owned even though it counts per person.
+
+    Written against the still-present write bridge on purpose: the assertion is
+    that `throttle_denial` names the tenant itself, not that something else
+    fills it in. E04 decision 1 keeps `user` here — the throttle counts per
+    person, so two members of one household each get their own budget.
+    """
+    from assistant.agents.scope import AgentScope
+    from assistant.views import throttle_denial
+
+    scope = AgentScope(household=household, user=user)
+
+    assert async_to_sync(throttle_denial)(scope, AssistantUsageKind.TEXT) is None
+
+    event = AssistantUsageEvent.objects.get(user=user)
+    assert event.household == household

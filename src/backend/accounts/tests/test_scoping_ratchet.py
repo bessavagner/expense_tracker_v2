@@ -40,7 +40,10 @@ ACTOR_SCOPED = {
     "src/backend/assistant/throttling.py",
 }
 
-PATTERN = re.compile(r"\.(filter|get|exclude)\([^)]*user=")
+# `get_or_create` and `update_or_create` were invisible to the first version of
+# this pattern: `\.get\(` does not match `.get_or_create(`. That blind spot let
+# `seed_data.py` scope its catalogue by user through phases 2 and 3.
+PATTERN = re.compile(r"\.(filter|get|exclude|get_or_create|update_or_create)\([^)]*user=")
 
 
 def _files_scoping_by_user():

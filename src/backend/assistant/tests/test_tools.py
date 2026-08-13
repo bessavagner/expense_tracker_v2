@@ -425,8 +425,7 @@ class TestSystemicTools:
         result = set_systemic_amount(seeded_scope, "Análise - Vagner", "350.00", "2026-06-01")
         assert "Análise - Vagner" in result
         assert "350" in result
-        entry = Entry.objects.get(
-            user=seeded_user,
+        entry = Entry.objects.for_household(seeded_scope.household).get(
             systemic_expense=s,
             billing_month=date(2026, 6, 1),
             entry_type=EntryType.SYSTEMIC,
@@ -443,8 +442,7 @@ class TestSystemicTools:
         # Second call updates, must NOT duplicate
         result = set_systemic_amount(seeded_scope, "Análise - Vagner", "400.00", "2026-06-01")
         assert "400" in result
-        entries = Entry.objects.filter(
-            user=seeded_user,
+        entries = Entry.objects.for_household(seeded_scope.household).filter(
             systemic_expense=s,
             billing_month=date(2026, 6, 1),
             entry_type=EntryType.SYSTEMIC,
@@ -459,12 +457,15 @@ class TestSystemicTools:
         s = self._make_systemic(seeded_user, "Análise - Vagner", "300.00")
         result = set_systemic_amount(seeded_scope, "análise - vagner", "320.00", "2026-06-01")
         assert "320" in result
-        assert Entry.objects.filter(
-            user=seeded_user,
-            systemic_expense=s,
-            billing_month=date(2026, 6, 1),
-            entry_type=EntryType.SYSTEMIC,
-        ).exists()
+        assert (
+            Entry.objects.for_household(seeded_scope.household)
+            .filter(
+                systemic_expense=s,
+                billing_month=date(2026, 6, 1),
+                entry_type=EntryType.SYSTEMIC,
+            )
+            .exists()
+        )
 
     # ── set_systemic_amount: error paths ─────────────────────────────────────
 

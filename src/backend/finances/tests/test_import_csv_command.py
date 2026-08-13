@@ -5,6 +5,7 @@ import pytest
 from django.core.management import call_command
 from model_bakery import baker
 
+from accounts.resolution import household_for_user
 from finances.models import (
     Category,
     Entry,
@@ -109,7 +110,11 @@ class TestImportSystemics:
         assert se.category.name == "Custeio"  # auto-created
         assert se.payment_method.type == "pix"
 
-        entries = Entry.objects.filter(user=user, systemic_expense=se).order_by("date")
+        entries = (
+            Entry.objects.for_household(household_for_user(user))
+            .filter(systemic_expense=se)
+            .order_by("date")
+        )
         assert entries.count() == 2
         nov = entries.get(date=date(2025, 11, 1))
         assert nov.amount == Decimal("460.00")
@@ -122,7 +127,12 @@ class TestImportSystemics:
         call_command("import_csv", "--user", user.username, "--dir", str(importdir))
         call_command("import_csv", "--user", user.username, "--dir", str(importdir))
         assert SystemicExpense.objects.filter(user=user, name="Enel").count() == 1
-        assert Entry.objects.filter(user=user, entry_type=EntryType.SYSTEMIC).count() == 1
+        assert (
+            Entry.objects.for_household(household_for_user(user))
+            .filter(entry_type=EntryType.SYSTEMIC)
+            .count()
+            == 1
+        )
 
 
 @pytest.mark.django_db

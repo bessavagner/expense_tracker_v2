@@ -149,16 +149,22 @@ def _sse_response(scope, agent, prompt, *, message_history, user_text=None, mode
     return response
 
 
-async def throttle_denial(user, kind: str):
+async def throttle_denial(scope, kind: str):
     """Refuse an over-budget turn, or admit it and record the spend.
 
     Returns a 429 ``JsonResponse`` when blocked and ``None`` when admitted. The
     usage event is written on admission — before any model call — so a request
     that dies mid-stream still counts against the budget it was going to spend.
+
+    The event is charged to the household and attributed to the person: the
+    quota is the household's to fill, but two members each get their own
+    budget, which is why `user` stays on this model (E04 decision 1).
     """
-    rule = await exceeded_rule(user, kind)
+    rule = await exceeded_rule(scope.user, kind)
     if rule is None:
-        await AssistantUsageEvent.objects.acreate(user=user, kind=kind)
+        await AssistantUsageEvent.objects.acreate(
+            user=scope.user, household=scope.household, kind=kind
+        )
         return None
     noun = "fotos" if kind == AssistantUsageKind.IMAGE else "mensagens"
     return JsonResponse(
@@ -209,7 +215,7 @@ async def chat_view(request):
         if is_multipart and request.FILES.getlist("image")
         else AssistantUsageKind.TEXT
     )
-    denial = await throttle_denial(user, kind)
+    denial = await throttle_denial(scope, kind)
     if denial is not None:
         return denial
 

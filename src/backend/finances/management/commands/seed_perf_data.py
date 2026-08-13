@@ -16,7 +16,7 @@ from decimal import Decimal
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from accounts.bridge import household_for_writer
+from accounts.resolution import household_for_user
 from assistant.models import ChatMessage, MemoryEmbedding, MessageRole
 from core.models import CustomUser
 from finances.models import Category, Entry, EntryType, Income, PaymentMethod
@@ -100,11 +100,20 @@ class Command(BaseCommand):
         # bridge never sees these rows and the household has to be carried in
         # by hand. Without it phase 4's NOT NULL breaks the perf harness at
         # exactly the moment you want to re-measure the indexes.
-        household = household_for_writer(user)
-        categories = [Category.objects.create(user=user, name=name) for name in CATEGORY_NAMES]
-        pix = PaymentMethod.objects.create(user=user, name="Pix", type="pix")
+        household = household_for_user(user)
+        categories = [
+            Category.objects.create(household=household, created_by=user, name=name)
+            for name in CATEGORY_NAMES
+        ]
+        pix = PaymentMethod.objects.create(
+            household=household, created_by=user, name="Pix", type="pix"
+        )
         card = PaymentMethod.objects.create(
-            user=user, name="Crédito", type="credit_card", closing_day=25
+            household=household,
+            created_by=user,
+            name="Crédito",
+            type="credit_card",
+            closing_day=25,
         )
 
         # 24 months of history ending at the anchor.

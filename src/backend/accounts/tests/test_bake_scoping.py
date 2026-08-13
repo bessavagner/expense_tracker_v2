@@ -107,7 +107,6 @@ BAKE_BASELINE = {
     "src/backend/finances/tests/test_projection_service.py",
     "src/backend/finances/tests/test_query_indexes.py",
     "src/backend/finances/tests/test_recompute_category_averages.py",
-    "src/backend/finances/tests/test_seed_data.py",
     "src/backend/finances/tests/test_settings_income_groups.py",
     "src/backend/finances/tests/test_systemic_expense.py",
     "src/backend/finances/tests/test_systemic_month.py",

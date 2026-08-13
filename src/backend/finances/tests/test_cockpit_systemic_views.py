@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.test import TestCase
 from model_bakery import baker
 
+from accounts.resolution import household_for_user
 from core.models import CustomUser
 from finances.models import Category, Entry, PaymentMethod, SystemicExpense
 from finances.models.entry import EntryType
@@ -28,8 +29,8 @@ class TestCockpitSystemicViews(TestCase):
     def test_lancar_creates_entry_with_default(self):
         resp = self.client.post(f"/cockpit/2026/10/systemic/{self.s.pk}/post/")
         self.assertEqual(resp.status_code, 200)
-        e = Entry.objects.get(
-            user=self.user, systemic_expense=self.s, billing_month=date(2026, 10, 1)
+        e = Entry.objects.for_household(household_for_user(self.user)).get(
+            systemic_expense=self.s, billing_month=date(2026, 10, 1)
         )
         self.assertEqual(e.amount, Decimal("1500.00"))
         self.assertEqual(e.entry_type, EntryType.SYSTEMIC)
