@@ -73,10 +73,20 @@ MIDDLEWARE = [
     # never have cost us a membership query.
     "allauth.account.middleware.AccountMiddleware",
     "accounts.middleware.active_household_middleware",
-    # Reads request.user, so it must follow AuthenticationMiddleware.
-    "core.admin_gate.admin_staff_only_middleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Last on purpose, which is a security requirement and not a preference.
+    # It reads request.user, so it has to follow AuthenticationMiddleware — but
+    # being *innermost* is what makes its 404 indistinguishable from a routing
+    # 404. A middleware's response travels back out through everything listed
+    # above it and through nothing listed below; registered any higher, the
+    # gate's 404 skipped XFrameOptionsMiddleware and came back without
+    # `X-Frame-Options: DENY` while every genuine 404 carried it. One
+    # `curl -sI` then confirmed the secret path.
+    #
+    # The cost is that a refused admin request has already run the household
+    # resolver. That is one query on a path nobody legitimate takes.
+    "core.admin_gate.admin_staff_only_middleware",
 ]
 
 ROOT_URLCONF = "config.urls"

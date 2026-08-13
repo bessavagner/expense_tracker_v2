@@ -64,6 +64,27 @@ class TestThePathCannotBeConfirmedFromOutside:
         unslashed = "/" + settings.ADMIN_URL_PATH.strip("/")
         assert client.get(unslashed).status_code == client.get("/nao-existe-mesmo").status_code
 
+    def test_the_refusal_is_byte_for_byte_a_routing_404(self):
+        """Not just the status code — the headers too.
+
+        The gate answers by raising, and a middleware's response only travels
+        back out through the middleware listed *above* it. Registered above
+        `XFrameOptionsMiddleware`, the gate's 404 came back without
+        `X-Frame-Options: DENY` while every genuine 404 carried it, so one
+        `curl -sI` separated the real admin path from every wrong guess. This
+        compares the whole header set rather than one header, so the next
+        middleware someone adds cannot reopen the same oracle quietly.
+        """
+        client = Client()
+        real = client.get(_admin_url())
+        missing = client.get("/nao-existe-mesmo/")
+        assert real.status_code == missing.status_code == 404
+
+        ignored = {"Content-Length", "Date", "Server", "Vary"}
+        assert {k for k in real.headers if k not in ignored} == {
+            k for k in missing.headers if k not in ignored
+        }
+
     def test_the_unslashed_path_does_not_redirect(self):
         unslashed = "/" + settings.ADMIN_URL_PATH.strip("/")
         assert Client().get(unslashed).status_code == 404

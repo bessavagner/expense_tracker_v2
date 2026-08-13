@@ -5,6 +5,7 @@ from django.http import JsonResponse
 from django.views import View
 from django.views.generic import TemplateView
 
+from core.auth_backends import identifier_from
 from core.security import client_ip, is_locked
 
 
@@ -56,8 +57,11 @@ class AppLoginView(LoginView):
         situation that makes someone keep trying.
         """
         response = super().form_invalid(form)
-        # allauth's field is `login`, not `username`.
-        identifier = form.data.get("login", "")
+        # Through `identifier_from` rather than read raw: allauth's field is
+        # `login`, and the rows were written case-folded, so a submission with
+        # a capital in it would not match its own failures and the page would
+        # go back to blaming the password.
+        identifier = identifier_from({"login": form.data.get("login", "")})
         if is_locked(identifier, client_ip(self.request)):
             response.context_data["locked_out"] = True
         return response
