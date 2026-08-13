@@ -41,7 +41,6 @@ HOUSEHOLD_OWNED = {
 BAKE_BASELINE = {
     "src/backend/accounts/tests/test_backfill.py",
     "src/backend/accounts/tests/test_bridge.py",
-    "src/backend/finances/tests/test_query_indexes.py",
 }
 
 
