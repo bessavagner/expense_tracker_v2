@@ -772,6 +772,30 @@ POSTGRES_PORT=5433 uv run python src/backend/manage.py changepassword NOME
 POSTGRES_PORT=5433 uv run python src/backend/manage.py createsuperuser
 ```
 
+**A user created this way gets no `Membership`**, and since E04 the ledger
+belongs to a household rather than a person. The middleware handles it: on their
+first authenticated request they are given **their own** household, named
+`Casa de <username>`, with themselves as owner — the same rule the E04 seed
+migration used. They land in an empty ledger, not somebody else's.
+
+To put a new person into an **existing** household instead — the whole point of
+E04 — there is currently no command or UI; it takes a hand-written `Membership`
+row. Invitations are E05. Until then:
+
+```bash
+POSTGRES_PORT=5433 uv run python src/backend/manage.py shell -c "
+from django.contrib.auth import get_user_model
+from accounts.models import Household, Membership, Role
+u = get_user_model().objects.get(username='NOME')
+h = Household.objects.get(name='Casa de OUTRO')
+Membership.objects.get_or_create(user=u, household=h, defaults={'role': Role.MEMBER})
+print(h, '->', u)
+"
+```
+
+Their **oldest** membership is the default household, so if they already have
+one of their own from a first login, that one keeps winning until they switch.
+
 ## Import batches
 
 Each confirmed column mapping creates one `finances_importbatch` row, and the
