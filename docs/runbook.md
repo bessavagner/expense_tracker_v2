@@ -238,15 +238,20 @@ multi-photo receipt. `MAX_REQUEST_BODY_BYTES` must stay above
 `ASSISTANT_MAX_IMAGES × ASSISTANT_MAX_IMAGE_MB` with room for multipart
 overhead. Raising the image limits without raising this one is the usual cause.
 
-### `gcloud run deploy` is blocked in Claude Code agent sessions
+### `gcloud run deploy` is sometimes blocked in Claude Code agent sessions
 
-The Claude Code auto-mode permission classifier denies `gcloud run deploy`
-for agent sessions — this held true both for a regular implementer session
-and for a controller session with the owner's authorization already given;
-the controller session was also blocked from adding a permission rule for
-itself. There is no agent-side workaround, and none should be attempted —
-an agent granting itself deploy rights is exactly what the guard is for.
-**The owner must run the deploy directly**, from a human-driven terminal:
+The Claude Code auto-mode permission classifier has denied `gcloud run deploy`
+for agent sessions — this held for a regular implementer session and for a
+controller session with the owner's authorization already given; the controller
+session was also blocked from adding a permission rule for itself.
+
+**It is not a reliable block.** On 2026-08-13 the same bare command ran straight
+through in an agent session after the owner said "you can run the deploy command,
+I allow" — revision `expense-tracker-00043-th4`. So treat the classifier as a
+thing that *may* refuse, not a guarantee that an agent cannot deploy. If it
+refuses, do not look for a workaround — an agent granting itself deploy rights is
+exactly what the guard is for. **Hand it to the owner instead**, to run directly
+from a human-driven terminal:
 
 ```bash
 gcloud run deploy expense-tracker --source . \
@@ -266,10 +271,28 @@ gcloud run services update-traffic expense-tracker \
 ```
 
 `00039-rg6` is the last revision before E01 and E03 shipped, and rolling back to
-it is safe against the current schema: those epics' migrations only *add* tables
-and indexes (plus drop three redundant ones), so the older code neither misses
-anything it needs nor trips over what it does not know about. **Do not unapply
-the migrations to roll back the code** — they are not the thing that breaks.
+it was safe against the schema *at the time*: those epics' migrations only *add*
+tables and indexes (plus drop three redundant ones), so the older code neither
+missed anything it needed nor tripped over what it did not know about. **Do not
+unapply the migrations to roll back the code** — they were not the thing that
+breaks.
+
+> **That stopped being true at E04 (2026-08-13).** `finances/0018_drop_user` and
+> `assistant/0015_drop_user` **remove** the `user` column from twelve domain
+> models, and every revision before `00043-th4` reads it. Rolling back the
+> revision alone now produces old code against a schema that no longer has what
+> it needs — the same broken state, not a fix. **Recovery is: restore the
+> database from the pre-migration dump first, and only then roll back the
+> revision.** The dump taken before the E04 deploy is
+> `~/e04-preflight-backup/ledger-pre-e04-<stamp>.dump` (472K, `-Fc`).
+>
+> This also means a column-dropping deploy has an **unavoidable broken window**
+> in whichever order you go: migrate first and the live revision breaks until the
+> new one is up; deploy first and the new code wants a column that does not exist
+> yet. Migrating first is the better half — it is the order that keeps the
+> irreversible step next to its verification — but budget for the gap and do the
+> two steps back to back. For E04 the window was a few minutes and the app is
+> family-scale; do not assume that generalises.
 
 ---
 
@@ -645,6 +668,24 @@ as expected. What matters is that BEFORE and AFTER matched *within* the run.
 The two empty households (`Casa de claude-bessavagner`, `Casa de tester`)
 normalised as cleanly as the populated one, which is the check that the
 `Casa de <username>` rule holds for every user and not just the busy one.
+
+**Applied to production for real on 2026-08-13**, and the rehearsal predicted it
+exactly. Backup first (`~/e04-preflight-backup/`), then the 17 migrations through
+the session connection, then `gcloud run deploy` → revision
+`expense-tracker-00043-th4`. Counts and money identical across the migration:
+
+| | before | after |
+|---|---|---|
+| entries | 2324 | 2324 |
+| incomes | 91 | 91 |
+| chat messages | 282 | 282 |
+| users | 3 | 3 |
+| **sum(amount)** | **344718.86** | **344718.86** |
+
+`unfilled rows: none`. `Casa de bessavagner` owns all 2324 entries as `owner`.
+`user_id` survives on `assistant_assistantusageevent` alone — the actor column,
+by design. Seven indexes present: the six household-leading ones plus
+`usage_user_kind_recent_idx`.
 
 Six outputs to check:
 
