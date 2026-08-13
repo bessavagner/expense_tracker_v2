@@ -15,6 +15,16 @@ class MessageRole(models.TextChoices):
 
 class ChatMessage(AuthoredHouseholdModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # Redundant with chat_hh_recent_idx, whose leading column is household.
+    # Measured at product scale: with this index present the planner picks it
+    # over the composite and then sorts; without it, chat_hh_recent_idx serves
+    # the query. See the note on finances.Entry.household.
+    household = models.ForeignKey(
+        "accounts.Household",
+        on_delete=models.CASCADE,
+        related_name="%(app_label)s_%(class)s",
+        db_index=False,
+    )
     role = models.CharField(max_length=20, choices=MessageRole.choices)
     content = models.TextField()
     metadata = models.JSONField(null=True, blank=True)
@@ -80,6 +90,14 @@ class ReceiptDraft(AuthoredHouseholdModel):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # Redundant with draft_hh_status_recent_idx, whose leading column is
+    # household. See the note on finances.Entry.household.
+    household = models.ForeignKey(
+        "accounts.Household",
+        on_delete=models.CASCADE,
+        related_name="%(app_label)s_%(class)s",
+        db_index=False,
+    )
     chat_message = models.ForeignKey(
         ChatMessage,
         on_delete=models.CASCADE,

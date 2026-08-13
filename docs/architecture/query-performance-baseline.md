@@ -1,9 +1,11 @@
 # Query performance baseline
 
-Measured for **E03**, at `0e616e6` on 2026-08-09, against a throwaway database
-seeded by `manage.py seed_perf_data --yes`. Production today is one user with
-~2,000 entries — too small for the planner's choice to be visible, which is why
-the numbers below come from synthetic scale.
+Measured for **E03**, at `0e616e6` on 2026-08-09, and re-measured for **E04**
+at `e9e1d2f` on 2026-08-13 once the tenant column became `household` — see
+[After E04 — household-leading](#after-e04--household-leading). Both runs used a
+throwaway database seeded by `manage.py seed_perf_data --yes`. Production today
+is one user with ~2,000 entries — too small for the planner's choice to be
+visible, which is why the numbers below come from synthetic scale.
 
 Two shapes were measured, because they answer different questions:
 
@@ -677,3 +679,220 @@ E04 changes the tenant column from `user` to `household`, which changes the
 leading column of every index below. Re-run the same script and append an
 "After E04" section — the comparison is only meaningful against a baseline
 measured the same way.
+
+**Done — see the next section.**
+
+## After E04 — household-leading
+
+Measured at `e9e1d2f` on 2026-08-13, shape B, same script and same machine
+class as E03's "after". **One thing changed: the leading column.** Every index
+above was rebuilt with `household_id` where it had `user_id`, and the queries
+were re-pointed to match. No predicate, no ordering and no arithmetic moved, so
+these numbers should reproduce E03's — and where one does not, that is a
+finding rather than a footnote.
+
+```bash
+PGPASSWORD=postgres createdb -h localhost -p 5433 -U postgres expense_tracker_perf_e04
+POSTGRES_PORT=5433 POSTGRES_DB=expense_tracker_perf_e04 \
+  uv run python src/backend/manage.py migrate
+POSTGRES_PORT=5433 POSTGRES_DB=expense_tracker_perf_e04 \
+  uv run python src/backend/manage.py seed_perf_data --yes --users 20 --entries-per-user 5000
+# -> Seeded 20 users, 100000 entries, 240 incomes, 400 chat messages, 200 embeddings.
+```
+
+A household here has exactly one member, so it holds exactly the rows that
+member held under E03. The comparison is like-for-like by construction.
+
+### Query plans
+
+| Query | Index chosen | Rows read → returned | E03's equivalent |
+|---|---|---|---|
+| `Entry(household, billing_month)` | `entry_hh_billing_type_idx` | 223 → 223 | `entry_user_billing_type_idx`, 189 → 189 |
+| `Entry(household, billing_month, entry_type)` | `entry_hh_billing_type_idx` | 24 → 24 | `entry_user_billing_type_idx`, 25 → 25 |
+| `Entry(household, billing_month IN 6)` | `entry_hh_billing_type_idx` | 1,248 → 1,248 | `entry_user_billing_type_idx`, 1,235 → 1,235 |
+| `Entry(household) ORDER BY -date LIMIT 50` | `entry_hh_date_recent_idx` | 50 → 50 | `entry_user_date_recent_idx`, 50 → 50 |
+| `Income(household, month)` | none — `Seq Scan` | 240 → 1 | `income_user_month_idx`, 1 → 1 |
+| `ChatMessage(household) ORDER BY -created_at LIMIT 20` | `chat_hh_recent_idx` | 20 → 20 | `chat_user_recent_idx`, 20 → 20 |
+| `MemoryEmbedding ORDER BY embedding <=> q LIMIT 5` | none — `Seq Scan` | 200 → 5 | unchanged; see Task 3 |
+
+Row counts differ from E03's by a percent or two on `Entry` because
+`seed_perf_data` distributes months with a seeded RNG and the seed is not
+pinned across runs. The property that matters is unchanged and is the whole
+point of E03: **every `Entry` query reads exactly the rows it returns.** The
+work is flat in the household's history, not linear.
+
+`Seq Scan` appears three times, all benign: twice on `accounts_household` (the
+measurement script's own `ORDER BY name LIMIT 1` sub-select, against 20 rows)
+and once on `assistant_memoryembedding`, exactly as E03 recorded — the HNSW
+index needs more than 200 vectors before the planner will prefer it.
+
+### `Income` is the one row that moved, and it is the table being too small
+
+E03 recorded an Index Scan reading 1 row; this run records a `Seq Scan` reading
+240 and discarding 239. That reads like a regression and is not one.
+`finances_income` holds **240 rows** at shape B — 12 months × 20 households —
+which is five heap pages. Postgres is right that scanning them beats an index
+lookup, and it says so with an honest estimate. Forcing the issue confirms the
+index is present and exact:
+
+```
+SET enable_seqscan=off;
+ Index Scan using income_hh_month_idx on finances_income
+   (cost=10000000001.57..10000000009.59 rows=1) (actual rows=1 loops=1)
+```
+
+One row read, one returned, no `Rows Removed by Filter`. The index works; the
+table is too small for the planner to want it, and it will want it as soon as
+the table is big enough for the choice to matter. E03's Index Scan on the same
+row count is the planner making a marginal call the other way — a difference in
+statistics freshness, not in what is indexed. **`Income` at shape B is not
+evidence in either direction**, and no conclusion here rests on it.
+
+### What this re-measurement caught: four indexes that came back
+
+The interesting finding is not in the table above. E03 removed Django's
+implicit per-`ForeignKey` index on `user_id` for `Entry`, `Income`,
+`ChatMessage` and `ReceiptDraft` — that removal is what made the composites
+work, and the reasoning is [above](#the-fk-index-had-to-go-and-finding-that-out-required-disagreeing-with-the-planner).
+E04 phase 2 added `household` as an ordinary `ForeignKey`, so Django created
+**all four of those indexes again** under `household_id`:
+
+```
+finances_entry        | finances_entry_household_id_4120ac8c
+finances_income       | finances_income_household_id_95d4be0f
+assistant_chatmessage | assistant_chatmessage_household_id_6faffb46
+assistant_receiptdraft| assistant_receiptdraft_household_id_ceb479f6
+```
+
+Each is a strict prefix of the composite that leads with the same column, so it
+serves no query the composite cannot — while costing writes, disk, and
+sometimes a correct plan. The E04 test suite did not catch it: the assertion
+that the planner picks the household-leading indexes
+(`finances/tests/test_query_indexes.py`) runs against ~4,000 rows, where the
+choice is not visible. **This measurement is what caught it**, which is the
+argument for doing it at scale rather than trusting the unit test.
+
+Measured impact at shape B was smaller than E03's history suggests:
+
+| | With the FK indexes | Without |
+|---|---|---|
+| `Entry(household, billing_month)` | `entry_hh_billing_type_idx`, 223 → 223 | unchanged |
+| `ChatMessage(household) ORDER BY -created_at` | **`..._household_id_6faffb46`**, then a sort | `chat_hh_recent_idx` |
+| `Income(household, month)` | `Seq Scan` either way (240 rows) | `Seq Scan` |
+| `Entry` count by household alone | Index Only Scan on the composite | unchanged |
+
+Only `ChatMessage` demonstrably picked the wrong index, and on a 400-row table
+the time difference is inside noise. `Entry` — the one where E03 measured the
+planner going badly wrong, 5,000 rows read against 189 — kept choosing the
+composite here. So this was a structural hazard restored, not a live
+performance bug.
+
+It was fixed anyway, in `finances/0019` and `assistant/0016`, by overriding
+`household` with `db_index=False` on those four models. Three reasons: the
+composites make the FK index redundant by construction rather than by luck; the
+planner's preference for the narrower index is exactly the trap E03 documented
+and there is no reason to keep re-testing it; and the fix had to land *before*
+the production rehearsal, or the rehearsal would have tested a schema we do not
+ship. `finances/tests/test_household_indexes.py` now asserts no standalone
+`household_id` index exists on those four tables, so this cannot come back a
+third time.
+
+<details>
+<summary>Raw EXPLAIN output — after E04, shape B</summary>
+
+```
+--- Entry: (household, billing_month) — the dashboard core predicate
+ Bitmap Heap Scan on finances_entry  (cost=7.67..618.61 rows=202 width=172) (actual time=0.049..0.164 rows=223 loops=1)
+   Recheck Cond: ((household_id = $0) AND (billing_month = '2026-08-01'::date))
+   Heap Blocks: exact=101
+   Buffers: shared hit=107
+   InitPlan 1 (returns $0)
+     ->  Limit  (cost=1.30..1.30 rows=1 width=34) (actual time=0.023..0.024 rows=1 loops=1)
+           ->  Sort  (cost=1.30..1.35 rows=20 width=34) (actual time=0.022..0.023 rows=1 loops=1)
+                 Sort Key: accounts_household.name
+                 Sort Method: top-N heapsort  Memory: 25kB
+                 ->  Seq Scan on accounts_household  (cost=0.00..1.20 rows=20 width=34) (actual time=0.002..0.003 rows=20 loops=1)
+   ->  Bitmap Index Scan on entry_hh_billing_type_idx  (cost=0.00..6.31 rows=202 width=0) (actual time=0.038..0.038 rows=223 loops=1)
+         Index Cond: ((household_id = $0) AND (billing_month = '2026-08-01'::date))
+         Buffers: shared hit=6
+ Planning Time: 0.395 ms
+ Execution Time: 0.200 ms
+
+--- Entry: (household, billing_month, entry_type)
+ Bitmap Heap Scan on finances_entry  (cost=5.90..95.01 rows=24 width=172) (actual time=0.018..0.030 rows=24 loops=1)
+   Recheck Cond: ((household_id = $0) AND (billing_month = '2026-08-01'::date) AND ((entry_type)::text = 'installment'::text))
+   Heap Blocks: exact=24
+   Buffers: shared hit=27
+   ->  Bitmap Index Scan on entry_hh_billing_type_idx  (cost=0.00..4.59 rows=24 width=0) (actual time=0.015..0.015 rows=24 loops=1)
+         Index Cond: ((household_id = $0) AND (billing_month = '2026-08-01'::date) AND ((entry_type)::text = 'installment'::text))
+         Buffers: shared hit=3
+ Planning Time: 0.050 ms
+ Execution Time: 0.041 ms
+
+--- Entry: (household, billing_month IN 6 months)
+ HashAggregate  (cost=2094.86..2095.16 rows=24 width=36) (actual time=0.322..0.324 rows=6 loops=1)
+   Group Key: finances_entry.billing_month
+   Batches: 1  Memory Usage: 24kB
+   Buffers: shared hit=133
+   ->  Bitmap Heap Scan on finances_entry  (cost=38.67..2087.27 rows=1258 width=10) (actual time=0.052..0.214 rows=1248 loops=1)
+         Recheck Cond: ((household_id = $0) AND (billing_month = ANY ('{2026-08-01,2026-07-01,2026-06-01,2026-05-01,2026-04-01,2026-03-01}'::date[])))
+         Heap Blocks: exact=117
+         ->  Bitmap Index Scan on entry_hh_billing_type_idx  (cost=0.00..38.36 rows=1258 width=0) (actual time=0.043..0.043 rows=1248 loops=1)
+               Index Cond: ((household_id = $0) AND (billing_month = ANY ('{2026-08-01,...}'::date[])))
+               Buffers: shared hit=16
+ Planning Time: 0.078 ms
+ Execution Time: 0.338 ms
+
+--- Entry: recent list (household, -date)
+ Limit  (cost=1.72..96.93 rows=50 width=172) (actual time=0.025..0.045 rows=50 loops=1)
+   Buffers: shared hit=55
+   ->  Index Scan using entry_hh_date_recent_idx on finances_entry  (cost=0.42..9521.61 rows=5000 width=172) (actual time=0.025..0.042 rows=50 loops=1)
+         Index Cond: (household_id = $0)
+         Buffers: shared hit=55
+ Planning Time: 0.047 ms
+ Execution Time: 0.052 ms
+
+--- Income: (household, month)
+ Seq Scan on finances_income  (cost=1.30..8.90 rows=1 width=83) (actual time=0.010..0.031 rows=1 loops=1)
+   Filter: ((household_id = $0) AND (month = '2026-08-01'::date))
+   Rows Removed by Filter: 239
+   Buffers: shared hit=5
+ Planning Time: 0.092 ms
+ Execution Time: 0.035 ms
+
+--- ChatMessage: history load
+ Limit  (cost=12.41..12.46 rows=20 width=109) (actual time=0.028..0.029 rows=20 loops=1)
+   Buffers: shared hit=7
+   ->  Sort  (cost=11.11..11.16 rows=20 width=109) (actual time=0.028..0.028 rows=20 loops=1)
+         Sort Key: assistant_chatmessage.created_at DESC
+         Sort Method: quicksort  Memory: 27kB
+         ->  Bitmap Heap Scan on assistant_chatmessage  (cost=4.43..10.68 rows=20 width=109) (actual time=0.019..0.020 rows=20 loops=1)
+               Recheck Cond: (household_id = $0)
+               Heap Blocks: exact=1
+               ->  Bitmap Index Scan on chat_hh_recent_idx  (cost=0.00..4.42 rows=20 width=0) (actual time=0.015..0.015 rows=20 loops=1)
+                     Index Cond: (household_id = $0)
+ Planning Time: 0.082 ms
+ Execution Time: 0.036 ms
+
+--- MemoryEmbedding: cosine nearest neighbours (unchanged by E04)
+ Limit  (cost=8.85..8.86 rows=5 width=43) (actual time=0.957..0.958 rows=5 loops=1)
+   Buffers: shared hit=1230
+   ->  Sort  (cost=8.82..9.32 rows=200 width=43) (actual time=0.956..0.956 rows=5 loops=1)
+         Sort Key: ((assistant_memoryembedding.embedding <=> $0))
+         Sort Method: top-N heapsort  Memory: 25kB
+         ->  Seq Scan on assistant_memoryembedding  (cost=0.00..5.50 rows=200 width=43) (actual time=0.034..0.930 rows=200 loops=1)
+               Buffers: shared hit=1227
+ Planning Time: 0.425 ms
+ Execution Time: 0.974 ms
+```
+
+</details>
+
+### What was not re-measured
+
+The endpoint-level A/B table from E03 was not repeated. E03's own conclusion was
+that the index change is worth 10–25% at the endpoint and that most of the time
+there is Python and template rendering — and E04 changes neither the number of
+queries nor their shape, only which column leads the index. Re-running that loop
+would measure this machine's load, not the change. If an endpoint regression is
+ever suspected, the loop in the E03 plan is still the way to look for it.

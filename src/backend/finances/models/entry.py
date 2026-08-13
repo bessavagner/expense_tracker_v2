@@ -14,6 +14,22 @@ class EntryType(models.TextChoices):
 
 class Entry(AuthoredHouseholdModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # Overridden only to drop Django's implicit FK index. `household_id` leads
+    # BOTH composites in Meta, so those already serve every household-only
+    # lookup — verified: count(*) by household alone is an Index Only Scan on
+    # entry_hh_billing_type_idx, touching no heap. The default index is a
+    # strict prefix of them, and because it is narrower the planner costs it
+    # lower and can pick it for filter(household, billing_month), then discard
+    # most of what it read. E03 removed the same four indexes when the tenant
+    # column was `user` (0008_drop_redundant_user_fk_indexes); E04 phase 2
+    # re-created them under `household_id` by adding an ordinary FK.
+    # See docs/architecture/query-performance-baseline.md.
+    household = models.ForeignKey(
+        "accounts.Household",
+        on_delete=models.CASCADE,
+        related_name="%(app_label)s_%(class)s",
+        db_index=False,
+    )
     date = models.DateField()
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     description = models.CharField(max_length=500)
