@@ -62,18 +62,8 @@ BAKE_BASELINE = {
     "src/backend/finances/tests/features/test_installments.py",
     "src/backend/finances/tests/features/test_views.py",
     "src/backend/finances/tests/test_api_dashboard.py",
-    "src/backend/finances/tests/test_consolidated_detail_filter.py",
-    "src/backend/finances/tests/test_consolidated_dropdown.py",
-    "src/backend/finances/tests/test_forms.py",
     "src/backend/finances/tests/test_hot_path_query_counts.py",
-    "src/backend/finances/tests/test_import_double_submit.py",
-    "src/backend/finances/tests/test_import_query_count.py",
     "src/backend/finances/tests/test_query_indexes.py",
-    "src/backend/finances/tests/test_settings_income_groups.py",
-    "src/backend/finances/tests/test_views_consolidated.py",
-    "src/backend/finances/tests/test_views_importer.py",
-    "src/backend/finances/tests/test_views_projection.py",
-    "src/backend/finances/tests/test_views_settings.py",
 }
 
 

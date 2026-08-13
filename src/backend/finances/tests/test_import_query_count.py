@@ -39,11 +39,11 @@ def _csv(rows):
 
 
 @pytest.fixture
-def import_fixtures(user):
-    baker.make("finances.Category", user=user, name="Alimentação")
+def import_fixtures(household):
+    baker.make("finances.Category", household=household, name="Alimentação")
     return baker.make(
         "finances.PaymentMethod",
-        user=user,
+        household=household,
         name="Crédito",
         type="credit_card",
         closing_day=25,
@@ -52,25 +52,25 @@ def import_fixtures(user):
 
 @pytest.mark.django_db
 class TestResolveClosingDayUsesThePrefetchCache:
-    def test_override_is_still_honoured(self, user, import_fixtures):
+    def test_override_is_still_honoured(self, import_fixtures):
         pm = import_fixtures
         PaymentMethodClosingDay.objects.create(
             payment_method=pm, month=date(2026, 3, 1), closing_day=10
         )
         assert resolve_closing_day(pm, date(2026, 3, 15)) == 10
 
-    def test_falls_back_to_the_default_closing_day(self, user, import_fixtures):
+    def test_falls_back_to_the_default_closing_day(self, import_fixtures):
         pm = import_fixtures
         PaymentMethodClosingDay.objects.create(
             payment_method=pm, month=date(2026, 4, 1), closing_day=10
         )
         assert resolve_closing_day(pm, date(2026, 3, 15)) == 25
 
-    def test_no_override_at_all(self, user, import_fixtures):
+    def test_no_override_at_all(self, import_fixtures):
         assert resolve_closing_day(import_fixtures, date(2026, 3, 15)) == 25
 
     def test_a_prefetched_payment_method_costs_zero_queries(
-        self, user, import_fixtures, django_assert_num_queries
+        self, import_fixtures, django_assert_num_queries
     ):
         PaymentMethodClosingDay.objects.create(
             payment_method=import_fixtures, month=date(2026, 3, 1), closing_day=10

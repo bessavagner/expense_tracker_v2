@@ -3,6 +3,7 @@ from datetime import date
 from django.test import TestCase
 from model_bakery import baker
 
+from accounts.resolution import household_for_user
 from core.models import CustomUser
 from finances.models import Category, Entry
 from finances.models.entry import EntryType
@@ -12,10 +13,10 @@ class TestCategoryDetailEntryTypeFilter(TestCase):
     def setUp(self):
         self.user = baker.make(CustomUser)
         self.client.force_login(self.user)
-        self.cat = baker.make(Category, user=self.user, name="Casa")
+        self.cat = baker.make(Category, household=household_for_user(self.user), name="Casa")
         self.regular = baker.make(
             Entry,
-            user=self.user,
+            household=household_for_user(self.user),
             category=self.cat,
             amount="10.00",
             description="Alcir - estorno do vizinho",
@@ -25,7 +26,7 @@ class TestCategoryDetailEntryTypeFilter(TestCase):
         )
         self.systemic = baker.make(
             Entry,
-            user=self.user,
+            household=household_for_user(self.user),
             category=self.cat,
             amount="50.00",
             description="Aluguel",

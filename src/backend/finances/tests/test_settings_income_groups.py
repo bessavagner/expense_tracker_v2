@@ -18,7 +18,7 @@ class TestIncomeGrouping(TestCase):
     def _make(self, name, amount, month, recurring=False):
         return baker.make(
             Income,
-            user=self.user,
+            household=household_for_user(self.user),
             name=name,
             amount=amount,
             month=month,
@@ -70,9 +70,19 @@ class TestIncomeGroupDelete(TestCase):
     def test_deletes_all_rows_of_a_name(self):
         for m in range(1, 13):
             baker.make(
-                Income, user=self.user, name="Salário", amount="8000", month=date(2026, m, 1)
+                Income,
+                household=household_for_user(self.user),
+                name="Salário",
+                amount="8000",
+                month=date(2026, m, 1),
             )
-        baker.make(Income, user=self.user, name="Freela", amount="500", month=date(2026, 1, 1))
+        baker.make(
+            Income,
+            household=household_for_user(self.user),
+            name="Freela",
+            amount="500",
+            month=date(2026, 1, 1),
+        )
         resp = self.client.post("/settings/income/group-delete/", {"name": "Salário"})
         self.assertEqual(resp.status_code, 200)
         hh = self.household
@@ -80,17 +90,28 @@ class TestIncomeGroupDelete(TestCase):
         self.assertEqual(Income.objects.for_household(hh).filter(name="Freela").count(), 1)
 
     def test_does_not_touch_other_households(self):
+        """Both halves matter: ours goes, theirs stays. Asserting only the
+        survivor would pass even if the delete had silently done nothing."""
+        baker.make(
+            Income,
+            household=household_for_user(self.user),
+            name="Salário",
+            amount="8000",
+            month=date(2026, 1, 1),
+        )
         other = baker.make(CustomUser)
         other_household = household_for_user(other)
         baker.make(
             Income,
-            user=other,
             household=other_household,
             name="Salário",
             amount="8000",
             month=date(2026, 1, 1),
         )
         self.client.post("/settings/income/group-delete/", {"name": "Salário"})
+        self.assertEqual(
+            Income.objects.for_household(self.household).filter(name="Salário").count(), 0
+        )
         self.assertEqual(
             Income.objects.for_household(other_household).filter(name="Salário").count(), 1
         )

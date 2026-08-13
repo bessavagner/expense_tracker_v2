@@ -46,12 +46,13 @@ class TestProjectionView:
         assert response.status_code == 200
         assert len(response.context["rows"]) >= 1
 
-    def test_scoped_to_user(self, logged_client, other_user):
-        cat = baker.make("finances.Category", user=other_user)
-        pm = baker.make("finances.PaymentMethod", user=other_user, type="pix")
+    def test_scoped_to_household(self, logged_client, household, other_household):
+        """The boundary is tenancy, not identity."""
+        cat = baker.make("finances.Category", household=other_household)
+        pm = baker.make("finances.PaymentMethod", household=other_household, type="pix")
         baker.make(
             "finances.Entry",
-            user=other_user,
+            household=other_household,
             date=date(2026, 3, 5),
             amount=Decimal("5000"),
             category=cat,
@@ -71,12 +72,12 @@ def test_start_control_is_year_and_month_selects(logged_client):
 
 
 @pytest.mark.django_db
-def test_year_options_span_data_history(logged_client, user):
-    cat = baker.make("finances.Category", user=user)
-    pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+def test_year_options_span_data_history(logged_client, household):
+    cat = baker.make("finances.Category", household=household)
+    pm = baker.make("finances.PaymentMethod", household=household, type="pix")
     baker.make(
         "finances.Entry",
-        user=user,
+        household=household,
         category=cat,
         payment_method=pm,
         amount=Decimal("10"),
@@ -154,18 +155,18 @@ class TestEstimateToggle:
     def _frozen_clock(self, time_machine):
         time_machine.move_to(self.FROZEN_NOW, tick=False)
 
-    def test_teto_param_uses_ceiling(self, logged_client, user):
-        baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("9999"))
+    def test_teto_param_uses_ceiling(self, logged_client, household):
+        baker.make("finances.Budget", household=household, name="Casa", amount=Decimal("9999"))
         resp = logged_client.get("/projection/?estimate=teto&start=2026-07&months=1")
         assert resp.status_code == 200
         assert resp.context["estimate"] == "teto"
         assert resp.context["rows"][0]["diverse_estimated"] == Decimal("9999")
 
-    def test_default_is_median(self, logged_client, user):
+    def test_default_is_median(self, logged_client, household):
         resp = logged_client.get("/projection/?start=2026-07&months=1")
         assert resp.context["estimate"] == "median"
 
-    def test_estimate_persists_in_session(self, logged_client, user):
+    def test_estimate_persists_in_session(self, logged_client, household):
         logged_client.get("/projection/?estimate=teto&start=2026-07&months=1")
         # subsequent request without the param keeps the choice
         resp = logged_client.get("/projection/?start=2026-07&months=1")
@@ -207,7 +208,6 @@ def test_overlay_simulation_builds_on_estimated():
 def test_projection_page_excludes_other_households(logged_client, other_user, other_household):
     baker.make(
         "finances.Income",
-        user=other_user,
         household=other_household,
         name="Salário do vizinho",
         amount=Decimal("9999.00"),

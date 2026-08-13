@@ -3,6 +3,7 @@ from datetime import date
 from django.test import TestCase
 from model_bakery import baker
 
+from accounts.resolution import household_for_user
 from core.models import CustomUser
 from finances.models import Category, Entry
 
@@ -11,10 +12,10 @@ class TestConsolidatedDropdownToggle(TestCase):
     def setUp(self):
         self.user = baker.make(CustomUser)
         self.client.force_login(self.user)
-        cat = baker.make(Category, user=self.user, name="Alimentação")
+        cat = baker.make(Category, household=household_for_user(self.user), name="Alimentação")
         baker.make(
             Entry,
-            user=self.user,
+            household=household_for_user(self.user),
             category=cat,
             amount="10.00",
             date=date(2026, 1, 5),

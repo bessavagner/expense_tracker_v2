@@ -82,10 +82,10 @@ class TestImportMappingView:
 
 @pytest.mark.django_db
 class TestImportPreviewView:
-    def _setup_session(self, logged_client, user):
+    def _setup_session(self, logged_client, household):
         """Upload and map a CSV to get to preview step."""
-        baker.make("finances.Category", user=user, name="Álcool")
-        baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")
+        baker.make("finances.Category", household=household, name="Álcool")
+        baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
         csv_content = (
             b"data,valor,descri\xc3\xa7\xc3\xa3o,categoria,forma\n"
             b'01/03/2026,"R$ 42,00",Heineken,\xc3\x81lcool,Pix\n'
@@ -96,14 +96,14 @@ class TestImportPreviewView:
         logged_client.post("/import/", data={"file": csv_file, "import_type": "regular"})
         logged_client.post("/import/map/", data=_MAPPING_REGULAR)
 
-    def test_preview_page_renders(self, logged_client, user):
-        self._setup_session(logged_client, user)
+    def test_preview_page_renders(self, logged_client, household):
+        self._setup_session(logged_client, household)
         response = logged_client.get("/import/preview/")
         assert response.status_code == 200
         assert "rows" in response.context
 
-    def test_preview_shows_unmatched_categories(self, logged_client, user):
-        self._setup_session(logged_client, user)
+    def test_preview_shows_unmatched_categories(self, logged_client, household):
+        self._setup_session(logged_client, household)
         response = logged_client.get("/import/preview/")
         assert "NewCat" in response.context["unmatched_categories"]
 
@@ -114,9 +114,9 @@ class TestImportPreviewView:
 
 @pytest.mark.django_db
 class TestImportExecuteView:
-    def _setup_to_preview(self, logged_client, user):
-        baker.make("finances.Category", user=user, name="Álcool")
-        baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")
+    def _setup_to_preview(self, logged_client, household):
+        baker.make("finances.Category", household=household, name="Álcool")
+        baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
         csv_content = (
             b"data,valor,descri\xc3\xa7\xc3\xa3o,categoria,forma\n"
             b'01/03/2026,"R$ 42,00",Heineken,\xc3\x81lcool,Pix\n'
@@ -127,29 +127,29 @@ class TestImportExecuteView:
         logged_client.post("/import/", data={"file": csv_file, "import_type": "regular"})
         logged_client.post("/import/map/", data=_MAPPING_REGULAR)
 
-    def test_execute_creates_entries(self, logged_client, user):
-        self._setup_to_preview(logged_client, user)
+    def test_execute_creates_entries(self, logged_client, household):
+        self._setup_to_preview(logged_client, household)
         response = logged_client.post("/import/execute/")
         assert response.status_code == 200
-        assert Entry.objects.filter(user=user).count() == 2
+        assert Entry.objects.for_household(household).count() == 2
 
-    def test_execute_entries_have_correct_billing_month(self, logged_client, user):
-        self._setup_to_preview(logged_client, user)
+    def test_execute_entries_have_correct_billing_month(self, logged_client, household):
+        self._setup_to_preview(logged_client, household)
         logged_client.post("/import/execute/")
-        entry = Entry.objects.filter(user=user, description="Heineken").first()
+        entry = Entry.objects.for_household(household).filter(description="Heineken").first()
         assert entry is not None
         assert entry.billing_month == dt(2026, 3, 1)
 
-    def test_execute_clears_session(self, logged_client, user):
-        self._setup_to_preview(logged_client, user)
+    def test_execute_clears_session(self, logged_client, household):
+        self._setup_to_preview(logged_client, household)
         logged_client.post("/import/execute/")
         assert "import_data" not in logged_client.session
 
-    def test_execute_installments(self, logged_client, user):
-        baker.make("finances.Category", user=user, name="Roupa")
+    def test_execute_installments(self, logged_client, household):
+        baker.make("finances.Category", household=household, name="Roupa")
         baker.make(
             "finances.PaymentMethod",
-            user=user,
+            household=household,
             name="Crédito C6",
             type="credit_card",
             closing_day=25,
@@ -176,16 +176,16 @@ class TestImportExecuteView:
         )
         response = logged_client.post("/import/execute/")
         assert response.status_code == 200
-        assert InstallmentPlan.objects.filter(user=user).count() == 1
-        assert Entry.objects.filter(user=user, entry_type="installment").count() == 2
+        assert InstallmentPlan.objects.for_household(household).count() == 1
+        assert Entry.objects.for_household(household).filter(entry_type="installment").count() == 2
 
-    def test_execute_skips_duplicates_marked_for_skip(self, logged_client, user):
-        cat = baker.make("finances.Category", user=user, name="Álcool")
-        pm = baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")
+    def test_execute_skips_duplicates_marked_for_skip(self, logged_client, household):
+        cat = baker.make("finances.Category", household=household, name="Álcool")
+        pm = baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
         # Pre-existing entry
         baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             date=dt(2026, 3, 1),
             amount="42.00",
             description="Heineken",
@@ -212,4 +212,4 @@ class TestImportExecuteView:
         response = logged_client.post("/import/execute/")
         assert response.status_code == 200
         # Should still have only the pre-existing entry
-        assert Entry.objects.filter(user=user).count() == 1
+        assert Entry.objects.for_household(household).count() == 1

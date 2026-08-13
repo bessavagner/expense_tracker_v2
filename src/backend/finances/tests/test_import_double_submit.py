@@ -24,6 +24,7 @@ from django.db import connections
 from django.test import Client
 from model_bakery import baker
 
+from accounts.resolution import household_for_user
 from finances.models import Entry
 from finances.views import importer as importer_views
 
@@ -42,10 +43,10 @@ _MAPPING = {
 }
 
 
-def _walk_to_preview(client, user):
+def _walk_to_preview(client, household):
     """Upload and map ``_CSV`` so the session holds a ready-to-execute batch."""
-    baker.make("finances.Category", user=user, name="Álcool")
-    baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")
+    baker.make("finances.Category", household=household, name="Álcool")
+    baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
     csv_file = io.BytesIO(_CSV)
     csv_file.name = "test.csv"
     client.post("/import/", data={"file": csv_file, "import_type": "regular"})
@@ -105,9 +106,10 @@ def _post_execute(client, results, key):
 def test_two_overlapping_executes_import_the_file_once(stall_first_row):
     entered, release = stall_first_row
     user = baker.make("core.CustomUser", username="vagner")
+    household = household_for_user(user)
     first = Client()
     first.force_login(user)
-    _walk_to_preview(first, user)
+    _walk_to_preview(first, household)
     second = _client_sharing_session_with(first)
 
     results = {}
@@ -130,7 +132,9 @@ def test_two_overlapping_executes_import_the_file_once(stall_first_row):
     thread_two.join(timeout=15)
     assert not thread_one.is_alive() and not thread_two.is_alive()
 
-    assert Entry.objects.filter(user=user).count() == 2, "the file was imported more than once"
+    assert Entry.objects.for_household(household).count() == 2, (
+        "the file was imported more than once"
+    )
     assert results["first"].status_code == 200
     assert results["second"].status_code == 200
     # The loser renders the winner's numbers: the user is waiting on this
@@ -147,14 +151,15 @@ def test_replayed_execute_reports_the_first_run_instead_of_importing_again():
     the user. It must not import again, and it must not claim zero.
     """
     user = baker.make("core.CustomUser", username="vagner")
+    household = household_for_user(user)
     client = Client()
     client.force_login(user)
-    _walk_to_preview(client, user)
+    _walk_to_preview(client, household)
     session_before = client.session["import_data"]
 
     first = client.post("/import/execute/")
     assert first.status_code == 200
-    assert Entry.objects.filter(user=user).count() == 2
+    assert Entry.objects.for_household(household).count() == 2
 
     # Put the batch back the way the browser's own re-POST would find it if the
     # session had not yet been written — the token is what must stop it.
@@ -163,7 +168,7 @@ def test_replayed_execute_reports_the_first_run_instead_of_importing_again():
     session.save()
 
     second = client.post("/import/execute/")
-    assert Entry.objects.filter(user=user).count() == 2, "the replay imported again"
+    assert Entry.objects.for_household(household).count() == 2, "the replay imported again"
     assert second.status_code == 200
     assert second.context["created_count"] == 2, "the replay under-reported the import"
 

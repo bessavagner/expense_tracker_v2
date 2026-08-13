@@ -6,18 +6,24 @@ from model_bakery import baker
 
 
 @pytest.fixture
-def consolidated_data(user):
+def consolidated_data(household):
     cat_food = baker.make(
-        "finances.Category", user=user, name="Alimentação", budget_ceiling=Decimal("1300.00")
+        "finances.Category",
+        household=household,
+        name="Alimentação",
+        budget_ceiling=Decimal("1300.00"),
     )
     cat_fuel = baker.make(
-        "finances.Category", user=user, name="Combustível", budget_ceiling=Decimal("460.00")
+        "finances.Category",
+        household=household,
+        name="Combustível",
+        budget_ceiling=Decimal("460.00"),
     )
-    pix = baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")
+    pix = baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
     # March entries
     baker.make(
         "finances.Entry",
-        user=user,
+        household=household,
         date=date(2026, 3, 5),
         amount=Decimal("500.00"),
         category=cat_food,
@@ -27,7 +33,7 @@ def consolidated_data(user):
     )
     baker.make(
         "finances.Entry",
-        user=user,
+        household=household,
         date=date(2026, 3, 10),
         amount=Decimal("800.00"),
         category=cat_food,
@@ -37,7 +43,7 @@ def consolidated_data(user):
     )
     baker.make(
         "finances.Entry",
-        user=user,
+        household=household,
         date=date(2026, 3, 15),
         amount=Decimal("200.00"),
         category=cat_fuel,
@@ -48,7 +54,7 @@ def consolidated_data(user):
     # Feb entry
     baker.make(
         "finances.Entry",
-        user=user,
+        household=household,
         date=date(2026, 2, 10),
         amount=Decimal("100.00"),
         category=cat_food,
@@ -74,13 +80,13 @@ class TestConsolidatedView:
         # February's 100 must NOT be included in the March view
         assert response.context["month_total"] == Decimal("1500.00")  # 1300 + 200
 
-    def test_summary_total_income_and_saldo(self, logged_client, user, consolidated_data):
+    def test_summary_total_income_and_saldo(self, logged_client, household, consolidated_data):
         from datetime import date as _date
 
         from finances.models import Income
 
         Income.objects.create(
-            user=user, name="Salário", amount=Decimal("5000"), month=_date(2026, 3, 1)
+            household=household, name="Salário", amount=Decimal("5000"), month=_date(2026, 3, 1)
         )
         response = logged_client.get("/consolidated/?year=2026&month=3")
         assert response.context["income_total"] == Decimal("5000")
@@ -99,12 +105,12 @@ class TestConsolidatedView:
         assert food["status"] == "error"
         assert food["pct"] == 100
 
-    def test_systemics_tab(self, logged_client, user):
-        cat = baker.make("finances.Category", user=user, name="Custeio", is_system=True)
-        pix = baker.make("finances.PaymentMethod", user=user, type="pix")
+    def test_systemics_tab(self, logged_client, household):
+        cat = baker.make("finances.Category", household=household, name="Custeio", is_system=True)
+        pix = baker.make("finances.PaymentMethod", household=household, type="pix")
         baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             date=date(2026, 3, 1),
             amount=Decimal("460.00"),
             category=cat,

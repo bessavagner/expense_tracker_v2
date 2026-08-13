@@ -3,6 +3,8 @@ from decimal import Decimal
 import pytest
 from model_bakery import baker
 
+from accounts.resolution import household_for_user
+
 
 @pytest.mark.django_db
 class TestSettingsPage:
@@ -19,7 +21,7 @@ class TestIncomeTab:
         assert response.status_code == 200
         assert "settings/_income_tab.html" in [t.name for t in response.templates]
 
-    def test_create_income(self, logged_client, user):
+    def test_create_income(self, logged_client, household):
         response = logged_client.post(
             "/settings/income/create/",
             data={
@@ -33,10 +35,12 @@ class TestIncomeTab:
         assert response.status_code == 200
         from finances.models import Income
 
-        assert Income.objects.filter(user=user, name="Salário").exists()
+        assert Income.objects.for_household(household).filter(name="Salário").exists()
 
-    def test_edit_income(self, logged_client, user):
-        income = baker.make("finances.Income", user=user, name="Old", amount=Decimal("100"))
+    def test_edit_income(self, logged_client, household):
+        income = baker.make(
+            "finances.Income", household=household, name="Old", amount=Decimal("100")
+        )
         response = logged_client.post(
             f"/settings/income/{income.id}/edit/",
             data={"name": "Updated", "amount": "200.00", "month": "2026-03-01"},
@@ -53,9 +57,9 @@ class TestSystemicsTab:
         response = logged_client.get("/settings/systemics/", HTTP_HX_REQUEST="true")
         assert response.status_code == 200
 
-    def test_create_systemic(self, logged_client, user):
-        cat = baker.make("finances.Category", user=user)
-        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+    def test_create_systemic(self, logged_client, household):
+        cat = baker.make("finances.Category", household=household)
+        pm = baker.make("finances.PaymentMethod", household=household, type="pix")
         response = logged_client.post(
             "/settings/systemics/create/",
             data={
@@ -69,11 +73,13 @@ class TestSystemicsTab:
         assert response.status_code == 200
         from finances.models import SystemicExpense
 
-        assert SystemicExpense.objects.filter(user=user, name="Enel").exists()
+        assert SystemicExpense.objects.for_household(household).filter(name="Enel").exists()
 
-    def test_toggle_systemic_active(self, logged_client, user):
-        cat = baker.make("finances.Category", user=user)
-        systemic = baker.make("finances.SystemicExpense", user=user, category=cat, is_active=True)
+    def test_toggle_systemic_active(self, logged_client, household):
+        cat = baker.make("finances.Category", household=household)
+        systemic = baker.make(
+            "finances.SystemicExpense", household=household, category=cat, is_active=True
+        )
         response = logged_client.patch(
             f"/settings/systemics/{systemic.id}/toggle/",
             HTTP_HX_REQUEST="true",
@@ -90,7 +96,7 @@ class TestPaymentMethodsTab:
         response = logged_client.get("/settings/payment-methods/", HTTP_HX_REQUEST="true")
         assert response.status_code == 200
 
-    def test_create_payment_method(self, logged_client, user):
+    def test_create_payment_method(self, logged_client, household):
         response = logged_client.post(
             "/settings/payment-methods/create/",
             data={"name": "Crédito Teste", "type": "credit_card", "closing_day": "25"},
@@ -99,10 +105,10 @@ class TestPaymentMethodsTab:
         assert response.status_code == 200
         from finances.models import PaymentMethod
 
-        assert PaymentMethod.objects.filter(user=user, name="Crédito Teste").exists()
+        assert PaymentMethod.objects.for_household(household).filter(name="Crédito Teste").exists()
 
-    def test_toggle_pm_active(self, logged_client, user):
-        pm = baker.make("finances.PaymentMethod", user=user, is_active=True)
+    def test_toggle_pm_active(self, logged_client, household):
+        pm = baker.make("finances.PaymentMethod", household=household, is_active=True)
         response = logged_client.patch(
             f"/settings/payment-methods/{pm.id}/toggle/",
             HTTP_HX_REQUEST="true",
@@ -119,7 +125,7 @@ class TestCategoriesTab:
         response = logged_client.get("/settings/categories/", HTTP_HX_REQUEST="true")
         assert response.status_code == 200
 
-    def test_create_category(self, logged_client, user):
+    def test_create_category(self, logged_client, household):
         response = logged_client.post(
             "/settings/categories/create/",
             data={"name": "Nova Cat", "budget_ceiling": "500.00"},
@@ -128,10 +134,10 @@ class TestCategoriesTab:
         assert response.status_code == 200
         from finances.models import Category
 
-        assert Category.objects.filter(user=user, name="Nova Cat").exists()
+        assert Category.objects.for_household(household).filter(name="Nova Cat").exists()
 
-    def test_edit_category_budget(self, logged_client, user):
-        cat = baker.make("finances.Category", user=user, budget_ceiling=Decimal("100"))
+    def test_edit_category_budget(self, logged_client, household):
+        cat = baker.make("finances.Category", household=household, budget_ceiling=Decimal("100"))
         response = logged_client.post(
             f"/settings/categories/{cat.id}/edit/",
             data={"budget_ceiling": "200.00"},
@@ -141,8 +147,8 @@ class TestCategoriesTab:
         cat.refresh_from_db()
         assert cat.budget_ceiling == Decimal("200.00")
 
-    def test_cannot_delete_system_category(self, logged_client, user):
-        cat = baker.make("finances.Category", user=user, is_system=True)
+    def test_cannot_delete_system_category(self, logged_client, household):
+        cat = baker.make("finances.Category", household=household, is_system=True)
         response = logged_client.delete(
             f"/settings/categories/{cat.id}/delete/",
             HTTP_HX_REQUEST="true",
@@ -154,17 +160,17 @@ class TestCategoriesTab:
 
 
 @pytest.mark.django_db
-def test_categories_tab_shows_moving_average(logged_client, user):
+def test_categories_tab_shows_moving_average(logged_client, household):
     from datetime import date
 
     from finances.models.entry import EntryType
 
-    cat = baker.make("finances.Category", user=user, name="Alimentação")
-    pix = baker.make("finances.PaymentMethod", user=user, name="Pix", type="pix")
+    cat = baker.make("finances.Category", household=household, name="Alimentação")
+    pix = baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
     for bm in (date(2026, 3, 1), date(2026, 4, 1), date(2026, 5, 1)):
         baker.make(
             "finances.Entry",
-            user=user,
+            household=household,
             date=bm,
             amount=Decimal("1000"),
             category=cat,
@@ -180,9 +186,9 @@ def test_categories_tab_shows_moving_average(logged_client, user):
 
 
 @pytest.mark.django_db
-def test_categories_tab_shows_total_row(logged_client, user):
-    baker.make("finances.Category", user=user, name="A", budget_ceiling=Decimal("1000"))
-    baker.make("finances.Category", user=user, name="B", budget_ceiling=Decimal("2000"))
+def test_categories_tab_shows_total_row(logged_client, household):
+    baker.make("finances.Category", household=household, name="A", budget_ceiling=Decimal("1000"))
+    baker.make("finances.Category", household=household, name="B", budget_ceiling=Decimal("2000"))
     resp = logged_client.get("/settings/categories/")
     assert resp.status_code == 200
     body = resp.content.decode()
@@ -192,20 +198,30 @@ def test_categories_tab_shows_total_row(logged_client, user):
 
 @pytest.mark.django_db
 class TestBudgetSettings:
-    def test_create_budget(self, logged_client, user):
+    def test_create_budget(self, logged_client, household):
         from django.urls import reverse
+
+        from finances.models import Budget
 
         url = reverse("finances:settings_budget_create")
         resp = logged_client.post(url, {"name": "Casa", "amount": "1000"})
         assert resp.status_code == 200
-        assert user.budgets.filter(name="Casa", amount=Decimal("1000")).exists()
+        assert (
+            Budget.objects.for_household(household)
+            .filter(name="Casa", amount=Decimal("1000"))
+            .exists()
+        )
 
-    def test_recalc_sets_amount_to_ceiling_sum(self, logged_client, user):
+    def test_recalc_sets_amount_to_ceiling_sum(self, logged_client, household):
         from django.urls import reverse
 
-        b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("0"))
+        b = baker.make("finances.Budget", household=household, name="Casa", amount=Decimal("0"))
         baker.make(
-            "finances.Category", user=user, name="Luz", budget=b, budget_ceiling=Decimal("400")
+            "finances.Category",
+            household=household,
+            name="Luz",
+            budget=b,
+            budget_ceiling=Decimal("400"),
         )
         url = reverse("finances:settings_budget_recalc", args=[b.id])
         resp = logged_client.post(url)
@@ -213,16 +229,18 @@ class TestBudgetSettings:
         b.refresh_from_db()
         assert b.amount == Decimal("400")
 
-    def test_delete_budget(self, logged_client, user):
+    def test_delete_budget(self, logged_client, household):
         from django.urls import reverse
 
-        b = baker.make("finances.Budget", user=user, name="Casa")
+        from finances.models import Budget
+
+        b = baker.make("finances.Budget", household=household, name="Casa")
         url = reverse("finances:settings_budget_delete", args=[b.id])
         resp = logged_client.delete(url)
         assert resp.status_code == 200
-        assert not user.budgets.filter(id=b.id).exists()
+        assert not Budget.objects.for_household(household).filter(id=b.id).exists()
 
-    def test_duplicate_name_does_not_500(self, logged_client, user):
+    def test_duplicate_name_does_not_500(self, logged_client, household):
         from django.urls import reverse
 
         url = reverse("finances:settings_budget_create")
@@ -230,49 +248,51 @@ class TestBudgetSettings:
         assert first.status_code == 200
         second = logged_client.post(url, {"name": "Casa", "amount": "2000"})
         assert second.status_code == 200  # graceful, not IntegrityError 500
-        assert user.budgets.filter(name="Casa").count() == 1
+        from finances.models import Budget
 
-    def test_assign_category_to_budget(self, logged_client, user):
+        assert Budget.objects.for_household(household).filter(name="Casa").count() == 1
+
+    def test_assign_category_to_budget(self, logged_client, household):
         from django.urls import reverse
 
-        b = baker.make("finances.Budget", user=user, name="Casa")
-        cat = baker.make("finances.Category", user=user, name="Luz", budget=None)
+        b = baker.make("finances.Budget", household=household, name="Casa")
+        cat = baker.make("finances.Category", household=household, name="Luz", budget=None)
         url = reverse("finances:settings_cat_assign", args=[cat.id])
         resp = logged_client.post(url, {"budget": str(b.id)})
         assert resp.status_code == 200
         cat.refresh_from_db()
         assert cat.budget_id == b.id
 
-    def test_unassign_category(self, logged_client, user):
+    def test_unassign_category(self, logged_client, household):
         from django.urls import reverse
 
-        b = baker.make("finances.Budget", user=user, name="Casa")
-        cat = baker.make("finances.Category", user=user, name="Luz", budget=b)
+        b = baker.make("finances.Budget", household=household, name="Casa")
+        cat = baker.make("finances.Category", household=household, name="Luz", budget=b)
         url = reverse("finances:settings_cat_assign", args=[cat.id])
         resp = logged_client.post(url, {"budget": ""})
         assert resp.status_code == 200
         cat.refresh_from_db()
         assert cat.budget_id is None
 
-    def test_assign_foreign_budget_is_ignored(self, logged_client, user):
+    def test_assign_foreign_budget_is_ignored(self, logged_client, household):
         from django.contrib.auth import get_user_model
         from django.urls import reverse
 
         other = baker.make(get_user_model())
-        foreign_b = baker.make("finances.Budget", user=other, name="Outro")
-        cat = baker.make("finances.Category", user=user, name="Luz", budget=None)
+        foreign_b = baker.make("finances.Budget", household=household_for_user(other), name="Outro")
+        cat = baker.make("finances.Category", household=household, name="Luz", budget=None)
         url = reverse("finances:settings_cat_assign", args=[cat.id])
         resp = logged_client.post(url, {"budget": str(foreign_b.id)})
         assert resp.status_code == 200
         cat.refresh_from_db()
         assert cat.budget_id is None  # foreign budget silently ignored
 
-    def test_edit_modal_renders_form_and_category_checkboxes(self, logged_client, user):
+    def test_edit_modal_renders_form_and_category_checkboxes(self, logged_client, household):
         from django.urls import reverse
 
-        b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("1000"))
-        inside = baker.make("finances.Category", user=user, name="Luz", budget=b)
-        outside = baker.make("finances.Category", user=user, name="Lazer", budget=None)
+        b = baker.make("finances.Budget", household=household, name="Casa", amount=Decimal("1000"))
+        inside = baker.make("finances.Category", household=household, name="Luz", budget=b)
+        outside = baker.make("finances.Category", household=household, name="Lazer", budget=None)
         url = reverse("finances:settings_budget_edit_modal", args=[b.id])
         resp = logged_client.get(url)
         assert resp.status_code == 200
@@ -287,12 +307,12 @@ class TestBudgetSettings:
         m = re.search(rf'value="{re.escape(str(inside.id))}"[^>]*', body)
         assert m and "checked" in m.group(0)
 
-    def test_modal_save_updates_name_amount_and_assigns_categories(self, logged_client, user):
+    def test_modal_save_updates_name_amount_and_assigns_categories(self, logged_client, household):
         from django.urls import reverse
 
-        b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("1000"))
-        c1 = baker.make("finances.Category", user=user, name="Luz", budget=None)
-        c2 = baker.make("finances.Category", user=user, name="Água", budget=None)
+        b = baker.make("finances.Budget", household=household, name="Casa", amount=Decimal("1000"))
+        c1 = baker.make("finances.Category", household=household, name="Luz", budget=None)
+        c2 = baker.make("finances.Category", household=household, name="Água", budget=None)
         url = reverse("finances:settings_budget_edit", args=[b.id])
         resp = logged_client.post(
             url, {"name": "Moradia", "amount": "1500", "categories": [str(c1.id), str(c2.id)]}
@@ -305,11 +325,11 @@ class TestBudgetSettings:
         assert b.name == "Moradia" and b.amount == Decimal("1500")
         assert c1.budget_id == b.id and c2.budget_id == b.id
 
-    def test_modal_save_unassigns_unchecked_category(self, logged_client, user):
+    def test_modal_save_unassigns_unchecked_category(self, logged_client, household):
         from django.urls import reverse
 
-        b = baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("1000"))
-        c1 = baker.make("finances.Category", user=user, name="Luz", budget=b)
+        b = baker.make("finances.Budget", household=household, name="Casa", amount=Decimal("1000"))
+        c1 = baker.make("finances.Category", household=household, name="Luz", budget=b)
         url = reverse("finances:settings_budget_edit", args=[b.id])
         # POST with no "categories" -> c1 (currently in b) gets unassigned
         resp = logged_client.post(url, {"name": "Casa", "amount": "1000"})
@@ -317,21 +337,21 @@ class TestBudgetSettings:
         c1.refresh_from_db()
         assert c1.budget_id is None
 
-    def test_modal_save_does_not_touch_other_budgets(self, logged_client, user):
+    def test_modal_save_does_not_touch_other_budgets(self, logged_client, household):
         from django.urls import reverse
 
-        b1 = baker.make("finances.Budget", user=user, name="Casa")
-        b2 = baker.make("finances.Budget", user=user, name="Lazer")
-        c2 = baker.make("finances.Category", user=user, name="Cinema", budget=b2)
+        b1 = baker.make("finances.Budget", household=household, name="Casa")
+        b2 = baker.make("finances.Budget", household=household, name="Lazer")
+        c2 = baker.make("finances.Category", household=household, name="Cinema", budget=b2)
         url = reverse("finances:settings_budget_edit", args=[b1.id])
         resp = logged_client.post(url, {"name": "Casa", "amount": "0"})  # c2 not selected
         assert resp.status_code == 200
         c2.refresh_from_db()
         assert c2.budget_id == b2.id  # untouched (belongs to a different budget)
 
-    def test_budgets_tab_shows_total_row(self, logged_client, user):
-        baker.make("finances.Budget", user=user, name="Casa", amount=Decimal("1000"))
-        baker.make("finances.Budget", user=user, name="Lazer", amount=Decimal("2000"))
+    def test_budgets_tab_shows_total_row(self, logged_client, household):
+        baker.make("finances.Budget", household=household, name="Casa", amount=Decimal("1000"))
+        baker.make("finances.Budget", household=household, name="Lazer", amount=Decimal("2000"))
         resp = logged_client.get("/settings/budgets/")
         assert resp.status_code == 200
         body = resp.content.decode()
@@ -347,10 +367,9 @@ class TestSettingsTenancy:
     def test_settings_lists_only_this_households_categories(
         self, logged_client, user, household, other_user, other_household
     ):
-        baker.make("finances.Category", user=user, household=household, name="Minha categoria")
+        baker.make("finances.Category", household=household, name="Minha categoria")
         baker.make(
             "finances.Category",
-            user=other_user,
             household=other_household,
             name="Categoria do vizinho",
         )
@@ -372,7 +391,6 @@ class TestSettingsTenancy:
 
         theirs = baker.make(
             "finances.PaymentMethod",
-            user=other_user,
             household=other_household,
             name="Cartão do vizinho",
             type="credit",

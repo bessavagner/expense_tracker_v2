@@ -11,8 +11,8 @@ from finances.models import Category, Entry, InstallmentPlan, PaymentMethod
 @pytest.mark.django_db
 class TestEntryForm:
     def test_valid_entry(self, user, household):
-        category = baker.make("finances.Category", user=user)
-        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+        category = baker.make("finances.Category", household=household)
+        pm = baker.make("finances.PaymentMethod", household=household, type="pix")
         form = EntryForm(
             data={
                 "date": "2026-03-15",
@@ -33,8 +33,8 @@ class TestEntryForm:
         assert "description" in form.errors
 
     def test_negative_amount_allowed(self, user, household):
-        category = baker.make("finances.Category", user=user)
-        pm = baker.make("finances.PaymentMethod", user=user, type="pix")
+        category = baker.make("finances.Category", household=household)
+        pm = baker.make("finances.PaymentMethod", household=household, type="pix")
         form = EntryForm(
             data={
                 "date": "2026-03-15",
@@ -47,15 +47,15 @@ class TestEntryForm:
         )
         assert form.is_valid()
 
-    def test_filters_categories_by_household(self, user, household, other_user):
-        cat_mine = baker.make("finances.Category", user=user, name="Mine")
-        baker.make("finances.Category", user=other_user, name="Theirs")
+    def test_filters_categories_by_household(self, household, other_household):
+        cat_mine = baker.make("finances.Category", household=household, name="Mine")
+        baker.make("finances.Category", household=other_household, name="Theirs")
         form = EntryForm(data={}, household=household)
         assert list(form.fields["category"].queryset) == [cat_mine]
 
-    def test_filters_payment_methods_by_household(self, user, household, other_user):
-        pm_mine = baker.make("finances.PaymentMethod", user=user, name="Mine")
-        baker.make("finances.PaymentMethod", user=other_user, name="Theirs")
+    def test_filters_payment_methods_by_household(self, household, other_household):
+        pm_mine = baker.make("finances.PaymentMethod", household=household, name="Mine")
+        baker.make("finances.PaymentMethod", household=other_household, name="Theirs")
         form = EntryForm(data={}, household=household)
         assert list(form.fields["payment_method"].queryset) == [pm_mine]
 
@@ -63,8 +63,10 @@ class TestEntryForm:
 @pytest.mark.django_db
 class TestInstallmentForm:
     def test_valid_installment(self, user, household):
-        category = baker.make("finances.Category", user=user)
-        pm = baker.make("finances.PaymentMethod", user=user, type="credit_card", closing_day=25)
+        category = baker.make("finances.Category", household=household)
+        pm = baker.make(
+            "finances.PaymentMethod", household=household, type="credit_card", closing_day=25
+        )
         form = InstallmentForm(
             data={
                 "date": "2026-03-15",
@@ -80,8 +82,8 @@ class TestInstallmentForm:
         assert form.is_valid(), form.errors
 
     def test_num_installments_must_be_positive(self, user, household):
-        category = baker.make("finances.Category", user=user)
-        pm = baker.make("finances.PaymentMethod", user=user)
+        category = baker.make("finances.Category", household=household)
+        pm = baker.make("finances.PaymentMethod", household=household)
         form = InstallmentForm(
             data={
                 "date": "2026-03-15",
@@ -114,8 +116,8 @@ class TestIncomeForm:
 @pytest.mark.django_db
 class TestSystemicExpenseForm:
     def test_valid_systemic(self, user, household):
-        category = baker.make("finances.Category", user=user)
-        pm = baker.make("finances.PaymentMethod", user=user)
+        category = baker.make("finances.Category", household=household)
+        pm = baker.make("finances.PaymentMethod", household=household)
         form = SystemicExpenseForm(
             data={
                 "name": "Enel",
@@ -132,9 +134,11 @@ class TestSystemicExpenseForm:
 def test_entry_form_date_prefills_iso():
     user = baker.make("core.CustomUser")
     household = household_for_user(user)
-    cat = baker.make(Category, user=user)
-    pm = baker.make(PaymentMethod, user=user, is_active=True)
-    entry = baker.make(Entry, user=user, category=cat, payment_method=pm, date=date(2026, 6, 19))
+    cat = baker.make(Category, household=household)
+    pm = baker.make(PaymentMethod, household=household, is_active=True)
+    entry = baker.make(
+        Entry, household=household, category=cat, payment_method=pm, date=date(2026, 6, 19)
+    )
     form = EntryForm(instance=entry, household=household)
     assert 'value="2026-06-19"' in str(form["date"])
 
@@ -143,10 +147,14 @@ def test_entry_form_date_prefills_iso():
 def test_installment_form_date_prefills_iso():
     user = baker.make("core.CustomUser")
     household = household_for_user(user)
-    cat = baker.make(Category, user=user)
-    pm = baker.make(PaymentMethod, user=user, is_active=True)
+    cat = baker.make(Category, household=household)
+    pm = baker.make(PaymentMethod, household=household, is_active=True)
     plan = baker.make(
-        InstallmentPlan, user=user, category=cat, payment_method=pm, date=date(2026, 6, 19)
+        InstallmentPlan,
+        household=household,
+        category=cat,
+        payment_method=pm,
+        date=date(2026, 6, 19),
     )
     form = InstallmentForm(instance=plan, household=household)
     assert 'value="2026-06-19"' in str(form["date"])
@@ -154,10 +162,8 @@ def test_installment_form_date_prefills_iso():
 
 @pytest.mark.django_db
 def test_entry_form_choices_are_household_scoped(user, household, other_user, other_household):
-    mine = baker.make("finances.Category", user=user, household=household, name="Minha")
-    theirs = baker.make(
-        "finances.Category", user=other_user, household=other_household, name="Do vizinho"
-    )
+    mine = baker.make("finances.Category", household=household, name="Minha")
+    theirs = baker.make("finances.Category", household=other_household, name="Do vizinho")
 
     form = EntryForm(household=household)
     choices = list(form.fields["category"].queryset)
@@ -170,7 +176,7 @@ def test_entry_form_choices_are_household_scoped(user, household, other_user, ot
 def test_entry_form_without_a_household_offers_nothing(user, household):
     """Fail closed, exactly as `for_household(None)` does — and strictly safer
     than the old `if user:` guard, which left the unfiltered default in place."""
-    baker.make("finances.Category", user=user, household=household, name="Minha")
+    baker.make("finances.Category", household=household, name="Minha")
 
     form = EntryForm(household=None)
 
