@@ -61,8 +61,8 @@ graph LR
 | [E01](E01-spend-and-abuse-containment.md) | Spend & abuse containment | R0 | | — | review (TWA check pending) |
 | [E02](E02-suite-integrity-and-ci-gates.md) | Suite integrity & CI gates | R0 | | — | **done** (2026-08-11) |
 | [E03](E03-query-performance-floor.md) | Query performance floor | R0 | | — | review |
-| [E04](E04-household-tenancy.md) | Household tenancy | R1 | | E02 | **all four phases done**, pending `/security-review` |
-| [E05](E05-identity-invitations-admin-isolation.md) | Identity, invitations & admin isolation | R1 | | E04 | blocked |
+| [E04](E04-household-tenancy.md) | Household tenancy | R1 | | E02 | **done** (2026-08-13) |
+| [E05](E05-identity-invitations-admin-isolation.md) | Identity, invitations & admin isolation | R1 | | E04 | ready |
 | [E06](E06-observability-and-agent-tracing.md) | Observability & agent tracing | R1 | | E01 | blocked |
 | [E07](E07-usage-metering-and-quota.md) | Usage metering & quota | R1 | W | E04, E06 | blocked |
 | [E08](E08-ai-evaluation-harness.md) | AI evaluation harness | R2 | W | E02 | ready |

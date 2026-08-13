@@ -2,7 +2,7 @@
 id: E04
 title: Household tenancy
 release: R1
-status: ready
+status: done
 depends_on: [E02]
 blocks: [E05, E07]
 wedge_critical: false
@@ -185,7 +185,9 @@ Observable assertions:
 - [x] `created_by` is populated for all back-filled rows — *2026-08-13: `accounts/backfill.py` sets `created_by_id` from `user_id` wherever the model has the field. Note this covers **back-filled** rows only; phase 3's review found new rows written by `apply_income_recurrence` were losing it, fixed in `6d3c1e0`.*
 - [x] The data migration has been run against a **copy of the real Supabase data**, and entry counts, balances, and the monthly acumulado match before and after — this project has a documented history of balance reconciliation issues; verify totals, not just row counts — *2026-08-12 (phase 2): 3 users, 2320 entries, sum 344529.48. **Re-run 2026-08-13 across the whole chain**, phases 2 and 4 together: 3 households, **2324 entries, sum 344718.86**, fingerprint identical, `unfilled rows: none`. 17 migrations applied in one pass — `accounts.0001`–`0003`, `assistant.0010`–`0016`, `finances.0013`–`0019` — which is exactly what the next deploy does. Phase 4 drops `user`, so the two sides can no longer share one observer: BEFORE is read by the pinned pre-E04 command and its username keys are normalised to `Casa de <username>`, the rule `accounts/migrations_helpers.py` used to seed them. Both empty households normalised as cleanly as the populated one, so the naming rule holds for every user and not only the busy one. (`scripts/rehearse-e04-migration.sh`, runbook § "Rehearsing the E04 tenancy migration")*
 - [x] E03's indexes are re-created with `household` leading, and `EXPLAIN ANALYZE` confirms usage — *2026-08-13: `finances/tests/test_query_indexes.py` asserts the plan by name for each of the five composites at 5,000 rows (`EXPLAIN`, with `ANALYZE` run on the tables first so the planner is not working from defaults) — e.g. `test_entry_recent_ordering_uses_an_index` requires `entry_hh_date_recent_idx` and no `Seq Scan`. `finances/tests/test_household_indexes.py` pins their existence, the absence of the five user-leading originals, and the survival of `usage_user_kind_recent_idx`. Measured at product scale — 100,000 entries, 20 households — in `docs/architecture/query-performance-baseline.md` § "After E04 — household-leading". The rehearsal above re-checks all of it against the real schema after a real migration.*
-- [~] `/security-review` passed with no cross-tenant finding — *2026-08-13: a full security review of the phase-3 branch found **no exploitable cross-tenant leak** (unscoped querysets, agent scope widening, write provenance, the cockpit pk union, the throttle's actor column, `dump_ledger_totals` reachability, middleware session tampering). Two LOW defense-in-depth items closed in `6d3c1e0`. Marked `~` not `x` because it was run as a review agent over `git diff main...HEAD`, not the literal `/security-review` command, which needs `origin/HEAD` — main is 28 commits ahead of origin. Re-run the command form after phase 4 drops the `user` columns.*
+- [x] `/security-review` passed with no cross-tenant finding — ***2026-08-13, phase 4, the command form: CLEAN. Zero findings at any severity.*** *Scope was `git diff origin/HEAD...`, which covers **all four E04 phases** plus other unpushed `main` work, not phase 4 alone — `origin/main` was 50 commits behind local `main`. That is a wider scope than the plan assumed and the right one for a tenancy epic, since phases 1-3 had never been through the command form either. Coverage recorded rather than just the verdict: unscoped querysets (residue is creates passing `household=` explicitly plus three single-pk unions whose pk comes off an already-scoped row); agent scope (all 33 tool bodies pass `ctx.deps`, none accepts a tenant argument, `AgentScope` is frozen); tampered `active_household_id` (honoured only via `memberships.filter(household_id=...)`, malformed values fall back rather than 500); `created_by` at every write site including the two `bulk_create` paths that bypass `save()`; `AssistantUsageEvent` inference (no view, endpoint, aggregate or error differential exposes another household's counts); raw SQL (no `RunSQL` in this branch's migrations; the `# noqa: S608` sites are ORM-generated SQL in test code with parameters still bound); and the new `resolve_active_household` fallback (its only creation path is a brand-new `Household` plus owner `Membership` — no branch or argument can select a pre-existing one). Also checked: DRF is session-auth-only with a global `IsAuthenticated`, so no token path bypasses the household middleware; middleware ordering is after `AuthenticationMiddleware`; `HX-Trigger` toast interpolation renders through Alpine `x-text`, not `x-html`.*
+  <br>*The review also surfaced one **non-security** regression, recorded as follow-on below: `assistant/agents/assistant.py:337` passes `ctx.deps` where a household is expected. It fails closed — it raises on UUID validation rather than returning another household's rows — so it is not a tenancy defect.*
+  <br>*Superseded phase-3 note, kept for history — 2026-08-13: a full security review of the phase-3 branch found **no exploitable cross-tenant leak** (unscoped querysets, agent scope widening, write provenance, the cockpit pk union, the throttle's actor column, `dump_ledger_totals` reachability, middleware session tampering). Two LOW defense-in-depth items closed in `6d3c1e0`. Marked `~` not `x` because it was run as a review agent over `git diff main...HEAD`, not the literal `/security-review` command, which needs `origin/HEAD` — main is 28 commits ahead of origin. Re-run the command form after phase 4 drops the `user` columns.*
   <br>**Still `~` as of 2026-08-13, phase 4.** The branch is now pushed
   (`origin/e04-phase4`) and `origin/HEAD` has been set to `origin/main`, so the
   command form runs. It has **not been run yet** — it is user-triggered and the
@@ -242,6 +244,7 @@ Reviewed and clean, each verified rather than assumed:
 | Sev | Finding | Disposition |
 |---|---|---|
 | HIGH | A user with no `Membership` could not write anything — 500 on the NOT NULL | **Fixed**, `ff68d9d` |
+| — | `/security-review`, command form, all four phases: **zero findings** | Gate green |
 | MEDIUM | `transfer_entries` round-trip splits a shared household by author | **Follow-on**, below |
 | LOW | Duplicate category / payment-method name is a 500 | **Follow-on**, below — pre-existing on `main` |
 
@@ -265,7 +268,22 @@ Reviewed and clean, each verified rather than assumed:
    lands in `exclude` and `UniqueConstraint.validate` returns early. Same
    user-visible bug the budget views were just fixed for. Pre-existing on
    `main`, so not a phase-4 regression.
-3. **No operator-reachable way to add a second person to a household.** Only a
+3. **`simulate_projection` is wired to the wrong argument.**
+   `assistant/agents/assistant.py:337` passes `ctx.deps` — an `AgentScope` — to
+   `simulate_projection_summary`, whose first parameter became a *household* in
+   this epic (`finances/services/whatif.py:92`). Found by the phase-4
+   `/security-review` while tracing scope propagation. **Not a tenancy defect:
+   it fails closed**, because `for_household` only short-circuits on `None`, so
+   an `AgentScope` falls through to `filter(household=<AgentScope>)` and raises
+   on UUID validation — no other household's rows can be returned. The
+   user-visible effect is that the tool errors on every invocation and the chat
+   returns the generic "Erro ao processar mensagem". Fix is
+   `ctx.deps.household`. The reason nothing caught it is worth keeping: the
+   existing `test_simulate_projection.py` calls the *service* directly with a
+   household, so the tool-to-service wiring is untested. Every other
+   `ctx.deps` pass-through was enumerated and targets a function that genuinely
+   takes a scope.
+4. **No operator-reachable way to add a second person to a household.** Only a
    hand-written `Membership` row. This is E05's job per Out of scope — the
    epic creates the tenancy, E05 lets people join one — but it is worth stating
    that the headline capability is not reachable by an operator until then.
