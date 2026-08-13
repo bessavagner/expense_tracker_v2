@@ -1,0 +1,32 @@
+{% extends "base_public.html" %}
+{% comment %}
+The shell EVERY allauth page hangs off — overridden ones and stock ones alike.
+
+allauth's own chain is account/login.html -> account/base_entrance.html ->
+allauth/layouts/entrance.html -> allauth/layouts/base.html, and the MFA pages
+reach the same file through allauth/layouts/manage.html. Overriding this one
+template is therefore what gives the screens this repo does NOT rewrite — the
+TOTP enrolment Task 15 sends staff to — the product's head, fonts, theme
+bootstrap and PWA tags, instead of allauth's bare <html> with a bulleted menu.
+
+base_public.html carries that head already, which is the point: an auth page
+should look like the product rather than like a gate in front of it.
+{% endcomment %}
+
+{% block title %}{% block head_title %}Expense Tracker{% endblock %}{% endblock %}
+
+{% block shell %}
+<div class="card bg-base-100 shadow-sm w-full max-w-sm">
+    <div class="card-body">
+        {% if messages %}
+        <div class="mb-4 space-y-2">
+            {% for message in messages %}
+            <div role="alert" class="alert alert-info"><span>{{ message }}</span></div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </div>
+</div>
+{% endblock %}

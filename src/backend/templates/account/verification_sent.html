@@ -1,0 +1,19 @@
+{% extends "account/base.html" %}
+
+{% block head_title %}Confirme seu e-mail — Expense Tracker{% endblock %}
+{% block heading %}Confirme seu e-mail{% endblock %}
+{% block subheading %}Falta um passo.{% endblock %}
+
+{% block inner %}
+<p class="text-sm">
+    Enviamos um link de confirmação para o seu e-mail. Abra a mensagem e clique no link
+    para ativar a conta.
+</p>
+<p class="text-sm opacity-70 mt-3">
+    O link vale por 3 dias. Se ele não chegar em alguns minutos, veja a caixa de spam —
+    e confira se o endereço que você digitou está certo.
+</p>
+<div class="divider text-xs opacity-60">ou</div>
+<a href="{% url 'account_signup' %}" class="btn btn-ghost btn-sm w-full">Usar outro e-mail</a>
+<a href="{% url 'account_login' %}" class="link link-hover text-sm text-center mt-3">Voltar para entrar</a>
+{% endblock %}

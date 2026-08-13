@@ -1,0 +1,15 @@
+{% extends "allauth/layouts/base.html" %}
+{% comment %}
+The heading structure the pages this repo *does* rewrite share.
+
+Kept separate from allauth/layouts/base.html so that file stays a pure shell:
+the stock pages inheriting it bring their own headings, and giving them a
+second one would be worse than giving them none.
+{% endcomment %}
+
+{% block content %}
+<h1 class="text-2xl font-semibold text-center mb-1">{% block heading %}Expense Tracker{% endblock %}</h1>
+<p class="text-sm opacity-70 text-center mb-4">{% block subheading %}{% endblock %}</p>
+
+{% block inner %}{% endblock %}
+{% endblock %}
