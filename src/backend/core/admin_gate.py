@@ -17,6 +17,20 @@ def _admin_prefix() -> str:
     return "/" + settings.ADMIN_URL_PATH.lstrip("/")
 
 
+def _is_admin_path(path: str) -> bool:
+    """True for the admin path, with or without its trailing slash.
+
+    The unslashed form has to be caught here even though it resolves to
+    nothing. Left to Django, it 404s — and then `CommonMiddleware`'s
+    APPEND_SLASH notices the *slashed* URL would resolve and turns that 404
+    into a 301. A scanner probing `/gestao-xxxx` therefore got a redirect
+    where every wrong guess got a 404, which confirms the path exists: an
+    oracle that hands back exactly what moving the path was meant to buy.
+    """
+    prefix = _admin_prefix()
+    return path.startswith(prefix) or path == prefix.rstrip("/")
+
+
 def _has_second_factor(user) -> bool:
     from allauth.mfa.utils import is_mfa_enabled
 
@@ -30,8 +44,7 @@ def admin_staff_only_middleware(get_response):
     """
 
     def middleware(request):
-        prefix = _admin_prefix()
-        if not request.path.startswith(prefix):
+        if not _is_admin_path(request.path):
             return get_response(request)
 
         user = getattr(request, "user", None)

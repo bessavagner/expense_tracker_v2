@@ -34,5 +34,8 @@ def clear_login_failures(sender, user, request=None, **kwargs):
     a member who mistypes their password nine times, succeeds, and is then
     locked out by their tenth attempt an hour later.
     """
-    identifiers = {user.get_username(), (user.email or "")} - {""}
+    # Case-folded to match how the rows were written: `identifier_from`
+    # lower-cases before counting, so a stored address with any capital in it
+    # would otherwise never match its own failures and never be cleared.
+    identifiers = {user.get_username().lower(), (user.email or "").lower()} - {""}
     LoginAttempt.objects.filter(username__in=identifiers).delete()

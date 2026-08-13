@@ -48,6 +48,37 @@ class TestTheOldPathIsGone:
 
 
 @pytest.mark.django_db
+class TestThePathCannotBeConfirmedFromOutside:
+    """The secret path must answer like any other nonexistent URL.
+
+    `CommonMiddleware`'s APPEND_SLASH turns a 404 into a 301 whenever the
+    slashed version of the URL *would* resolve — so `/gestao-dev` (no trailing
+    slash) answered 301 while `/qualquer-coisa` answered 404. That difference
+    is an oracle: it confirms a guessed path exists, which is the one thing
+    moving the path was supposed to prevent. Access was never granted — the
+    slashed path still 404s — but half the control was.
+    """
+
+    def test_the_unslashed_path_answers_exactly_like_a_nonexistent_one(self):
+        client = Client()
+        unslashed = "/" + settings.ADMIN_URL_PATH.strip("/")
+        assert client.get(unslashed).status_code == client.get("/nao-existe-mesmo").status_code
+
+    def test_the_unslashed_path_does_not_redirect(self):
+        unslashed = "/" + settings.ADMIN_URL_PATH.strip("/")
+        assert Client().get(unslashed).status_code == 404
+
+    def test_a_staff_member_may_still_use_the_unslashed_path(self, staff):
+        """Closing the oracle must not cost the operator the convenience of
+        typing the path without its trailing slash."""
+        _with_totp(staff)
+        client = Client()
+        client.force_login(staff)
+        response = client.get("/" + settings.ADMIN_URL_PATH.strip("/"))
+        assert response.status_code in (200, 301, 302)
+
+
+@pytest.mark.django_db
 class TestOnlyStaffReachAdmin:
     def test_an_anonymous_request_gets_404_not_a_login_page(self):
         """The epic's sixth observable assertion, anonymous half."""
@@ -124,10 +155,23 @@ class TestChatIsNotInAdmin:
 
 
 @pytest.mark.django_db
-class TestTheServiceWorkerFollowsThePath:
-    def test_sw_js_bypasses_the_real_admin_path_not_the_old_one(self):
-        """`sw.js` must not cache admin pages. It hardcoded `/admin/`, which
-        after this task is a path that does not exist — so the bypass would
-        have been protecting nothing."""
+class TestTheServiceWorkerDoesNotPublishThePath:
+    """`sw.js` is served to anyone who asks, so anything in it is public.
+
+    An earlier version of this task templated `ADMIN_URL_PATH` into the
+    worker's bypass list, reasoning that a hardcoded `/admin/` would be
+    protecting a path that no longer exists. Both halves were true and the
+    conclusion was still wrong: it published the secret to every anonymous
+    visitor, which is precisely what the env var exists to withhold. Nothing
+    was lost by removing it — `networkFirstNav` never writes to the cache, so
+    an admin navigation is a plain fetch either way.
+    """
+
+    def test_sw_js_is_readable_by_anyone(self):
+        """Stated so the test below is understood as being about a public file."""
+        assert Client().get("/sw.js").status_code == 200
+
+    def test_sw_js_does_not_contain_the_admin_path(self):
         body = Client().get("/sw.js").content.decode()
-        assert f"/{settings.ADMIN_URL_PATH}" in body
+        assert settings.ADMIN_URL_PATH not in body
+        assert settings.ADMIN_URL_PATH.strip("/") not in body

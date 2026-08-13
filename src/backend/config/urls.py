@@ -41,6 +41,20 @@ urlpatterns = [
     # Not "admin/". The path is an environment variable and the middleware
     # above 404s anyone who is not staff with a second factor — two
     # independent controls, because this service is public by necessity.
+    #
+    # The unslashed form is registered on purpose, and it is a security
+    # control rather than a convenience. CommonMiddleware's APPEND_SLASH
+    # rewrites a 404 into a 301 whenever the unslashed URL does *not* resolve
+    # and the slashed one does — so `/gestao-xxxx` answered 301 while every
+    # wrong guess answered 404, confirming the secret path to anyone who tried
+    # it. Registering it makes it resolve, which is precisely what stops
+    # APPEND_SLASH touching it; the gate above still 404s the request first
+    # for anyone who is not staff, and this redirect only ever runs for
+    # someone already allowed in.
+    path(
+        settings.ADMIN_URL_PATH.rstrip("/"),
+        RedirectView.as_view(url="/" + settings.ADMIN_URL_PATH, permanent=False),
+    ),
     path(settings.ADMIN_URL_PATH, admin.site.urls),
     path("api/assistant/", include("assistant.urls")),
     path("sw.js", ServiceWorkerView.as_view(), name="service-worker"),

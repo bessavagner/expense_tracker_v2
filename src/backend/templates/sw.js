@@ -43,7 +43,12 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;        // cross-origin (fonts, CDN) -> network
   const p = url.pathname;
-  if (p.startsWith('/api/') || p.startsWith('/{{ admin_url_path }}') || p === '/healthz/') return; // SSE/admin/health
+  // Admin is deliberately NOT named here. sw.js is served to anyone who asks,
+  // so a path in this file is a public path — which would hand back exactly
+  // what ADMIN_URL_PATH exists to withhold. It costs nothing to omit:
+  // networkFirstNav below never writes to the cache, so an admin navigation
+  // is a plain fetch either way.
+  if (p.startsWith('/api/') || p === '/healthz/') return;  // SSE / health
   if (p.startsWith('/static/')) {                         // immutable hashed assets
     event.respondWith(cacheFirst(req));
     return;

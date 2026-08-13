@@ -27,7 +27,14 @@ def identifier_from(credentials: dict) -> str:
     `LoginAttempt` rows were written under. Both doors have to land on the same
     string or the two halves of the lockout count separate budgets.
     """
-    return credentials.get("email") or credentials.get("username") or credentials.get("login") or ""
+    identifier = (
+        credentials.get("email") or credentials.get("username") or credentials.get("login") or ""
+    )
+    # Case-folded, because allauth resolves an address case-insensitively:
+    # `Alvo@example.com` and `alvo@example.com` are one account. Counted as
+    # written, they would be two lockout budgets, and an attacker gets a fresh
+    # one per capitalisation — 2^n of them for an n-letter address.
+    return identifier.strip().lower()
 
 
 class LockoutAuthenticationBackend(AuthenticationBackend):
