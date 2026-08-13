@@ -21,9 +21,17 @@ from core.security import client_ip, is_locked
 FROZEN_NOW = datetime(2026, 6, 15, 12, 0, tzinfo=UTC)
 
 
+#: From E05 the login identifier is the email address, not the username:
+#: `ACCOUNT_LOGIN_METHODS = {"email"}` and the backend resolving it is
+#: allauth's. The lockout itself is unchanged — it still counts whatever
+#: identifier was submitted — but the string these tests submit has to be the
+#: one the product actually submits, or they assert a door nobody uses.
+IDENTIFIER = "alvo@example.com"
+
+
 @pytest.fixture
 def account(db):
-    user = baker.make("core.CustomUser", username="alvo")
+    user = baker.make("core.CustomUser", username="alvo", email=IDENTIFIER)
     user.set_password("senha-correta-longa-o-suficiente")
     user.save()
     return user
@@ -157,31 +165,42 @@ class TestClientIpForgeryResistance:
 @pytest.mark.django_db
 class TestBackendEnforcement:
     def test_correct_password_works_when_not_locked(self, account):
-        assert authenticate(username="alvo", password="senha-correta-longa-o-suficiente")
+        assert authenticate(username=IDENTIFIER, password="senha-correta-longa-o-suficiente")
 
     def test_correct_password_is_refused_while_locked(self, account, settings):
         settings.LOGIN_FAILURE_LIMIT = 3
-        _fail("alvo", count=3)
-        assert authenticate(username="alvo", password="senha-correta-longa-o-suficiente") is None
+        _fail(IDENTIFIER, count=3)
+        assert (
+            authenticate(username=IDENTIFIER, password="senha-correta-longa-o-suficiente") is None
+        )
 
     def test_failed_authenticate_records_an_attempt(self, account):
-        authenticate(username="alvo", password="errada")
-        assert LoginAttempt.objects.filter(username="alvo").count() == 1
+        authenticate(username=IDENTIFIER, password="errada")
+        assert LoginAttempt.objects.filter(username=IDENTIFIER).count() == 1
 
     def test_a_locked_out_attempt_does_not_extend_its_own_lockout(self, account, settings):
         """Otherwise the window slides forever and the lockout never expires."""
         settings.LOGIN_FAILURE_LIMIT = 3
-        _fail("alvo", count=3)
-        authenticate(username="alvo", password="errada")
-        authenticate(username="alvo", password="errada")
-        assert LoginAttempt.objects.filter(username="alvo").count() == 3
+        _fail(IDENTIFIER, count=3)
+        authenticate(username=IDENTIFIER, password="errada")
+        authenticate(username=IDENTIFIER, password="errada")
+        assert LoginAttempt.objects.filter(username=IDENTIFIER).count() == 3
 
     def test_successful_login_clears_the_failures(self, account, settings):
         settings.LOGIN_FAILURE_LIMIT = 10
-        _fail("alvo", count=4)
+        _fail(IDENTIFIER, count=4)
         client = Client()
-        assert client.login(username="alvo", password="senha-correta-longa-o-suficiente")
-        assert LoginAttempt.objects.filter(username="alvo").count() == 0
+        assert client.login(username=IDENTIFIER, password="senha-correta-longa-o-suficiente")
+        assert LoginAttempt.objects.filter(username=IDENTIFIER).count() == 0
+
+    def test_the_username_is_no_longer_a_credential(self, account):
+        """Email-only login, asserted rather than assumed.
+
+        `authenticate()` accepting the username too would mean two identifiers
+        share one account and only one of them is lockout-counted — the other
+        would be an uncounted door.
+        """
+        assert authenticate(username="alvo", password="senha-correta-longa-o-suficiente") is None
 
 
 @pytest.mark.django_db

@@ -203,8 +203,10 @@ LOGIN_URL = "/login/"
 LOGIN_REDIRECT_URL = "/"
 
 # Brute-force protection lives in the authentication backend, not a view, so it
-# applies to both doors: the app's /login/ page and the admin's own form.
-AUTHENTICATION_BACKENDS = ["core.auth_backends.LockoutModelBackend"]
+# applies to every door: the allauth login page and the admin's own form.
+# Exactly one backend is registered on purpose — a second, lockout-free backend
+# would silently answer the credential the first one refused.
+AUTHENTICATION_BACKENDS = ["core.auth_backends.LockoutAuthenticationBackend"]
 LOGIN_FAILURE_LIMIT = int(os.environ.get("LOGIN_FAILURE_LIMIT", "10"))
 LOGIN_FAILURE_WINDOW_MINUTES = int(os.environ.get("LOGIN_FAILURE_WINDOW_MINUTES", "15"))
 

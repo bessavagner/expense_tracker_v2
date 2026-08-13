@@ -18,11 +18,16 @@ from model_bakery import baker
 from core.models import LoginAttempt
 
 SENHA = "senha-correta-longa-o-suficiente"
+# From E05 the identifier is the email address, not the username. The form
+# field is still called `username` here — this is Django's AuthenticationForm,
+# which Task 6 replaces with allauth's `login` field — but the *value* has to
+# be the address, because that is what resolves to an account now.
+IDENTIFIER = "vagner@example.com"
 
 
 @pytest.fixture
 def account(db):
-    user = baker.make("core.CustomUser", username="vagner")
+    user = baker.make("core.CustomUser", username="vagner", email=IDENTIFIER)
     user.set_password(SENHA)
     user.save()
     return user
@@ -67,20 +72,20 @@ class TestLoginPageRenders:
 @pytest.mark.django_db
 class TestSigningIn:
     def test_correct_credentials_land_on_the_dashboard(self, account):
-        response = Client().post("/login/", {"username": "vagner", "password": SENHA})
+        response = Client().post("/login/", {"username": IDENTIFIER, "password": SENHA})
         assert response.status_code == 302
         assert response["Location"] == "/"
 
     def test_next_is_honoured(self, account):
         response = Client().post(
-            "/login/?next=/entries/", {"username": "vagner", "password": SENHA}
+            "/login/?next=/entries/", {"username": IDENTIFIER, "password": SENHA}
         )
         assert response.status_code == 302
         assert response["Location"] == "/entries/"
 
     def test_wrong_password_re_renders_with_a_portuguese_error(self, account):
         client = Client()
-        response = client.post("/login/", {"username": "vagner", "password": "errada"})
+        response = client.post("/login/", {"username": IDENTIFIER, "password": "errada"})
         assert response.status_code == 200
         assert "Usuário ou senha incorretos." in response.content.decode()
         assert not client.session.get("_auth_user_id")
@@ -107,9 +112,9 @@ class TestLockoutIsVisible:
         settings.LOGIN_FAILURE_LIMIT = 3
         client = Client()
         for _ in range(3):
-            client.post("/login/", {"username": "vagner", "password": "errada"})
+            client.post("/login/", {"username": IDENTIFIER, "password": "errada"})
 
-        response = client.post("/login/", {"username": "vagner", "password": SENHA})
+        response = client.post("/login/", {"username": IDENTIFIER, "password": SENHA})
         body = response.content.decode()
         assert response.status_code == 200
         assert "Muitas tentativas" in body
@@ -120,8 +125,8 @@ class TestLockoutIsVisible:
         settings.LOGIN_FAILURE_LIMIT = 3
         client = Client()
         for _ in range(5):
-            client.post("/login/", {"username": "vagner", "password": "errada"})
-        assert LoginAttempt.objects.filter(username="vagner").count() == 3
+            client.post("/login/", {"username": IDENTIFIER, "password": "errada"})
+        assert LoginAttempt.objects.filter(username=IDENTIFIER).count() == 3
 
 
 @pytest.mark.django_db
@@ -147,7 +152,7 @@ class TestTheFrontDoorMoved:
         client = Client()
         response = client.post(
             "/admin/login/",
-            {"username": "vagner", "password": SENHA, "next": "/admin/"},
+            {"username": IDENTIFIER, "password": SENHA, "next": "/admin/"},
         )
         assert response.status_code == 302
         assert client.session.get("_auth_user_id")
