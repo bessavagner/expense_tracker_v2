@@ -48,6 +48,7 @@
                 <li><a href="{% url 'finances:projection' %}" class="{% if request.resolver_match.url_name == 'projection' %}active{% endif %}">Projeção</a></li>
                 <li><a href="{% url 'finances:settings' %}" class="{% if request.resolver_match.url_name and 'settings' in request.resolver_match.url_name %}active{% endif %}">Configurações</a></li>
                 <li><a href="{% url 'finances:import_upload' %}" class="{% if request.resolver_match.url_name and 'import' in request.resolver_match.url_name %}active{% endif %}">Importar</a></li>
+                <li><a href="{% url 'members' %}" class="{% if request.resolver_match.url_name == 'members' %}active{% endif %}">Membros da casa</a></li>
             </ul>
         </div>
     </div>

@@ -19,6 +19,15 @@
                 <li class="list-row">
                     <div class="list-col-grow break-all">{{ membership.user.email }}</div>
                     <span class="badge badge-sm">{% if membership.role == 'owner' %}Dono{% else %}Membro{% endif %}</span>
+                    {% if viewer_is_owner and membership.user != request.user %}
+                    {# A form, never a link: a GET that removes someone is a URL #}
+                    {# an email scanner can follow.                              #}
+                    <form method="post" action="{% url 'member_remove' membership.pk %}"
+                          onsubmit="return confirm('Remover {{ membership.user.email|escapejs }} da casa? A pessoa perde o acesso na hora.');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-ghost text-error">Remover</button>
+                    </form>
+                    {% endif %}
                 </li>
                 {% endfor %}
             </ul>
@@ -36,6 +45,12 @@
                         <div class="break-all">{{ invitation.email }}</div>
                         <div class="text-xs opacity-60">vale até {{ invitation.expires_at|date:"d/m/Y" }}</div>
                     </div>
+                    {% if viewer_is_owner %}
+                    <form method="post" action="{% url 'invite_revoke' invitation.pk %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-ghost">Cancelar</button>
+                    </form>
+                    {% endif %}
                 </li>
                 {% endfor %}
             </ul>

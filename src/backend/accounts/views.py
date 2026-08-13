@@ -9,7 +9,7 @@ URL, and `?next=` carries it back through signup and verification.
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
-from django.http import HttpResponseRedirect
+from django.http import Http404, HttpResponseBadRequest, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
 from django.views import View
@@ -21,8 +21,9 @@ from accounts.invitations import (
     create_invitation,
     invitation_for_token,
     redeem_invitation,
+    revoke_invitation,
 )
-from accounts.models import Invitation, Membership
+from accounts.models import Invitation, Membership, Role
 from accounts.permissions import OwnerRequiredMixin, is_owner
 
 #: Where the landing page leaves the token so signup can find it. The URL is
@@ -112,3 +113,58 @@ class InvitationAcceptView(View):
         request.session[ACTIVE_HOUSEHOLD_SESSION_KEY] = str(membership.household.id)
         messages.success(request, f"Você agora faz parte da {membership.household.name}.")
         return HttpResponseRedirect("/")
+
+
+class InvitationRevokeView(OwnerRequiredMixin, View):
+    """Withdraw a pending invitation."""
+
+    def post(self, request, pk, *args, **kwargs):
+        # Scoped, not filtered by hand: an invitation belonging to another
+        # household must be *invisible* (404), never merely refused (403) —
+        # a 403 confirms the id exists.
+        invitation = Invitation.objects.for_request(request).filter(pk=pk).first()
+        if invitation is None:
+            raise Http404
+        revoke_invitation(invitation)
+        messages.success(request, f"Convite para {invitation.email} cancelado.")
+        return HttpResponseRedirect(reverse("members"))
+
+
+class MemberRemoveView(OwnerRequiredMixin, View):
+    """Remove someone from the household.
+
+    Deleting the Membership is the entire mechanism. E04 resolves the active
+    household from memberships on every request and every scoped queryset
+    fails closed to `none()`, so access ends on the next request — no session
+    to purge, no cache to bust. The household's ledger is untouched:
+    `created_by` is SET_NULL precisely so a person leaving does not take the
+    family's financial history with them.
+    """
+
+    def post(self, request, pk, *args, **kwargs):
+        membership = (
+            Membership.objects.filter(pk=pk, household=request.household)
+            .select_related("user")
+            .first()
+        )
+        if membership is None:
+            raise Http404
+
+        if membership.role == Role.OWNER:
+            remaining_owners = (
+                Membership.objects.filter(household=request.household, role=Role.OWNER)
+                .exclude(pk=membership.pk)
+                .count()
+            )
+            if remaining_owners == 0:
+                # E04's open question 3 and E13 own the real semantics of a
+                # household losing its last owner. Refusing is the only answer
+                # here that cannot leave one orphaned.
+                return HttpResponseBadRequest(
+                    "A casa precisa de pelo menos um dono. Promova outra pessoa antes."
+                )
+
+        email = membership.user.email
+        membership.delete()
+        messages.success(request, f"{email} não faz mais parte da casa.")
+        return HttpResponseRedirect(reverse("members"))
