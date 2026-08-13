@@ -40,14 +40,14 @@ class TestImportPaymentMethods:
         )
         call_command("import_csv", "--user", user.username, "--dir", str(importdir))
 
-        cash = PaymentMethod.objects.get(user=user, name="Dinheiro")
+        cash = PaymentMethod.objects.for_household(household_for_user(user)).get(name="Dinheiro")
         assert cash.type == "cash"
         assert cash.closing_day is None
 
-        pix = PaymentMethod.objects.get(user=user, name="Pix")
+        pix = PaymentMethod.objects.for_household(household_for_user(user)).get(name="Pix")
         assert pix.type == "pix"
 
-        c6 = PaymentMethod.objects.get(user=user, name="Crédito C6")
+        c6 = PaymentMethod.objects.for_household(household_for_user(user)).get(name="Crédito C6")
         assert c6.type == "credit_card"
         # default closing day = most frequent value
         assert c6.closing_day == 25
@@ -69,7 +69,10 @@ class TestImportPaymentMethods:
         write(importdir, "formas_pagamento.csv", "nome,out./2025\nPix,-1\n")
         call_command("import_csv", "--user", user.username, "--dir", str(importdir))
         call_command("import_csv", "--user", user.username, "--dir", str(importdir))
-        assert PaymentMethod.objects.filter(user=user, name="Pix").count() == 1
+        assert (
+            PaymentMethod.objects.for_household(household_for_user(user)).filter(name="Pix").count()
+            == 1
+        )
 
 
 @pytest.mark.django_db
@@ -82,18 +85,23 @@ class TestImportIncome:
         )
         call_command("import_csv", "--user", user.username, "--dir", str(importdir))
 
-        salario = Income.objects.get(user=user, name="Salário", month=date(2025, 11, 1))
+        salario = Income.objects.for_household(household_for_user(user)).get(
+            name="Salário", month=date(2025, 11, 1)
+        )
         assert salario.amount == Decimal("5815.91")
         assert not Income.objects.filter(name="Salário", month=date(2025, 12, 1)).exists()
-        assert Income.objects.get(user=user, name="13°", month=date(2025, 12, 1)).amount == Decimal(
-            "3998.74"
-        )
+        assert Income.objects.for_household(household_for_user(user)).get(
+            name="13°", month=date(2025, 12, 1)
+        ).amount == Decimal("3998.74")
 
     def test_idempotent(self, user, importdir):
         write(importdir, "renda.csv", 'nome,nov./2025\nSalário,"R$ 5.000,00"\n')
         call_command("import_csv", "--user", user.username, "--dir", str(importdir))
         call_command("import_csv", "--user", user.username, "--dir", str(importdir))
-        assert Income.objects.filter(user=user, name="Salário").count() == 1
+        assert (
+            Income.objects.for_household(household_for_user(user)).filter(name="Salário").count()
+            == 1
+        )
 
 
 @pytest.mark.django_db
@@ -106,7 +114,7 @@ class TestImportSystemics:
         )
         call_command("import_csv", "--user", user.username, "--dir", str(importdir))
 
-        se = SystemicExpense.objects.get(user=user, name="Enel")
+        se = SystemicExpense.objects.for_household(household_for_user(user)).get(name="Enel")
         assert se.category.name == "Custeio"  # auto-created
         assert se.payment_method.type == "pix"
 
@@ -126,7 +134,12 @@ class TestImportSystemics:
         write(importdir, "sistemicas.csv", 'nome,categoria,nov./2025\nEnel,Custeio,"R$ 460,00"\n')
         call_command("import_csv", "--user", user.username, "--dir", str(importdir))
         call_command("import_csv", "--user", user.username, "--dir", str(importdir))
-        assert SystemicExpense.objects.filter(user=user, name="Enel").count() == 1
+        assert (
+            SystemicExpense.objects.for_household(household_for_user(user))
+            .filter(name="Enel")
+            .count()
+            == 1
+        )
         assert (
             Entry.objects.for_household(household_for_user(user))
             .filter(entry_type=EntryType.SYSTEMIC)
@@ -146,7 +159,7 @@ class TestImportRegularEntries:
         )
         call_command("import_csv", "--user", user.username, "--dir", str(importdir))
 
-        entry = Entry.objects.get(user=user, description="Zé Delivery")
+        entry = Entry.objects.for_household(household_for_user(user)).get(description="Zé Delivery")
         assert entry.amount == Decimal("32.91")
         assert entry.date == date(2025, 10, 3)
         assert entry.category.name == "Álcool"  # auto-created
@@ -162,7 +175,10 @@ class TestImportRegularEntries:
         )
         call_command("import_csv", "--user", user.username, "--dir", str(importdir))
         call_command("import_csv", "--user", user.username, "--dir", str(importdir))
-        assert Entry.objects.filter(user=user, description="Zé").count() == 1
+        assert (
+            Entry.objects.for_household(household_for_user(user)).filter(description="Zé").count()
+            == 1
+        )
 
 
 @pytest.mark.django_db
@@ -177,10 +193,14 @@ class TestImportInstallments:
         )
         call_command("import_csv", "--user", user.username, "--dir", str(importdir))
 
-        plan = InstallmentPlan.objects.get(user=user, description="Camisetas")
+        plan = InstallmentPlan.objects.for_household(household_for_user(user)).get(
+            description="Camisetas"
+        )
         assert plan.num_installments == 2
         assert plan.total_amount == Decimal("193.19")
-        entries = Entry.objects.filter(user=user, installment_plan=plan)
+        entries = Entry.objects.for_household(household_for_user(user)).filter(
+            installment_plan=plan
+        )
         assert entries.count() == 2
         assert all(e.entry_type == EntryType.INSTALLMENT for e in entries)
 
@@ -194,8 +214,18 @@ class TestImportInstallments:
         )
         call_command("import_csv", "--user", user.username, "--dir", str(importdir))
         call_command("import_csv", "--user", user.username, "--dir", str(importdir))
-        assert InstallmentPlan.objects.filter(user=user, description="Camisetas").count() == 1
-        assert Entry.objects.filter(user=user, entry_type=EntryType.INSTALLMENT).count() == 2
+        assert (
+            InstallmentPlan.objects.for_household(household_for_user(user))
+            .filter(description="Camisetas")
+            .count()
+            == 1
+        )
+        assert (
+            Entry.objects.for_household(household_for_user(user))
+            .filter(entry_type=EntryType.INSTALLMENT)
+            .count()
+            == 2
+        )
 
 
 @pytest.mark.django_db
@@ -219,7 +249,10 @@ class TestDedupBreadth:
             '03/10/2025,"R$ 10,00",Café,Lanche,Dinheiro\n',
         )
         call_command("import_csv", "--user", user.username, "--dir", str(importdir))
-        assert Entry.objects.filter(user=user, description="Café").count() == 2
+        assert (
+            Entry.objects.for_household(household_for_user(user)).filter(description="Café").count()
+            == 2
+        )
 
     def test_same_plan_on_different_methods_both_import(self, user, importdir):
         write(
@@ -235,7 +268,12 @@ class TestDedupBreadth:
             '01/11/2025,"R$ 100,00",Tênis,Roupa,Crédito Nubank,2,"R$ 50,00"\n',
         )
         call_command("import_csv", "--user", user.username, "--dir", str(importdir))
-        assert InstallmentPlan.objects.filter(user=user, description="Tênis").count() == 2
+        assert (
+            InstallmentPlan.objects.for_household(household_for_user(user))
+            .filter(description="Tênis")
+            .count()
+            == 2
+        )
 
 
 @pytest.mark.django_db
@@ -260,7 +298,6 @@ class TestHouseholdScoping:
         entry = Entry.objects.get(description="Zé Delivery")
         assert entry.household == household
         assert entry.created_by == user
-        assert entry.user == user  # still NOT NULL until phase 4
         assert entry.category.household == household
         assert entry.payment_method.household == household
 
@@ -271,7 +308,6 @@ class TestHouseholdScoping:
         the import would otherwise attach this household's rows to their row."""
         theirs = baker.make(
             "finances.Category",
-            user=other_user,
             household=other_household,
             name="Alimentação",
         )
@@ -291,7 +327,7 @@ class TestHouseholdScoping:
         mint a private duplicate — the whole point of a shared ledger."""
         from accounts.models import Membership, Role
 
-        mine = baker.make("finances.Category", user=user, household=household, name="Alimentação")
+        mine = baker.make("finances.Category", household=household, name="Alimentação")
         baker.make(Membership, user=other_user, household=household, role=Role.MEMBER)
         self._seed_csv(importdir)
 

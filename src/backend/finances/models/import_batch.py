@@ -1,6 +1,5 @@
 import uuid
 
-from django.conf import settings
 from django.db import models
 
 from accounts.models import AuthoredHouseholdModel
@@ -29,14 +28,6 @@ class ImportBatch(AuthoredHouseholdModel):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="import_batches",
-        # E04 phase 4, beat one: nullable so the suite converts in one pass.
-        null=True,
-        blank=True,
-    )
     import_type = models.CharField(max_length=20, default="regular")
     created_at = models.DateTimeField(auto_now_add=True)
     executed_at = models.DateTimeField(

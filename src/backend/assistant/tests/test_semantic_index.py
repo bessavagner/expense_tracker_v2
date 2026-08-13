@@ -36,16 +36,13 @@ def haystack(user, household):
     rng = random.Random(20260808)  # noqa: S311 — synthetic vectors, not crypto
     needle_vector = _vector(rng)
     needle = MemoryEmbedding.objects.create(
-        user=user,
         household=household,
         text="mercado cosmos é alimentação",
         embedding=needle_vector,
     )
     MemoryEmbedding.objects.bulk_create(
         [
-            MemoryEmbedding(
-                user=user, household=household, text=f"ruído {i}", embedding=_vector(rng)
-            )
+            MemoryEmbedding(household=household, text=f"ruído {i}", embedding=_vector(rng))
             for i in range(3000)
         ],
         batch_size=500,
@@ -94,7 +91,6 @@ def test_limit_is_respected(scope, haystack):
 def test_results_are_scoped_to_the_household(scope, other_user, other_household, haystack):
     _, needle_vector = haystack
     MemoryEmbedding.objects.create(
-        user=other_user,
         household=other_household,
         text="vizinho",
         embedding=needle_vector,

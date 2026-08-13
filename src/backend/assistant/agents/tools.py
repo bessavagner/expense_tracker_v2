@@ -134,7 +134,6 @@ def create_entry(
 
     # Create entry
     entry = Entry.objects.create(
-        user=scope.user,  # still NOT NULL until phase 4
         household=scope.household,
         created_by=scope.user,
         date=entry_date,
@@ -615,7 +614,6 @@ def commit_receipt(scope) -> str:
             # computar o billing_month a partir de date+payment_method (evita o
             # bug histórico de billing_month congelado).
             entry = Entry.objects.create(
-                user=scope.user,  # still NOT NULL until phase 4
                 household=scope.household,
                 created_by=scope.user,
                 date=entry_date,
@@ -1049,7 +1047,6 @@ def create_category(scope, name: str, budget_ceiling: str) -> str:
         return f"Erro: valor de teto inválido '{budget_ceiling}'."
 
     Category.objects.create(
-        user=scope.user,  # still NOT NULL until phase 4
         household=scope.household,
         created_by=scope.user,
         name=name,
@@ -1093,7 +1090,6 @@ def create_payment_method(scope, name: str, pm_type: str, closing_day: str | Non
             return f"Erro: dia de fechamento inválido '{closing_day}'."
 
     PaymentMethod.objects.create(
-        user=scope.user,  # still NOT NULL until phase 4
         household=scope.household,
         created_by=scope.user,
         name=name,
@@ -1122,7 +1118,6 @@ def update_income(scope, name: str, amount: str, month_str: str) -> str:
         month=month,
         defaults={
             "amount": amount_val,
-            "user": scope.user,  # still NOT NULL until phase 4
             "created_by": scope.user,
         },
     )
@@ -1255,7 +1250,6 @@ def create_memory_rule(scope, trigger: str, field: str, value: str) -> str:
             "value": value,
             "confidence": 1.0,
             "source": MemorySource.USER_CORRECTION,
-            "user": scope.user,  # still NOT NULL until phase 4
             "created_by": scope.user,
         },
     )

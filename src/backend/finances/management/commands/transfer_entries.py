@@ -65,16 +65,22 @@ class Command(BaseCommand):
 
     # -- export ---------------------------------------------------------------
     def _export(self, options):
-        qs = Entry.objects.select_related("category", "payment_method", "user")
+        qs = Entry.objects.select_related("category", "payment_method", "created_by")
         if options["since"]:
             qs = qs.filter(date__gte=date.fromisoformat(options["since"]))
         if options["until"]:
             qs = qs.filter(date__lte=date.fromisoformat(options["until"]))
         if options["user"]:
-            qs = qs.filter(user__username=options["user"])
+            # `created_by`, not `user`: E04 phase 4 dropped the tenant column,
+            # and "whose rows are these" is now a provenance question. Rows with
+            # no author — written by a command or by the system — are excluded
+            # by this filter, which is the honest answer to "--user amanda".
+            qs = qs.filter(created_by__username=options["user"])
         rows = [
             {
-                "user": e.user.username,
+                # Wire format unchanged, so an export taken before this commit
+                # still imports after it.
+                "user": e.created_by.username if e.created_by else None,
                 "date": e.date.isoformat(),
                 "amount": str(e.amount),
                 "category": e.category.name if e.category else None,
@@ -108,6 +114,9 @@ class Command(BaseCommand):
         skipped, errors = 0, []
         to_create = []
         for r in rows:
+            if not r.get("user"):
+                errors.append(f"row has no author | {r['description'][:50]}")
+                continue
             u = User.objects.filter(username=r["user"]).first()
             if not u:
                 errors.append(f"no user '{r['user']}' | {r['description'][:50]}")
@@ -145,7 +154,6 @@ class Command(BaseCommand):
                 for u, hh, d, amt, desc, cat, pm in to_create:
                     # let save() compute billing_month from date + payment_method
                     Entry.objects.create(
-                        user=u,  # still NOT NULL until phase 4
                         household=hh,
                         created_by=u,
                         date=d,

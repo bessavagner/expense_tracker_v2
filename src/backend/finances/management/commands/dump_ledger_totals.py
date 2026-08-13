@@ -2,23 +2,22 @@
 
 Row counts do not prove a migration was lossless — this project has a
 documented history of reconciliation issues where the counts matched and the
-balances did not. This dumps the numbers that actually matter: per-user entry
-and income sums, and the running acumulado per month straight out of the
+balances did not. This dumps the numbers that actually matter: per-household
+entry and income sums, and the running acumulado per month straight out of the
 projection service.
 
-Scoped by user on purpose. E04 phase 2 changes no read path, so running this
-before and after the migration must produce identical output; a diff is
-corruption. Phase 4 re-points it at household.
+Keyed by household name since E04 phase 4. Before that it was keyed by
+username, and `scripts/rehearse-e04-migration.sh` normalises across the change
+so a pre-E04 fingerprint still compares to a post-E04 one — see the runbook.
 """
 
 import json
 from datetime import date
 
-from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.db.models import Count, Max, Min, Sum
 
-from accounts.resolution import household_for_user
+from accounts.models import Household
 from finances.models import Entry, Income
 from finances.services.projection import build_projection, projection_origin
 
@@ -35,7 +34,7 @@ def _months_between(start: date, end: date) -> int:
 
 
 class Command(BaseCommand):
-    help = "Dump per-user ledger totals and the monthly acumulado as JSON."
+    help = "Dump per-household ledger totals and the monthly acumulado as JSON."
 
     def add_arguments(self, parser):
         parser.add_argument("--json", action="store_true", help="Machine-readable output.")
@@ -51,14 +50,14 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         report = {}
-        for user in get_user_model().objects.order_by("username"):
-            entries = Entry.objects.filter(user=user).aggregate(
+        for household in Household.objects.order_by("name"):
+            entries = Entry.objects.for_household(household).aggregate(
                 n=Count("id"),
                 total=Sum("amount"),
                 first=Min("billing_month"),
                 last=Max("billing_month"),
             )
-            incomes = Income.objects.filter(user=user).aggregate(
+            incomes = Income.objects.for_household(household).aggregate(
                 total=Sum("amount"), last=Max("month")
             )
             start = entries["first"] or projection_origin()
@@ -70,14 +69,8 @@ class Command(BaseCommand):
                 default=start,
             )
             num_months = max(options["months"], _months_between(start, tail))
-            # `build_projection` speaks households from phase 3 on, but the
-            # aggregates above stay per-user: that is the whole reason this file
-            # keeps its E04_TRANSITION_TOOLS exemption. For a single-household
-            # ledger the two questions coincide, which is what makes the
-            # before/after comparison valid across the migration.
-            household = household_for_user(user)
             months = build_projection(household, start, num_months, today=FIXED_TODAY)
-            report[user.get_username()] = {
+            report[household.name] = {
                 "entry_count": entries["n"],
                 "entry_sum": f"{entries['total'] or 0:.2f}",
                 "income_sum": f"{incomes['total'] or 0:.2f}",

@@ -11,18 +11,17 @@ from finances.models import Entry
 
 
 def _setup(user, household):
-    """The entry keeps a `user` beside its `household` on purpose.
+    """The entry names an author, because that is what the export carries.
 
-    `transfer_entries export` still reads `e.user.username` and filters on
-    `user__username` — decision 7 re-points it at `created_by` in Task 13, and
-    that is the commit that drops these `user=` kwargs. Until then a row with
-    no user makes the export raise rather than fail an assertion.
+    Since E04 phase 4 `transfer_entries` reads `e.created_by.username` and
+    `--user` filters on `created_by__username` — an authorless row is excluded
+    from the export and rejected on import, by design (decision 7).
     """
     cat = baker.make("finances.Category", household=household, name="Saúde")
     pix = baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
     baker.make(
         "finances.Entry",
-        user=user,
+        created_by=user,
         household=household,
         date=date(2026, 6, 23),
         amount=Decimal("31.99"),

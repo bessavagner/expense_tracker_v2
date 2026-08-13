@@ -336,9 +336,11 @@ class TestUpdateIncome:
         result = update_income(seeded_scope, "Salário", "8000.00", "2026-03-01")
         lowered = result.lower()
         assert "salv" in lowered or "criada" in lowered or "atualizada" in lowered
-        assert Income.objects.filter(
-            user=seeded_user, name="Salário", month=date(2026, 3, 1)
-        ).exists()
+        assert (
+            Income.objects.for_household(seeded_scope.household)
+            .filter(name="Salário", month=date(2026, 3, 1))
+            .exists()
+        )
 
     def test_updates_existing(self, seeded_user, seeded_scope, household):
         from model_bakery import baker

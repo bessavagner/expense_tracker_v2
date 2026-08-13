@@ -1,17 +1,14 @@
-"""`user` is nullable on the twelve models that lose it in Task 13.
+"""`user` is gone from the twelve models that only ever used it as a tenant.
 
-A three-beat schema dance: nullable here, every write site converted, then the
-column dropped. This test pins beat one so that beat two can rewrite ~612 test
-call sites in a single mechanical pass rather than two.
-
-`AssistantUsageEvent` is absent on purpose — its `user` is the acting member,
-not the tenant, and it stays NOT NULL forever.
+`AssistantUsageEvent` keeps it: that column is the acting member, and the
+throttle counts per person so that two people in one household each get their
+own budget (E04 decision 1).
 """
 
 import pytest
 from django.apps import apps
 
-LOSING_USER = [
+LOST_USER = [
     "finances.Entry",
     "finances.Income",
     "finances.Category",
@@ -27,12 +24,45 @@ LOSING_USER = [
 ]
 
 
-@pytest.mark.parametrize("label", LOSING_USER)
-def test_user_is_nullable(label):
-    assert apps.get_model(label)._meta.get_field("user").null is True
+@pytest.mark.parametrize("label", LOST_USER)
+def test_the_tenant_column_is_gone(label):
+    field_names = {f.name for f in apps.get_model(label)._meta.get_fields()}
+
+    assert "user" not in field_names
+    assert "household" in field_names
 
 
-def test_the_actor_column_is_not_nullable():
-    """AssistantUsageEvent.user is who spent the turn. A usage event with no
-    actor is meaningless, so it stays required — and it survives Task 13."""
-    assert apps.get_model("assistant.AssistantUsageEvent")._meta.get_field("user").null is False
+@pytest.mark.parametrize("label", LOST_USER)
+def test_provenance_survived_it(label):
+    """`user` split into household + created_by. Dropping the first half
+    without keeping the second would have thrown away review finding M5."""
+    model = apps.get_model(label)
+    if model._meta.label == "assistant.MemoryEmbedding":
+        pytest.skip("machine-derived: no human author, asserted in test_household_columns")
+    assert "created_by" in {f.name for f in model._meta.get_fields()}
+
+
+def test_the_actor_column_survives():
+    field_names = {
+        f.name for f in apps.get_model("assistant.AssistantUsageEvent")._meta.get_fields()
+    }
+
+    assert "user" in field_names
+    assert "household" in field_names
+
+
+@pytest.mark.parametrize(
+    "label,constraint",
+    [
+        ("finances.Category", "unique_category_per_household"),
+        ("finances.Budget", "unique_budget_per_household"),
+        ("finances.PaymentMethod", "unique_payment_method_per_household"),
+        ("assistant.MemoryRule", "unique_memory_rule_per_household"),
+    ],
+)
+def test_uniqueness_is_scoped_to_the_household(label, constraint):
+    model = apps.get_model(label)
+    names = {c.name for c in model._meta.constraints}
+
+    assert constraint in names
+    assert model._meta.unique_together == ()

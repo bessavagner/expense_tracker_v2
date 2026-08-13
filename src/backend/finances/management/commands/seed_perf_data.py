@@ -124,7 +124,6 @@ class Command(BaseCommand):
             entry_date = billing_month + timedelta(days=rng.randint(0, 27))
             entries.append(
                 Entry(
-                    user=user,
                     household=household,
                     created_by=user,
                     date=entry_date,
@@ -147,7 +146,6 @@ class Command(BaseCommand):
         Income.objects.bulk_create(
             [
                 Income(
-                    user=user,
                     household=household,
                     created_by=user,
                     name="Salário",
@@ -161,7 +159,6 @@ class Command(BaseCommand):
         ChatMessage.objects.bulk_create(
             [
                 ChatMessage(
-                    user=user,
                     household=household,
                     created_by=user,
                     role=MessageRole.USER if turn % 2 == 0 else MessageRole.ASSISTANT,
@@ -174,7 +171,6 @@ class Command(BaseCommand):
         MemoryEmbedding.objects.bulk_create(
             [
                 MemoryEmbedding(
-                    user=user,
                     household=household,
                     text=f"regra sintética {slot}",
                     embedding=[rng.random() for _ in range(EMBEDDING_DIMENSIONS)],

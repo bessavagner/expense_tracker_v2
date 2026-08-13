@@ -1,6 +1,5 @@
 import uuid
 
-from django.conf import settings
 from django.db import models
 
 from accounts.models import AuthoredHouseholdModel
@@ -8,14 +7,6 @@ from accounts.models import AuthoredHouseholdModel
 
 class Category(AuthoredHouseholdModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="categories",
-        # E04 phase 4, beat one: nullable so the suite converts in one pass.
-        null=True,
-        blank=True,
-    )
     name = models.CharField(max_length=100)
     budget = models.ForeignKey(
         "finances.Budget",
@@ -46,9 +37,6 @@ class Category(AuthoredHouseholdModel):
     class Meta:
         verbose_name = "categoria"
         verbose_name_plural = "categorias"
-        # Both hold during phases 2 and 3. The user constraint goes away in
-        # phase 4 with the column, and this becomes the only one.
-        unique_together = ("user", "name")
         ordering = ["name"]
         constraints = [
             models.UniqueConstraint(

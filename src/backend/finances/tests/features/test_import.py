@@ -33,13 +33,12 @@ def given_user_with_seed(db, ctx):
     household = household_for_user(user)
     client = Client()
     client.force_login(user)
-    baker.make("finances.Category", user=user, household=household, name="Álcool")
-    baker.make("finances.Category", user=user, household=household, name="Lanche")
-    baker.make("finances.Category", user=user, household=household, name="Roupa")
-    baker.make("finances.PaymentMethod", user=user, household=household, name="Pix", type="pix")
+    baker.make("finances.Category", household=household, name="Álcool")
+    baker.make("finances.Category", household=household, name="Lanche")
+    baker.make("finances.Category", household=household, name="Roupa")
+    baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
     baker.make(
         "finances.PaymentMethod",
-        user=user,
         household=household,
         name="Crédito C6",
         type="credit_card",
@@ -116,17 +115,19 @@ def when_execute(ctx):
 
 @then("3 entries should exist in the database")
 def then_3_entries(ctx):
-    assert Entry.objects.filter(user=ctx["user"], entry_type="regular").count() == 3
+    assert Entry.objects.for_household(ctx["household"]).filter(entry_type="regular").count() == 3
 
 
 @then("1 installment plan should exist")
 def then_1_plan(ctx):
-    assert InstallmentPlan.objects.filter(user=ctx["user"]).count() == 1
+    assert InstallmentPlan.objects.for_household(ctx["household"]).count() == 1
 
 
 @then("2 installment entries should exist")
 def then_2_entries(ctx):
-    assert Entry.objects.filter(user=ctx["user"], entry_type="installment").count() == 2
+    assert (
+        Entry.objects.for_household(ctx["household"]).filter(entry_type="installment").count() == 2
+    )
 
 
 @pytest.mark.django_db

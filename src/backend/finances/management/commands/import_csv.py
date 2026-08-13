@@ -86,7 +86,7 @@ class Command(BaseCommand):
             cat, _ = Category.objects.get_or_create(
                 household=self.household,
                 name=name.strip(),
-                defaults={"user": self.user, "created_by": self.user},
+                defaults={"created_by": self.user},
             )
             self._cat_cache[key] = cat
             self.stdout.write(f"  + categoria criada: {name.strip()}")
@@ -101,7 +101,6 @@ class Command(BaseCommand):
                 name=name.strip(),
                 defaults={
                     "type": default_type,
-                    "user": self.user,
                     "created_by": self.user,
                 },
             )
@@ -140,7 +139,6 @@ class Command(BaseCommand):
                 defaults={
                     "type": pm_type,
                     "closing_day": default_day,
-                    "user": self.user,
                     "created_by": self.user,
                 },
             )
@@ -171,7 +169,6 @@ class Command(BaseCommand):
                     month=month,
                     defaults={
                         "amount": amount,
-                        "user": self.user,
                         "created_by": self.user,
                     },
                 )
@@ -199,7 +196,6 @@ class Command(BaseCommand):
                     "category": category,
                     "payment_method": pix,
                     "default_amount": default_amount,
-                    "user": self.user,
                     "created_by": self.user,
                 },
             )
@@ -239,7 +235,6 @@ class Command(BaseCommand):
                 ):
                     continue
                 plan = InstallmentPlan.objects.create(
-                    user=self.user,  # still NOT NULL until phase 4
                     household=self.household,
                     created_by=self.user,
                     date=entry_date,
@@ -279,7 +274,6 @@ class Command(BaseCommand):
                     ):
                         continue
                     Entry.objects.create(
-                        user=self.user,  # still NOT NULL until phase 4
                         household=self.household,
                         created_by=self.user,
                         date=entry_date,

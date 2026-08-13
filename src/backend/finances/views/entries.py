@@ -153,7 +153,6 @@ class EntryCreateView(HtmxLoginRequiredMixin, View):
         form = EntryForm(request.POST, household=request.household)
         if form.is_valid():
             entry = form.save(commit=False)
-            entry.user = request.user  # still NOT NULL until phase 4
             entry.household = request.household
             entry.created_by = request.user
             entry.save()
@@ -344,7 +343,6 @@ class EntryModalView(HtmxLoginRequiredMixin, View):
             form = InstallmentForm(request.POST, household=request.household)
             if form.is_valid():
                 plan = form.save(commit=False)
-                plan.user = request.user  # still NOT NULL until phase 4
                 plan.household = request.household
                 plan.created_by = request.user
                 plan.save()
@@ -382,7 +380,6 @@ class EntryModalView(HtmxLoginRequiredMixin, View):
             form = EntryForm(request.POST, household=request.household)
             if form.is_valid():
                 entry = form.save(commit=False)
-                entry.user = request.user  # still NOT NULL until phase 4
                 entry.household = request.household
                 entry.created_by = request.user
                 entry.save()

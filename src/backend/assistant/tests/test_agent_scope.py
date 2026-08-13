@@ -49,7 +49,6 @@ def test_memory_rules_are_household_scoped(user, household, other_user, other_ho
 
     baker.make(
         "assistant.MemoryRule",
-        user=other_user,
         household=other_household,
         trigger="cerveja",
         field="category",
@@ -65,8 +64,8 @@ def test_list_categories_is_household_scoped(scope, user, household, other_user,
 
     from assistant.agents.tools import list_categories
 
-    baker.make("finances.Category", user=user, household=household, name="Minha")
-    baker.make("finances.Category", user=other_user, household=other_household, name="Do vizinho")
+    baker.make("finances.Category", household=household, name="Minha")
+    baker.make("finances.Category", household=other_household, name="Do vizinho")
 
     assert list_categories(scope) == ["Minha"]
 
@@ -76,15 +75,14 @@ def test_create_entry_records_the_household_and_the_author(scope, user, househol
     from assistant.agents.tools import create_entry
     from finances.models import Entry
 
-    baker.make("finances.Category", user=user, household=household, name="Alimentação")
-    baker.make("finances.PaymentMethod", user=user, household=household, name="Pix", type="pix")
+    baker.make("finances.Category", household=household, name="Alimentação")
+    baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
 
     create_entry(scope, "2026-03-10", "50.00", "Feira", "Alimentação", "Pix")
 
     entry = Entry.objects.get(description="Feira")
     assert entry.household == household
     assert entry.created_by == user
-    assert entry.user == user  # still NOT NULL until phase 4
 
 
 def test_a_tool_cannot_widen_its_scope_through_an_argument(
@@ -95,8 +93,8 @@ def test_a_tool_cannot_widen_its_scope_through_an_argument(
     from assistant.agents.tools import create_entry
     from finances.models import Entry
 
-    baker.make("finances.Category", user=other_user, household=other_household, name="Segredo")
-    baker.make("finances.PaymentMethod", user=user, household=household, name="Pix", type="pix")
+    baker.make("finances.Category", household=other_household, name="Segredo")
+    baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
 
     result = create_entry(scope, "2026-03-10", "50.00", "Feira", "Segredo", "Pix")
 
@@ -120,7 +118,6 @@ def test_chat_history_is_household_scoped(
 
     baker.make(
         "assistant.ChatMessage",
-        user=other_user,
         household=other_household,
         role="user",
         content="segredo do vizinho",

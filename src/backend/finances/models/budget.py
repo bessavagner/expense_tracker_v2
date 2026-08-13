@@ -1,6 +1,5 @@
 import uuid
 
-from django.conf import settings
 from django.db import models
 
 from accounts.models import AuthoredHouseholdModel
@@ -8,14 +7,6 @@ from accounts.models import AuthoredHouseholdModel
 
 class Budget(AuthoredHouseholdModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="budgets",
-        # E04 phase 4, beat one: nullable so the suite converts in one pass.
-        null=True,
-        blank=True,
-    )
     name = models.CharField(max_length=100)
     amount = models.DecimalField(
         max_digits=12,
@@ -29,7 +20,6 @@ class Budget(AuthoredHouseholdModel):
     class Meta:
         verbose_name = "orçamento"
         verbose_name_plural = "orçamentos"
-        unique_together = ("user", "name")
         ordering = ["name"]
         constraints = [
             models.UniqueConstraint(

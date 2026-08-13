@@ -21,12 +21,9 @@ pytestmark = pytest.mark.django_db
 
 @pytest.fixture
 def neighbour_spend(other_user, other_household):
-    category = baker.make(
-        "finances.Category", user=other_user, household=other_household, name="Vizinho"
-    )
+    category = baker.make("finances.Category", household=other_household, name="Vizinho")
     baker.make(
         "finances.Entry",
-        user=other_user,
         household=other_household,
         category=category,
         amount=Decimal("999.00"),
@@ -50,7 +47,6 @@ def test_daily_trend_excludes_other_households(household, neighbour_spend):
 def test_ceiling_excludes_other_households(household, other_user, other_household):
     baker.make(
         "finances.Category",
-        user=other_user,
         household=other_household,
         name="Teto do vizinho",
         budget_ceiling=Decimal("500.00"),

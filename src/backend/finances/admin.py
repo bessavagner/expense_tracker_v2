@@ -13,31 +13,31 @@ from finances.models import (
 
 @admin.register(Budget)
 class BudgetAdmin(admin.ModelAdmin):
-    list_display = ("name", "amount", "user")
-    list_filter = ("user",)
+    list_display = ("name", "amount", "household", "created_by")
+    list_filter = ("household",)
     search_fields = ("name",)
     ordering = ("name",)
 
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
-    list_display = ("name", "budget_ceiling", "is_system", "user")
-    list_filter = ("is_system", "user")
+    list_display = ("name", "budget_ceiling", "is_system", "household", "created_by")
+    list_filter = ("is_system", "household")
     search_fields = ("name",)
     ordering = ("name",)
 
 
 @admin.register(PaymentMethod)
 class PaymentMethodAdmin(admin.ModelAdmin):
-    list_display = ("name", "type", "closing_day", "is_active", "user")
-    list_filter = ("type", "is_active", "user")
+    list_display = ("name", "type", "closing_day", "is_active", "household", "created_by")
+    list_filter = ("type", "is_active", "household")
     search_fields = ("name",)
 
 
 @admin.register(Income)
 class IncomeAdmin(admin.ModelAdmin):
-    list_display = ("name", "amount", "month", "is_recurring", "user")
-    list_filter = ("is_recurring", "user", "month")
+    list_display = ("name", "amount", "month", "is_recurring", "household", "created_by")
+    list_filter = ("is_recurring", "household", "month")
     search_fields = ("name",)
     ordering = ("-month",)
 

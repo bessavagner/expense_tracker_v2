@@ -216,7 +216,6 @@ class CockpitSystemicCreateView(HtmxLoginRequiredMixin, View):
         form = SystemicExpenseForm(request.POST, household=request.household)
         if form.is_valid():
             systemic = form.save(commit=False)
-            systemic.user = request.user  # still NOT NULL until phase 4
             systemic.household = request.household
             systemic.created_by = request.user
             systemic.save()

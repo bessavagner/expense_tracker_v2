@@ -108,7 +108,6 @@ class IncomeCreateView(HtmxLoginRequiredMixin, View):
         form = IncomeForm(request.POST)
         if form.is_valid():
             income = form.save(commit=False)
-            income.user = request.user  # still NOT NULL until phase 4
             income.household = request.household
             income.created_by = request.user
             income.save()
@@ -187,7 +186,6 @@ class SystemicCreateView(HtmxLoginRequiredMixin, View):
         form = SystemicExpenseForm(request.POST, household=request.household)
         if form.is_valid():
             systemic = form.save(commit=False)
-            systemic.user = request.user  # still NOT NULL until phase 4
             systemic.household = request.household
             systemic.created_by = request.user
             systemic.save()
@@ -318,7 +316,6 @@ class PaymentMethodCreateView(HtmxLoginRequiredMixin, View):
         form = PaymentMethodForm(request.POST)
         if form.is_valid():
             pm = form.save(commit=False)
-            pm.user = request.user  # still NOT NULL until phase 4
             pm.household = request.household
             pm.created_by = request.user
             pm.save()
@@ -388,7 +385,6 @@ class CategoryCreateView(HtmxLoginRequiredMixin, View):
         form = CategoryCreateForm(request.POST)
         if form.is_valid():
             cat = form.save(commit=False)
-            cat.user = request.user  # still NOT NULL until phase 4
             cat.household = request.household
             cat.created_by = request.user
             cat.save()
@@ -507,11 +503,14 @@ class BudgetCreateView(HtmxLoginRequiredMixin, View):
         if not form.is_valid():
             return _render_budgets_tab(request)
         b = form.save(commit=False)
-        b.user = request.user  # still NOT NULL until phase 4
         b.household = request.household
         b.created_by = request.user
         try:
-            b.validate_unique()
+            # `validate_constraints`, not `validate_unique`: the latter only
+            # covers `unique_together`, which E04 phase 4 deleted along with the
+            # user column. Uniqueness now lives in a Meta UniqueConstraint, and
+            # only this call sees it — without it a duplicate name is a 500.
+            b.validate_constraints()
         except ValidationError:
             return _render_budgets_tab(
                 request, "Já existe um orçamento com esse nome.", toast_type="error"
@@ -567,10 +566,9 @@ class BudgetEditView(HtmxLoginRequiredMixin, View):
         if not form.is_valid():
             return _render_budget_modal(request, b, form=form, error="Dados inválidos.")
         updated = form.save(commit=False)
-        updated.user = request.user  # still NOT NULL until phase 4
         updated.household = request.household
         try:
-            updated.validate_unique()
+            updated.validate_constraints()
         except ValidationError:
             return _render_budget_modal(
                 request, b, form=form, error="Já existe um orçamento com esse nome."

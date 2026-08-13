@@ -27,7 +27,6 @@ pytestmark = pytest.mark.django_db
 def foreign_payment_method(other_user, other_household):
     return baker.make(
         "finances.PaymentMethod",
-        user=other_user,
         household=other_household,
         name="Cartão do vizinho",
         type="credit",
@@ -44,16 +43,14 @@ def entry_on_a_deactivated_method(user, household):
     """
     mine = baker.make(
         "finances.PaymentMethod",
-        user=user,
         household=household,
         name="Meu Pix",
         type="pix",
         is_active=False,
     )
-    category = baker.make("finances.Category", user=user, household=household, name="Minha")
+    category = baker.make("finances.Category", household=household, name="Minha")
     return baker.make(
         "finances.Entry",
-        user=user,
         household=household,
         category=category,
         payment_method=mine,

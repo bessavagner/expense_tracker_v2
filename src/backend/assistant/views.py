@@ -122,7 +122,6 @@ def _sse_response(scope, agent, prompt, *, message_history, user_text=None, mode
             full_response = error_msg
 
         assistant_msg = await ChatMessage.objects.acreate(
-            user=scope.user,  # still NOT NULL until phase 4
             household=scope.household,
             created_by=scope.user,
             role=MessageRole.ASSISTANT,
@@ -246,7 +245,6 @@ async def _handle_json(request, scope):
         return JsonResponse({"error": "Message is required"}, status=400)
 
     await ChatMessage.objects.acreate(
-        user=scope.user,  # still NOT NULL until phase 4
         household=scope.household,
         created_by=scope.user,
         role=MessageRole.USER,
@@ -275,7 +273,6 @@ async def _handle_multipart(request, scope):
 
     # multipart só com texto: trata como mensagem normal
     await ChatMessage.objects.acreate(
-        user=scope.user,  # still NOT NULL until phase 4
         household=scope.household,
         created_by=scope.user,
         role=MessageRole.USER,
@@ -310,7 +307,6 @@ async def _handle_audio(request, scope, audio, caption):
 
     message = f"{caption}\n{text}".strip() if caption else text
     await ChatMessage.objects.acreate(
-        user=scope.user,  # still NOT NULL until phase 4
         household=scope.household,
         created_by=scope.user,
         role=MessageRole.USER,
@@ -356,7 +352,6 @@ async def _dispatch_extraction(scope, chat_msg, extraction, caption, user_label)
         )
 
     await ReceiptDraft.objects.acreate(
-        user=scope.user,  # still NOT NULL until phase 4
         household=scope.household,
         created_by=scope.user,
         chat_message=chat_msg,
@@ -391,7 +386,6 @@ async def _handle_images(request, scope, images, caption):
     else:
         user_label = "📷 [foto enviada]" if n == 1 else f"📷 [{noun} enviadas]"
     chat_msg = await ChatMessage.objects.acreate(
-        user=scope.user,  # still NOT NULL until phase 4
         household=scope.household,
         created_by=scope.user,
         role=MessageRole.USER,
@@ -444,7 +438,6 @@ async def _handle_images(request, scope, images, caption):
             )
             yield json.dumps({"type": "token", "content": msg}, ensure_ascii=False) + "\n"
             assistant_msg = await ChatMessage.objects.acreate(
-                user=scope.user,  # still NOT NULL until phase 4
                 household=scope.household,
                 created_by=scope.user,
                 role=MessageRole.ASSISTANT,

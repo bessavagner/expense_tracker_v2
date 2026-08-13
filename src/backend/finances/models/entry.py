@@ -1,6 +1,5 @@
 import uuid
 
-from django.conf import settings
 from django.db import models
 
 from accounts.models import AuthoredHouseholdModel
@@ -15,25 +14,6 @@ class EntryType(models.TextChoices):
 
 class Entry(AuthoredHouseholdModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="entries",
-        # E04 phase 4, beat one: nullable so the test suite can move from
-        # `user=` to `household=` in one pass. The column goes entirely once
-        # every write site sets a household. Do not start relying on it again.
-        null=True,
-        blank=True,
-        # No standalone index on user_id: it is the leading column of BOTH
-        # indexes in Meta, so those already serve every user-only lookup (an
-        # Index Only Scan, measured). Keeping Django's default FK index here is
-        # not free — it is a strict prefix of entry_user_billing_type_idx, and
-        # because it is the narrower index the planner costs it lower and picks
-        # it for filter(user, billing_month), then discards 96% of the rows it
-        # read. Measured at 5,000 entries for one user: 1.698 ms reading 5,000
-        # rows with the FK index present, 0.422 ms reading 189 without it.
-        db_index=False,
-    )
     date = models.DateField()
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     description = models.CharField(max_length=500)
@@ -72,25 +52,14 @@ class Entry(AuthoredHouseholdModel):
         indexes = [
             # The dashboard's core predicate. One composite instead of two
             # indexes: a B-tree serves any query with equality on a prefix, so
-            # this answers filter(user, billing_month) and
-            # filter(user, billing_month, entry_type) alike.
-            models.Index(
-                fields=["user", "billing_month", "entry_type"],
-                name="entry_user_billing_type_idx",
-            ),
-            # Matches Meta.ordering exactly, so the planner can skip the sort as
-            # well as the scan on every unordered Entry queryset.
-            models.Index(
-                fields=["user", "-date", "-created_at"],
-                name="entry_user_date_recent_idx",
-            ),
-            # The household twins of the two indexes above. Phase 3 converts
-            # the dashboard's queries onto them one surface at a time; the
-            # user-leading pair stays until phase 4 drops the column.
+            # this answers filter(household, billing_month) and
+            # filter(household, billing_month, entry_type) alike.
             models.Index(
                 fields=["household", "billing_month", "entry_type"],
                 name="entry_hh_billing_type_idx",
             ),
+            # Matches Meta.ordering exactly, so the planner can skip the sort as
+            # well as the scan on every unordered Entry queryset.
             models.Index(
                 fields=["household", "-date", "-created_at"],
                 name="entry_hh_date_recent_idx",

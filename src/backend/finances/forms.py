@@ -187,7 +187,6 @@ class CockpitIncomeForm(forms.ModelForm):
         for m in months:
             created.append(
                 Income.objects.create(
-                    user=created_by,  # still NOT NULL until phase 4
                     household=household,
                     created_by=created_by,
                     name=base["name"],
@@ -439,7 +438,6 @@ class SystemicExpenseCreateForm(SystemicExpenseForm):
 
     def save_for_household(self, household, created_by):
         systemic = self.save(commit=False)
-        systemic.user = created_by  # still NOT NULL until phase 4
         systemic.household = household
         systemic.created_by = created_by
         systemic.save()

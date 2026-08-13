@@ -34,13 +34,10 @@ def apply_income_recurrence(income) -> int:
             )
         else:
             Income.objects.create(
-                user=income.user,  # still NOT NULL until phase 4
                 household=income.household,
-                # Set explicitly, and not incidentally: the write bridge fills
-                # `created_by` only when it also fills `household`, so setting
-                # `household` here means the bridge returns early and the author
-                # would otherwise be lost. The copies inherit the original's.
-                created_by=income.created_by or income.user,
+                # The copies inherit the original's author, so a recurrence
+                # keeps naming whoever set it up.
+                created_by=income.created_by,
                 name=income.name,
                 month=m,
                 amount=income.amount,

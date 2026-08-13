@@ -192,7 +192,6 @@ class ImportMappingView(LoginRequiredMixin, View):
         # Mint the batch here, where a ready-to-execute row list first exists.
         # Its id is what makes the execute step idempotent — see ImportBatch.
         batch = ImportBatch.objects.create(
-            user=user,  # still NOT NULL until phase 4
             household=household,
             created_by=user,
             import_type=import_type,
@@ -351,7 +350,6 @@ class ImportExecuteView(LoginRequiredMixin, View):
         for name, resolution in category_resolutions.items():
             if resolution == "__new__" and name.lower() not in cat_map:
                 new_cat = Category.objects.create(
-                    user=user,  # still NOT NULL until phase 4
                     household=household,
                     created_by=user,
                     name=name,
@@ -361,7 +359,6 @@ class ImportExecuteView(LoginRequiredMixin, View):
         for name, resolution in pm_resolutions.items():
             if resolution == "__new__" and name.lower() not in pm_map:
                 new_pm = PaymentMethod.objects.create(
-                    user=user,  # still NOT NULL until phase 4
                     household=household,
                     created_by=user,
                     name=name,
@@ -409,7 +406,6 @@ class ImportExecuteView(LoginRequiredMixin, View):
                 if import_type == "installment":
                     entry_date = date.fromisoformat(row["date"])
                     plan = InstallmentPlan.objects.create(
-                        user=user,  # still NOT NULL until phase 4
                         household=household,
                         created_by=user,
                         date=entry_date,
@@ -429,7 +425,6 @@ class ImportExecuteView(LoginRequiredMixin, View):
                         resolve_closing_day(payment_method, entry_date),
                     )
                     Entry.objects.create(
-                        user=user,  # still NOT NULL until phase 4
                         household=household,
                         created_by=user,
                         date=entry_date,

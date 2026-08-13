@@ -10,17 +10,15 @@ from finances.models import Entry
 
 @pytest.fixture
 def template(user, household):
-    cat = baker.make("finances.Category", user=user, household=household)
+    cat = baker.make("finances.Category", household=household)
     pm = baker.make(
         "finances.PaymentMethod",
-        user=user,
         household=household,
         name="C6",
         type="credit_card",
     )
     return baker.make(
         "finances.SystemicExpense",
-        user=user,
         household=household,
         name="Spotify - Amanda",
         category=cat,

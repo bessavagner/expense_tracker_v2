@@ -14,8 +14,8 @@ from finances.models.entry import EntryType
 def ctx(db):
     user = baker.make("core.CustomUser")
     household = household_for_user(user)
-    cat = baker.make(Category, user=user, household=household)
-    pm = baker.make(PaymentMethod, user=user, household=household, is_active=True)
+    cat = baker.make(Category, household=household)
+    pm = baker.make(PaymentMethod, household=household, is_active=True)
     return user, household, cat, pm
 
 

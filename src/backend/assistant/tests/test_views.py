@@ -102,12 +102,14 @@ class TestChatEndpoint:
         assert response["Content-Type"] == "text/event-stream"
         assert '"type": "user_text"' in body
         assert "mercado 80 no pix" in body
-        assert ChatMessage.objects.filter(
-            user=user, role="user", content__icontains="mercado 80"
-        ).exists()
+        assert (
+            ChatMessage.objects.for_household(household)
+            .filter(role="user", content__icontains="mercado 80")
+            .exists()
+        )
         assert ChatMessage.objects.for_household(household).filter(role="assistant").exists()
 
-    def test_multipart_image_routes_to_assistant(self, logged_client, user):
+    def test_multipart_image_routes_to_assistant(self, logged_client, user, household):
 
         # 1x1 PNG válido (bytes mínimos)
         png = (
@@ -128,9 +130,11 @@ class TestChatEndpoint:
         assert response.status_code == 200
         assert '"type": "user_text"' in body
         assert "📷" in body
-        assert ChatMessage.objects.filter(
-            user=user, role="user", content__icontains="foto"
-        ).exists()
+        assert (
+            ChatMessage.objects.for_household(household)
+            .filter(role="user", content__icontains="foto")
+            .exists()
+        )
 
     def test_image_creates_receipt_draft(self, logged_client, user, household):
         """Fase 1: a foto gera um ReceiptDraft persistido com a extração."""
@@ -320,7 +324,7 @@ class TestChatEndpoint:
         b"c\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
     )
 
-    def test_multiple_images_one_extraction(self, logged_client, user, monkeypatch):
+    def test_multiple_images_one_extraction(self, logged_client, user, monkeypatch, household):
         """N fotos => UMA chamada a extract_receipt com N imagens (mesmo recibo)."""
         from assistant.agents.extraction import ReceiptExtraction
 
@@ -345,9 +349,11 @@ class TestChatEndpoint:
         assert response.status_code == 200
         assert len(captured["images"]) == 2
         # legenda vira rótulo do usuário com contagem de fotos
-        assert ChatMessage.objects.filter(
-            user=user, role="user", content__icontains="2 fotos"
-        ).exists()
+        assert (
+            ChatMessage.objects.for_household(household)
+            .filter(role="user", content__icontains="2 fotos")
+            .exists()
+        )
 
     def test_rejects_too_many_images(self, logged_client, user, settings):
 

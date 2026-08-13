@@ -100,7 +100,7 @@ def test_household_deletion_takes_its_rows_with_it(user):
     from finances.models import Entry
 
     household = baker.make(Household)
-    baker.make(Entry, user=user, household=household)
+    baker.make(Entry, household=household)
 
     household.delete()
 

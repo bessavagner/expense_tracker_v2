@@ -96,7 +96,6 @@ def test_closing_day_is_unreachable_from_a_foreign_payment_method(
 
     theirs = baker.make(
         PaymentMethod,
-        user=other_user,
         household=other_household,
         name="Cartao do vizinho",
         type="credit_card",

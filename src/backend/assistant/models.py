@@ -15,17 +15,6 @@ class MessageRole(models.TextChoices):
 
 class ChatMessage(AuthoredHouseholdModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="chat_messages",
-        # E04 phase 4, beat one: nullable so the suite converts in one pass.
-        null=True,
-        blank=True,
-        # Redundant with chat_user_recent_idx, whose leading column is user.
-        # See the note on finances.Entry.user.
-        db_index=False,
-    )
     role = models.CharField(max_length=20, choices=MessageRole.choices)
     content = models.TextField()
     metadata = models.JSONField(null=True, blank=True)
@@ -39,7 +28,6 @@ class ChatMessage(AuthoredHouseholdModel):
             # Every chat turn loads the last ASSISTANT_MAX_HISTORY messages
             # newest-first (assistant/views.py, `_load_history`), which is the
             # opposite of Meta.ordering — hence the explicit descending index.
-            models.Index(fields=["user", "-created_at"], name="chat_user_recent_idx"),
             models.Index(fields=["household", "-created_at"], name="chat_hh_recent_idx"),
         ]
 
@@ -55,14 +43,6 @@ class MemorySource(models.TextChoices):
 
 class MemoryRule(AuthoredHouseholdModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="memory_rules",
-        # E04 phase 4, beat one: nullable so the suite converts in one pass.
-        null=True,
-        blank=True,
-    )
     trigger = models.CharField(max_length=255)
     field = models.CharField(max_length=50)
     value = models.CharField(max_length=255)
@@ -74,7 +54,6 @@ class MemoryRule(AuthoredHouseholdModel):
     class Meta:
         verbose_name = "regra de memória"
         verbose_name_plural = "regras de memória"
-        unique_together = ("user", "trigger", "field")
         constraints = [
             models.UniqueConstraint(
                 fields=["household", "trigger", "field"],
@@ -101,17 +80,6 @@ class ReceiptDraft(AuthoredHouseholdModel):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="receipt_drafts",
-        # E04 phase 4, beat one: nullable so the suite converts in one pass.
-        null=True,
-        blank=True,
-        # Redundant with draft_user_status_recent_idx, whose leading column is
-        # user. See the note on finances.Entry.user.
-        db_index=False,
-    )
     chat_message = models.ForeignKey(
         ChatMessage,
         on_delete=models.CASCADE,
@@ -136,10 +104,6 @@ class ReceiptDraft(AuthoredHouseholdModel):
             # The pending-draft lookup that runs on every chat turn
             # (assistant/views.py, `_pending_receipt`).
             models.Index(
-                fields=["user", "status", "-created_at"],
-                name="draft_user_status_recent_idx",
-            ),
-            models.Index(
                 fields=["household", "status", "-created_at"],
                 name="draft_hh_status_recent_idx",
             ),
@@ -152,14 +116,6 @@ class ReceiptDraft(AuthoredHouseholdModel):
 
 class MemoryEmbedding(HouseholdOwnedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="memory_embeddings",
-        # E04 phase 4, beat one: nullable so the suite converts in one pass.
-        null=True,
-        blank=True,
-    )
     text = models.TextField()
     embedding = VectorField(dimensions=1536)
     metadata = models.JSONField(null=True, blank=True)

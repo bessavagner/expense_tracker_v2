@@ -37,13 +37,10 @@ def amandas_client(amanda):
 
 @pytest.fixture
 def vagners_entry(user, household):
-    category = baker.make("finances.Category", user=user, household=household, name="Mercado")
-    pm = baker.make(
-        "finances.PaymentMethod", user=user, household=household, name="Pix", type="pix"
-    )
+    category = baker.make("finances.Category", household=household, name="Mercado")
+    pm = baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
     return baker.make(
         "finances.Entry",
-        user=user,
         household=household,
         created_by=user,
         category=category,
@@ -79,7 +76,6 @@ def test_a_stranger_still_gets_a_404(logged_client, other_user, other_household)
     """The control: membership is what grants access, not being logged in."""
     theirs = baker.make(
         "finances.Entry",
-        user=other_user,
         household=other_household,
         date=date(2026, 3, 10),
         billing_month=date(2026, 3, 1),

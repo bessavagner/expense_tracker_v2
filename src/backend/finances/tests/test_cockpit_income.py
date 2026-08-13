@@ -41,7 +41,8 @@ class TestCockpitIncomeForm(TestCase):
                 for i in created
             )
         )
-        self.assertTrue(all(i.user_id == self.user.id for i in created))
+        self.assertTrue(all(i.household_id == self.household.id for i in created))
+        self.assertTrue(all(i.created_by_id == self.user.id for i in created))
         self.assertTrue(all(i.household_id == self.household.id for i in created))
 
     def test_without_repeat_creates_single_row(self):
@@ -67,7 +68,6 @@ def test_income_panel_shows_income_with_non_first_day(client, user, household):
     client.force_login(user)
     baker.make(
         "finances.Income",
-        user=user,
         household=household,
         name="Vencimento Especial",  # name absent from any form placeholder
         amount=Decimal("8655.00"),

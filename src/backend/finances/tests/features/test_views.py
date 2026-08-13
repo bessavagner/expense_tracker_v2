@@ -76,7 +76,7 @@ def given_user_with_march_entries(db, ctx):
         payment_method=pm,
         billing_month=date(2026, 2, 1),
     )
-    ctx.update({"user": user, "client": client, "category": cat, "pm": pm})
+    ctx.update({"user": user, "household": household, "client": client, "category": cat, "pm": pm})
     return ctx
 
 
@@ -88,7 +88,7 @@ def given_user_with_cats_pms(db, ctx):
     household = household_for_user(user)
     cat = baker.make("finances.Category", household=household, name="Alimentação")
     pm = baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
-    ctx.update({"user": user, "client": client, "category": cat, "pm": pm})
+    ctx.update({"user": user, "household": household, "client": client, "category": cat, "pm": pm})
     return ctx
 
 
@@ -102,7 +102,7 @@ def given_user_with_cc(db, ctx):
     pm = baker.make(
         "finances.PaymentMethod", household=household, type="credit_card", closing_day=25
     )
-    ctx.update({"user": user, "client": client, "category": cat, "pm": pm})
+    ctx.update({"user": user, "household": household, "client": client, "category": cat, "pm": pm})
     return ctx
 
 
@@ -137,7 +137,7 @@ def given_user_with_multi_cat(db, ctx):
         payment_method=pm,
         billing_month=date(2026, 3, 1),
     )
-    ctx.update({"user": user, "client": client, "cat1": cat1, "cat2": cat2})
+    ctx.update({"user": user, "household": household, "client": client, "cat1": cat1, "cat2": cat2})
     return ctx
 
 
@@ -153,7 +153,7 @@ def given_user_with_category(db, name, ceiling, ctx):
     cat = baker.make(
         "finances.Category", household=household, name=name, budget_ceiling=Decimal(str(ceiling))
     )
-    ctx.update({"user": user, "client": client, "category": cat})
+    ctx.update({"user": user, "household": household, "client": client, "category": cat})
     return ctx
 
 
@@ -195,7 +195,7 @@ def when_submit_inline(ctx, desc, amount):
 def then_entry_created(ctx):
     from finances.models import Entry
 
-    assert Entry.objects.filter(user=ctx["user"]).exists()
+    assert Entry.objects.for_household(ctx["household"]).exists()
 
 
 @then("the entry should appear in the table")
@@ -227,7 +227,10 @@ def when_create_installment(ctx, count, total):
 def then_installment_entries(ctx, count):
     from finances.models import Entry
 
-    assert Entry.objects.filter(user=ctx["user"], entry_type="installment").count() == count
+    assert (
+        Entry.objects.for_household(ctx["household"]).filter(entry_type="installment").count()
+        == count
+    )
 
 
 @then("the first billing month should be the computed month")
@@ -235,7 +238,8 @@ def then_first_billing_month(ctx):
     from finances.models import Entry
 
     first = (
-        Entry.objects.filter(user=ctx["user"], entry_type="installment")
+        Entry.objects.for_household(ctx["household"])
+        .filter(entry_type="installment")
         .order_by("billing_month")
         .first()
     )

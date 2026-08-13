@@ -10,14 +10,11 @@ from finances.models.entry import EntryType
 
 @pytest.mark.django_db
 def test_category_averages_text(user, household, scope):
-    cat = baker.make("finances.Category", user=user, household=household, name="Alimentação")
-    pix = baker.make(
-        "finances.PaymentMethod", user=user, household=household, name="Pix", type="pix"
-    )
+    cat = baker.make("finances.Category", household=household, name="Alimentação")
+    pix = baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
     for bm in (date(2026, 3, 1), date(2026, 4, 1), date(2026, 5, 1)):
         baker.make(
             "finances.Entry",
-            user=user,
             household=household,
             date=bm,
             amount=Decimal("1000"),

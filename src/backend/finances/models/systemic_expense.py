@@ -1,7 +1,6 @@
 import uuid
 from datetime import date as date_type
 
-from django.conf import settings
 from django.db import models
 
 from accounts.models import AuthoredHouseholdModel
@@ -9,14 +8,6 @@ from accounts.models import AuthoredHouseholdModel
 
 class SystemicExpense(AuthoredHouseholdModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="systemic_expenses",
-        # E04 phase 4, beat one: nullable so the suite converts in one pass.
-        null=True,
-        blank=True,
-    )
     name = models.CharField(max_length=100)
     category = models.ForeignKey(
         "finances.Category", on_delete=models.PROTECT, related_name="systemic_expenses"

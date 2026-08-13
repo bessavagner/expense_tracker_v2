@@ -18,7 +18,6 @@ class TestFindMatchingRules:
     def test_matches_case_insensitive(self, user, household, scope):
         baker.make(
             "assistant.MemoryRule",
-            user=user,
             household=household,
             trigger="cosmos",
             field="category",
@@ -31,7 +30,6 @@ class TestFindMatchingRules:
     def test_matches_substring(self, user, household, scope):
         baker.make(
             "assistant.MemoryRule",
-            user=user,
             household=household,
             trigger="cosmos",
             field="category",
@@ -43,7 +41,6 @@ class TestFindMatchingRules:
     def test_no_match_returns_empty(self, user, household, scope):
         baker.make(
             "assistant.MemoryRule",
-            user=user,
             household=household,
             trigger="cosmos",
             field="category",
@@ -55,7 +52,6 @@ class TestFindMatchingRules:
     def test_multiple_rules_match(self, user, household, scope):
         baker.make(
             "assistant.MemoryRule",
-            user=user,
             household=household,
             trigger="cosmos",
             field="category",
@@ -63,7 +59,6 @@ class TestFindMatchingRules:
         )
         baker.make(
             "assistant.MemoryRule",
-            user=user,
             household=household,
             trigger="cosmos",
             field="description",
@@ -77,7 +72,6 @@ class TestFindMatchingRules:
     def test_updates_last_used_at(self, user, household, scope):
         rule = baker.make(
             "assistant.MemoryRule",
-            user=user,
             household=household,
             trigger="cosmos",
             field="category",
@@ -93,7 +87,6 @@ class TestFindMatchingRules:
     ):
         baker.make(
             "assistant.MemoryRule",
-            user=other_user,
             household=other_household,
             trigger="cosmos",
             field="category",
@@ -105,7 +98,6 @@ class TestFindMatchingRules:
     def test_unmatched_rules_not_updated(self, user, household, scope):
         rule = baker.make(
             "assistant.MemoryRule",
-            user=user,
             household=household,
             trigger="cosmos",
             field="category",

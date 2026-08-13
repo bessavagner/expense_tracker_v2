@@ -18,7 +18,7 @@ class Command(BaseCommand):
             datetime.strptime(opts["as_of"], "%Y-%m-%d").date() if opts["as_of"] else date.today()
         )
         changed = 0
-        for cat in Category.objects.all():
+        for cat in Category.objects.select_related("household"):
             # The category's own household, not its author's: a household's
             # averages must be the same figure whichever member wrote the rows.
             q = category_moving_averages(cat.household, window=3, as_of=as_of).get(cat.id)
@@ -28,6 +28,6 @@ class Command(BaseCommand):
                 cat.historical_avg = h
                 cat.save(update_fields=["quarterly_avg", "historical_avg", "updated_at"])
             changed += 1
-            self.stdout.write(f"{cat.user_id} {cat.name}: 3m={q} hist={h}")
+            self.stdout.write(f"{cat.household.name} {cat.name}: 3m={q} hist={h}")
         verb = "gravado" if opts["apply"] else "DRY-RUN"
         self.stdout.write(self.style.SUCCESS(f"{verb}: {changed} categoria(s)."))

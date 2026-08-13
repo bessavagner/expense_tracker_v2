@@ -1,8 +1,8 @@
-"""Global constraint 4, enforced while E04 is still in flight.
+"""Global constraint 4: no domain query scopes by user.
 
-After E04 lands, the baseline below is empty and this becomes a flat "no
-domain query scopes by user" assertion. Until then it is a ratchet: the set
-may shrink, never grow.
+E04 is complete, so this is no longer a ratchet — it is the rule. The only
+exemption is `ACTOR_SCOPED`, where `user` is the person acting rather than the
+tenant owning, and that distinction is permanent.
 """
 
 import re
@@ -11,31 +11,10 @@ from pathlib import Path
 # tests → accounts → backend → src → repo root
 REPO_ROOT = Path(__file__).resolve().parents[4]
 
-# Every file that scoped by user at the start of E04 phase 1 (2026-08-11).
-# Strike entries as phases 3 and 4 convert them. Never add one.
-#
-# Empty as of phase 3 (2026-08-12): all 25 entries converted. The assignment
-# stays so `test_baseline_has_no_stale_entries` keeps meaning something and a
-# regression cannot quietly re-add one. Phase 4 deletes it and turns this file
-# into the flat "no domain query scopes by user" assertion S04-2 asked for.
-BASELINE = set()
-
-# Tenancy-transition tooling. Deliberately *not* in BASELINE, which may only
-# ever shrink: these files are not legacy leaks awaiting conversion, they read
-# by user because that is their job. `dump_ledger_totals` fingerprints the
-# ledger exactly as the pre-E04 code did, which is the only reason its
-# before/after comparison proves the migration lossless — scoping it by
-# household would compare two different questions. Phase 4 re-points it at
-# household in the same commit that drops the `user` columns.
-E04_TRANSITION_TOOLS = {
-    "src/backend/finances/management/commands/dump_ledger_totals.py",
-}
-
 # Files where `user` is the ACTOR, not the tenant — permanently exempt.
 # `AssistantUsageEvent.user` is who spent the turn: rate limiting is
 # per-person, so two people in one household each get their own budget.
-# Phase 2 decided this and phase 4 does not drop `user` from that model.
-# This set is permanent; E04_TRANSITION_TOOLS is not.
+# Phase 2 decided this and phase 4 did not drop `user` from that model.
 ACTOR_SCOPED = {
     "src/backend/assistant/throttling.py",
 }
@@ -58,28 +37,11 @@ def _files_scoping_by_user():
     return found
 
 
-def test_no_new_file_scopes_a_domain_query_by_user():
-    regressions = sorted(_files_scoping_by_user() - BASELINE - E04_TRANSITION_TOOLS - ACTOR_SCOPED)
-    assert not regressions, (
+def test_no_domain_query_scopes_by_user():
+    offenders = sorted(_files_scoping_by_user() - ACTOR_SCOPED)
+    assert not offenders, (
         "These files scope a domain query by user=. Use the household-scoped "
-        f"manager (accounts.scoping) instead: {regressions}"
-    )
-
-
-def test_baseline_has_no_stale_entries():
-    """A file that has been converted must leave the baseline, or the ratchet
-    stops ratcheting."""
-    stale = sorted(BASELINE - _files_scoping_by_user())
-    assert not stale, f"These files no longer scope by user — remove them from BASELINE: {stale}"
-
-
-def test_transition_tools_still_need_their_exemption():
-    """The escape hatch rots shut. A transition tool that no longer scopes by
-    user has been converted, and its entry must go — otherwise the set slowly
-    becomes a place to hide real leaks."""
-    stale = sorted(E04_TRANSITION_TOOLS - _files_scoping_by_user())
-    assert not stale, (
-        f"These no longer scope by user — remove them from E04_TRANSITION_TOOLS: {stale}"
+        f"manager (accounts.scoping) instead: {offenders}"
     )
 
 

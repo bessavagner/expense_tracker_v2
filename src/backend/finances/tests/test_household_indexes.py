@@ -1,8 +1,8 @@
 """E03's indexes, re-created with household as the leading column.
 
-The user-leading originals stay until phase 4: phase 3 converts one surface
-at a time, and until a surface is converted its queries still filter by user.
-Dropping the old indexes now would deoptimise the app mid-refactor.
+Phase 4 dropped the user-leading originals with the column they led on. The
+one survivor is `usage_user_kind_recent_idx`: `AssistantUsageEvent.user` is the
+acting member, and the throttle counts per person (E04 decision 1).
 """
 
 import pytest
@@ -18,13 +18,16 @@ HOUSEHOLD_LEADING = {
     "assistant_assistantusageevent": ["usage_hh_kind_recent_idx"],
 }
 
-USER_LEADING_STILL_PRESENT = [
+# The actor-scoped index, and the only user-leading one left anywhere.
+ACTOR_LEADING_STILL_PRESENT = ["usage_user_kind_recent_idx"]
+
+# Dropped by 0018_drop_user / 0015_drop_user, with the columns they led on.
+USER_LEADING_GONE = [
     "entry_user_billing_type_idx",
     "entry_user_date_recent_idx",
     "income_user_month_idx",
     "chat_user_recent_idx",
     "draft_user_status_recent_idx",
-    "usage_user_kind_recent_idx",
 ]
 
 
@@ -41,12 +44,20 @@ def test_every_household_leading_index_exists():
     assert set(expected) <= existing, sorted(set(expected) - existing)
 
 
-def test_the_user_leading_indexes_are_still_there():
-    """Phase 4 drops these with the column. Removing one earlier would slow
-    every not-yet-converted query path in phase 3."""
+def test_the_user_leading_indexes_are_gone():
+    """They indexed the tenant column, which no longer exists. An index that
+    survived the drop would mean a stale migration state, not a spare tyre."""
     existing = _index_names()
 
-    assert set(USER_LEADING_STILL_PRESENT) <= existing
+    assert set(USER_LEADING_GONE).isdisjoint(existing)
+
+
+def test_the_actor_leading_index_survives():
+    """Per-person rate limiting needs `(user, kind, -created_at)`; scoping that
+    query by household would give two members one shared budget."""
+    existing = _index_names()
+
+    assert set(ACTOR_LEADING_STILL_PRESENT) <= existing
 
 
 def test_household_index_leads_with_household():

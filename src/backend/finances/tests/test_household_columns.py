@@ -78,7 +78,7 @@ def test_model_carries_household_and_created_by(label, user):
 
     model = apps.get_model(label)
     household = baker.make(Household)
-    row = baker.make(model, user=user, household=household, created_by=user)
+    row = baker.make(model, household=household, created_by=user)
 
     assert row.household == household
     assert row.created_by == user

@@ -160,7 +160,6 @@ class Command(BaseCommand):
                         "amount": Decimal(amount),
                         "is_recurring": True,
                         "recurrence_start": months[0],
-                        "user": user,  # still NOT NULL until phase 4
                         "created_by": user,
                     },
                 )
@@ -182,7 +181,6 @@ class Command(BaseCommand):
                     "category": category,
                     "payment_method": pix,
                     "default_amount": Decimal(default_amount),
-                    "user": user,  # still NOT NULL until phase 4
                     "created_by": user,
                 },
             )
@@ -230,7 +228,6 @@ class Command(BaseCommand):
 
                 pm = random.choice(pm_list)
                 Entry.objects.create(
-                    user=user,  # still NOT NULL until phase 4
                     household=household,
                     created_by=user,
                     date=entry_date,
@@ -266,7 +263,6 @@ class Command(BaseCommand):
             installment_amount = (total_amount / num).quantize(Decimal("0.01"))
 
             plan = InstallmentPlan.objects.create(
-                user=user,  # still NOT NULL until phase 4
                 household=household,
                 created_by=user,
                 date=start_month,

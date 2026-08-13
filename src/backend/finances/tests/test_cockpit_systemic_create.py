@@ -13,10 +13,9 @@ class TestCockpitSystemicCreateView(TestCase):
     def setUp(self):
         self.user = baker.make(CustomUser)
         self.client.force_login(self.user)
-        self.cat = baker.make(Category, household=household_for_user(self.user), name="Moradia")
-        self.pm = baker.make(
-            PaymentMethod, household=household_for_user(self.user), type="pix", name="Pix"
-        )
+        self.household = household_for_user(self.user)
+        self.cat = baker.make(Category, household=self.household, name="Moradia")
+        self.pm = baker.make(PaymentMethod, household=self.household, type="pix", name="Pix")
 
     def test_post_valid_creates_systemic_expense(self):
         resp = self.client.post(
@@ -29,7 +28,9 @@ class TestCockpitSystemicCreateView(TestCase):
             },
         )
         self.assertEqual(resp.status_code, 200)
-        self.assertTrue(SystemicExpense.objects.filter(user=self.user, name="Internet").exists())
+        self.assertTrue(
+            SystemicExpense.objects.for_household(self.household).filter(name="Internet").exists()
+        )
 
     def test_post_valid_rerenders_systemic_section(self):
         resp = self.client.post(
