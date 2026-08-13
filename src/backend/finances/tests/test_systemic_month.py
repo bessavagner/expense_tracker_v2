@@ -14,15 +14,15 @@ class TestSystemicMonth(TestCase):
         self.other_user = baker.make(CustomUser)
         self.household = household_for_user(self.user)
         self.other_household = household_for_user(self.other_user)
-        self.cat = baker.make(Category, user=self.user)
-        self.pm = baker.make(PaymentMethod, user=self.user)
+        self.cat = baker.make(Category, household=household_for_user(self.user))
+        self.pm = baker.make(PaymentMethod, household=household_for_user(self.user))
 
     def test_pairs_active_templates_with_month_entry(self):
         from finances.services.systemic_month import systemic_rows_for_month
 
         s1 = baker.make(
             SystemicExpense,
-            user=self.user,
+            household=household_for_user(self.user),
             name="Aluguel",
             category=self.cat,
             payment_method=self.pm,
@@ -31,7 +31,7 @@ class TestSystemicMonth(TestCase):
         )
         baker.make(
             SystemicExpense,
-            user=self.user,
+            household=household_for_user(self.user),
             name="Academia",
             category=self.cat,
             payment_method=self.pm,
@@ -40,7 +40,7 @@ class TestSystemicMonth(TestCase):
         )
         baker.make(
             SystemicExpense,
-            user=self.user,
+            household=household_for_user(self.user),
             name="Antigo",
             category=self.cat,
             payment_method=self.pm,
@@ -60,7 +60,7 @@ class TestSystemicMonth(TestCase):
 
         s1 = baker.make(
             SystemicExpense,
-            user=self.user,
+            household=household_for_user(self.user),
             name="Aluguel",
             category=self.cat,
             payment_method=self.pm,
@@ -75,11 +75,11 @@ class TestSystemicMonth(TestCase):
         """The neighbour's template must not reach this household's cockpit."""
         from finances.services.systemic_month import systemic_rows_for_month
 
-        other_cat = baker.make(Category, user=self.other_user)
-        other_pm = baker.make(PaymentMethod, user=self.other_user)
+        other_cat = baker.make(Category, household=household_for_user(self.other_user))
+        other_pm = baker.make(PaymentMethod, household=household_for_user(self.other_user))
         baker.make(
             SystemicExpense,
-            user=self.other_user,
+            household=household_for_user(self.other_user),
             name="Aluguel do vizinho",
             category=other_cat,
             payment_method=other_pm,
@@ -96,7 +96,7 @@ class TestSystemicMonth(TestCase):
 
         baker.make(
             SystemicExpense,
-            user=self.user,
+            household=household_for_user(self.user),
             name="Aluguel",
             category=self.cat,
             payment_method=self.pm,

@@ -11,14 +11,14 @@ from finances.services.systemic_recurrence import apply_systemic_recurrence
 
 
 @pytest.fixture
-def template(user):
-    cat = baker.make("finances.Category", user=user)
+def template(household):
+    cat = baker.make("finances.Category", household=household)
     pm = baker.make(
-        "finances.PaymentMethod", user=user, name="C6", type="credit_card", closing_day=25
+        "finances.PaymentMethod", household=household, name="C6", type="credit_card", closing_day=25
     )
     return baker.make(
         "finances.SystemicExpense",
-        user=user,
+        household=household,
         name="Spotify - Amanda",
         category=cat,
         payment_method=pm,
@@ -77,10 +77,10 @@ class TestApplySystemicRecurrence:
         template.refresh_from_db()
         assert template.default_amount == Decimal("11.90")
 
-    def test_isolated_to_template(self, user, template):
+    def test_isolated_to_template(self, household, template):
         other = baker.make(
             "finances.SystemicExpense",
-            user=user,
+            household=household,
             name="Claude",
             category=template.category,
             payment_method=template.payment_method,

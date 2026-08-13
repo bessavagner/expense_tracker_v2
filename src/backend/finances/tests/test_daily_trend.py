@@ -16,17 +16,15 @@ pytestmark = pytest.mark.django_db
 def setup(django_user_model):
     user = django_user_model.objects.create_user(username="u", password="p")
     household = household_for_user(user)
-    cat = Category.objects.create(user=user, household=household, name="Mercado")
-    adj = Category.objects.create(user=user, household=household, name="Ajuste de saldo")
-    pm = PaymentMethod.objects.create(
-        user=user, household=household, name="Pix", type=PaymentType.PIX
-    )
+    cat = Category.objects.create(household=household, name="Mercado")
+    adj = Category.objects.create(household=household, name="Ajuste de saldo")
+    pm = PaymentMethod.objects.create(household=household, name="Pix", type=PaymentType.PIX)
     return user, cat, adj, pm, household
 
 
-def _mk(user, *, d, amount, category, pm):
+def _mk(household, *, d, amount, category, pm):
     return Entry.objects.create(
-        user=user,
+        household=household,
         date=d,
         amount=Decimal(amount),
         description="x",
@@ -61,7 +59,7 @@ def test_groups_by_real_date(setup):
     as_of = date(2025, 7, 7)
     # 100 on each of the last 3 days -> rolling(7d period -> window 3) median 100 at as_of.
     for k in range(3):
-        _mk(user, d=as_of - timedelta(days=k), amount="100", category=cat, pm=pm)
+        _mk(household, d=as_of - timedelta(days=k), amount="100", category=cat, pm=pm)
     series = daily_spend_trend(household, period=7, as_of=as_of)
     assert series[-1]["median"] == Decimal("100")
 
@@ -72,7 +70,7 @@ def test_robust_to_single_outlier(setup):
     # period 30 -> rolling 7. Put 50 on each of last 7 days, one of them 5000.
     for k in range(7):
         amount = "5000" if k == 3 else "50"
-        _mk(user, d=as_of - timedelta(days=k), amount=amount, category=cat, pm=pm)
+        _mk(household, d=as_of - timedelta(days=k), amount=amount, category=cat, pm=pm)
     series = daily_spend_trend(household, period=30, as_of=as_of)
     # Median of [50,50,50,5000,50,50,50] is 50 — outlier does not move the line.
     assert series[-1]["median"] == Decimal("50")
@@ -85,9 +83,9 @@ def test_iqr_band(setup):
     user, cat, adj, pm, household = setup
     as_of = date(2025, 7, 7)
     # window of 3 (period 7): values 10, 20, 30 over last 3 days.
-    _mk(user, d=as_of, amount="30", category=cat, pm=pm)
-    _mk(user, d=as_of - timedelta(days=1), amount="20", category=cat, pm=pm)
-    _mk(user, d=as_of - timedelta(days=2), amount="10", category=cat, pm=pm)
+    _mk(household, d=as_of, amount="30", category=cat, pm=pm)
+    _mk(household, d=as_of - timedelta(days=1), amount="20", category=cat, pm=pm)
+    _mk(household, d=as_of - timedelta(days=2), amount="10", category=cat, pm=pm)
     series = daily_spend_trend(household, period=7, as_of=as_of)
     last = series[-1]
     # sorted [10,20,30]: median=20, p25=15, p75=25 (linear interpolation).
@@ -99,7 +97,7 @@ def test_iqr_band(setup):
 def test_adjustment_excluded(setup):
     user, cat, adj, pm, household = setup
     as_of = date(2025, 7, 7)
-    _mk(user, d=as_of, amount="5000", category=adj, pm=pm)  # #AJUSTE
+    _mk(household, d=as_of, amount="5000", category=adj, pm=pm)  # #AJUSTE
     series = daily_spend_trend(household, period=7, as_of=as_of)
     assert series[-1]["median"] == Decimal("0")
 

@@ -16,15 +16,18 @@ class TestInstallmentRowsForMonth(TestCase):
         self.other_user = baker.make(CustomUser)
         self.household = household_for_user(self.user)
         self.other_household = household_for_user(self.other_user)
-        self.cat = baker.make(Category, user=self.user)
-        self.pm = baker.make(PaymentMethod, user=self.user, type="pix")
+        self.cat = baker.make(Category, household=household_for_user(self.user))
+        self.pm = baker.make(PaymentMethod, household=household_for_user(self.user), type="pix")
 
     def _make_plan(self, description, num=6, amount=Decimal("100.00"), user=None):
-        user = user or self.user
-        cat = baker.make(Category, user=user)
-        pm = baker.make(PaymentMethod, user=user, type="pix")
+        # The caller still names a person — `user=self.other_user` is how the
+        # isolation tests build a foreign plan — so the household is resolved
+        # from them rather than pinned to self.household.
+        household = household_for_user(user or self.user)
+        cat = baker.make(Category, household=household)
+        pm = baker.make(PaymentMethod, household=household, type="pix")
         plan = InstallmentPlan.objects.create(
-            user=user,
+            household=household,
             date=date(2026, 1, 1),
             description=description,
             category=cat,

@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 from model_bakery import baker
 
-from core.models import CustomUser
+from accounts.models import Household
 from finances.models import PaymentMethod
 from finances.services.billing import installment_billing_months
 
@@ -11,8 +11,9 @@ from finances.services.billing import installment_billing_months
 @pytest.mark.django_db
 class TestInstallmentBillingMonths:
     def _pm(self, **kwargs):
-        user = baker.make(CustomUser)
-        return baker.make(PaymentMethod, user=user, **kwargs)
+        # Tenancy is irrelevant here — the unit under test is the closing-day
+        # arithmetic — but the column is required, so it gets its own household.
+        return baker.make(PaymentMethod, household=baker.make(Household), **kwargs)
 
     def test_credit_card_after_closing_pushes_first_two_months_out(self):
         """Compra 12/06 num cartão que fecha dia 5 (após fechamento) → fatura
