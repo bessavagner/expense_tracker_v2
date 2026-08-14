@@ -12,7 +12,9 @@ User = get_user_model()
 
 class MemoryEmbeddingModelTest(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username="testuser", password="testpass")
+        self.user = User.objects.create_user(
+            username="testuser", email="testuser@example.com", password="testpass"
+        )
 
     def test_create_embedding(self):
         embedding = MemoryEmbedding.objects.create(
@@ -54,7 +56,9 @@ class MemoryEmbeddingModelTest(TestCase):
 
 class SemanticSearchTest(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username="searchuser", password="testpass")
+        self.user = User.objects.create_user(
+            username="searchuser", email="searchuser@example.com", password="testpass"
+        )
         self.household = household_for_user(self.user)
         self.scope = AgentScope(household=self.household, user=self.user)
         # Create embeddings with known vectors for cosine similarity testing
@@ -89,7 +93,9 @@ class SemanticSearchTest(TestCase):
     def test_find_semantic_matches_filters_by_household(self):
         from assistant.agents.memory import find_semantic_matches
 
-        other_user = User.objects.create_user(username="other", password="testpass")
+        other_user = User.objects.create_user(
+            username="other", email="other@example.com", password="testpass"
+        )
         MemoryEmbedding.objects.create(
             household=household_for_user(other_user),
             text="other user embedding",

@@ -771,25 +771,94 @@ Run it at both phase-3 gates (3a, after the Django surface converts; 3b, after
 the agent). Needs the pgvector container on `:5433` and a `.env`; the temporary
 worktree inherits your `.env` and is removed on exit.
 
+### Rehearsing the E05 email-unique migration
+
+`core/0003_customuser_email_unique` puts a UNIQUE constraint on
+`core_customuser.email`, a column that has held `''` for every account that
+never set an address. `ALTER TABLE … ADD CONSTRAINT UNIQUE` aborts the whole
+deploy the moment two rows share a value, and `''` is the value they would
+share — so the migration back-fills blanks with
+`<username>@sem-email.invalid` (RFC 2606 reserves `.invalid`, so a placeholder
+can neither collide with a real address nor receive mail) before adding the
+constraint.
+
+```bash
+scripts/rehearse-e05-email-unique.sh
+```
+
+Same shape as the E04 script: production is read once by `pg_dump`, restored
+into a throwaway `pgvector/pgvector:pg17` container on `127.0.0.1:55433`,
+migrated there, and inspected. Nothing on the production server is created,
+migrated or dropped. Credentials come from `SUPABASE_SESSION_POOLER` in `.env`
+if `PGHOST` is unset — the script splits the URL itself because the password
+contains a space and the URL form is therefore malformed for libpq.
+
+It fails loudly, before migrating, if two accounts share a **non-blank**
+address. The back-fill cannot repair that case and resolving it is an operator
+decision, not a code one.
+
+**Run for real on 2026-08-13.** Production held 3 accounts, of which 1 had a
+blank address; the migration applied cleanly and left zero duplicates.
+
+**The one account that needs a human afterwards.** `claude-bessavagner`
+(`is_staff=True`) is the blank one, so it becomes
+`claude-bessavagner@sem-email.invalid` — an address that can never receive
+mail. From E05 the login identifier *is* the email, so **that account cannot
+log in until someone gives it a real one**, and it is a staff account, which
+means it is also the one that reaches the admin. Repair it in the same
+maintenance window as the deploy:
+
+```bash
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/postgres?sslmode=require" \
+  uv run python src/backend/manage.py shell -c "
+from core.models import CustomUser
+u = CustomUser.objects.get(username='claude-bessavagner')
+u.email = 'seu-endereco@gmail.com'
+u.save(update_fields=['email'])
+print(u.username, u.email)
+"
+```
+
+Then check nothing else was left behind:
+
+```sql
+SELECT id, username, email, is_staff FROM core_customuser
+ WHERE email LIKE '%@sem-email.invalid';
+```
+
+Expected after the repair: zero rows.
+
 ---
 
 ## Signing in, and clearing a lockout
 
-The family's login page is **`/login/`**. It used to be `/admin/login/`, which is
-why the app opened on a Django admin screen; that URL still exists and still
-works, but it is the maintainer's door now. `LOGIN_URL` and `LogoutView` both
-point at `/login/`, so an unauthenticated request to any page lands there with
-`?next=` preserved.
+The family's login page is **`/accounts/login/`**, and it is now the *only*
+one. It was `/admin/login/` before E01, then `/login/` after it; E05 moved it
+to allauth's URL, because allauth owns signup, verification and password reset
+and the login form has to share their session flow. `/login/` still answers —
+as a permanent redirect, because the installed Android TWA points at it and
+there is no way to push a URL change to a phone that already has the app.
+
+`/admin/login/` is **closed**: see *Reaching the admin*. Staff sign in at the
+same page as everyone else.
 
 **After deploying this change, tell the family nothing.** Their bookmarks and the
 installed TWA point at `/`, which redirects correctly. Only a bookmark saved
 directly on `/admin/login/` keeps working as-is (it does; it just skips the
 branded page).
 
-Brute-force lockout is **10 failed attempts in 15 minutes**, counted by username
-*and* by IP, enforced in `core.auth_backends.LockoutModelBackend`. While locked,
-even the correct password is refused, and `/login/` now says so in Portuguese
-instead of showing the same message as a typo.
+Brute-force lockout is **10 failed attempts in 15 minutes**, counted by
+identifier *and* by IP, enforced in
+`core.auth_backends.LockoutAuthenticationBackend`. While locked, even the
+correct password is refused, and the login page says so in Portuguese instead
+of showing the same message as a typo.
+
+From E05 the identifier is the **email address**, not the username — allauth
+keys the submitted credential by the login method, so `LoginAttempt.username`
+holds an address for anything submitted through the login page. allauth's own
+login throttle is switched off (`ACCOUNT_RATE_LIMITS = {"login_failed": None}`)
+because it is stricter than this one and would fire first, showing its own
+generic error and hiding the explanation.
 
 Clear a lockout for one person:
 
@@ -836,6 +905,165 @@ print(h, '->', u)
 
 Their **oldest** membership is the default household, so if they already have
 one of their own from a first login, that one keeps winning until they switch.
+
+## Reaching the admin
+
+**`/admin/` is gone, and that is deliberate.** It answers 404 now, to everyone,
+forever. The service is deployed `--allow-unauthenticated` because the product
+needs to be, so admin — which holds every household's financial records and
+every user's raw chat with the assistant — was sitting on the open internet at
+the first path any scanner tries.
+
+Two independent controls replaced it:
+
+1. **An unguessable path**, from the `ADMIN_URL_PATH` env var.
+2. **`core.admin_gate.admin_staff_only_middleware`**, which answers **404** —
+   not 403 — to anyone who is not staff. A 403 would confirm the path is
+   admin; a 404 tells a scanner nothing, which is the whole value of moving it.
+
+Guessing the path correctly still gets you nothing, and being staff on the
+wrong path still gets you nothing.
+
+### Set the path on Cloud Run
+
+```bash
+gcloud run services update expense-tracker --region=southamerica-east1 \
+  --project=expense-tracker-482807 \
+  --set-env-vars=ADMIN_URL_PATH=gestao-4f9c2a/
+```
+
+Pick your own suffix; do not reuse the one above, and do not commit it. The dev
+default is `gestao-dev/` — deliberately not `admin/`, so a missing env var is
+loud rather than a silent restoration of the old front door.
+
+### Enrol a second factor BEFORE the first admin visit
+
+Staff without an authenticator are redirected to enrolment rather than 404'd —
+locking the only operator out of their own admin with no explanation is how
+this feature gets reverted at 2am. But the enrolment page itself asks you to
+re-authenticate first, so do this while you still remember the password:
+
+1. Sign in normally at `/accounts/login/`.
+2. Go to **`/accounts/2fa/totp/activate/`**. Confirm the password when asked.
+3. Scan the QR with your authenticator app and enter the code.
+4. Go to **`/accounts/2fa/recovery-codes/`** and save the codes **somewhere
+   that is not the phone holding the TOTP app**. A phone is a single point of
+   failure for both halves otherwise, and there is no other way back in.
+
+From the next login, the correct password alone does not sign staff in: allauth
+answers it with the 2FA challenge.
+
+### Failure modes, and what they actually mean
+
+| What you see | What it means |
+|---|---|
+| 404 at the admin path while signed in | The account is not `is_staff`. The gate cannot tell you that, by design. |
+| Redirect loop to the MFA page | The authenticator was never *activated* — a scanned QR that was never confirmed with a code leaves no `Authenticator` row. Finish step 3. The gate is not broken. |
+| 404 at `/admin/` | Correct. That path is retired. |
+| Signed in fine but admin still 404s | Wrong path — check `ADMIN_URL_PATH` on the revision matches the URL you typed, trailing slash included. |
+
+### What gets logged
+
+Every staff request admin actually answers writes an `AdminAccessLog` row —
+actor, path, method, IP, timestamp — readable at
+`<ADMIN_URL_PATH>core/adminaccesslog/` and **not** deletable or editable from
+admin. Refused requests are deliberately not logged: a 404 disclosed nothing,
+and logging those would drown the rows that record a human actually reading
+someone's money.
+
+**`ChatMessage` is no longer registered in admin at all.** Raw conversations
+with the assistant — receipts, salaries, arguments about money — are not an
+admin list column. E17 owns the deliberate, consented, logged way to look at a
+customer's account.
+
+## Transactional email
+
+E05 made email the login identifier, so mail is not a nicety here: an account
+that cannot receive a verification message cannot be created, and an invitation
+that lands in Spam is an invitation that was never sent. The provider is
+**Resend, over plain SMTP** — Django already speaks SMTP, so switching provider
+is an environment change rather than a deploy.
+
+**Locally, nothing is sent.** With `EMAIL_HOST` unset the settings pick the
+console backend and every message is printed to the terminal, links included.
+That branch exists because Django's own default is an SMTP backend pointed at
+`localhost:25`, where mail is swallowed with no exception — you would see
+"e-mail enviado" and an empty inbox forever.
+
+### 1. Create the Resend account and verify the sending domain
+
+**This step is yours; nothing in the repo can do it, and nothing below works
+until it is done.** In the Resend dashboard, add the sending domain and publish
+the DNS records it issues at the registrar:
+
+| Type | Host | Value |
+|---|---|---|
+| `TXT` | `send.SEU-DOMINIO` | `v=spf1 include:amazonses.com ~all` |
+| `TXT` | `resend._domainkey.SEU-DOMINIO` | the DKIM public key Resend shows |
+| `MX` | `send.SEU-DOMINIO` | `feedback-smtp.<region>.amazonses.com` (priority 10) |
+
+Resend prints the exact values — copy them, do not retype the DKIM key. It
+takes minutes to hours to verify.
+
+**This is not optional and it is not cosmetic.** Unauthenticated mail from a
+financial app is exactly the profile Gmail files under Spam. An unverified
+domain does not get "slightly worse delivery"; it gets a signup funnel where
+nobody ever confirms their address, and you will read it as a bug in the code.
+
+### 2. Store the key and point the service at it
+
+```bash
+printf '%s' 're_xxxxxxxxxxxxxxxxxxxxx' | gcloud secrets create resend-api-key \
+  --project=expense-tracker-482807 --data-file=-
+
+gcloud run services update expense-tracker --region=southamerica-east1 \
+  --project=expense-tracker-482807 \
+  --set-env-vars=EMAIL_HOST=smtp.resend.com,DEFAULT_FROM_EMAIL='Ledger <nao-responda@SEU-DOMINIO>' \
+  --set-secrets=RESEND_API_KEY=resend-api-key:latest
+```
+
+`gcloud secrets create` prints `Created version [1] of the secret
+[resend-api-key].`; the `run services update` prints the new revision name and
+`Service [expense-tracker] revision [expense-tracker-000NN-xxx] has been
+deployed and is serving 100 percent of traffic.`
+
+**`printf`, not `echo`.** `echo` appends a newline, the newline goes into the
+secret, and SMTP then fails with `535 Authentication failed` — an error that
+reads like a wrong key and is really a wrong *byte*. If you see 535, suspect
+this before you suspect Resend.
+
+The sending address must be **at the verified domain**. A `DEFAULT_FROM_EMAIL`
+at a domain Resend has not verified is rejected outright.
+
+### 3. Send a test message from the deployed revision
+
+```bash
+gcloud run services proxy expense-tracker --region=southamerica-east1 \
+  --project=expense-tracker-482807 &
+# then, in a Django shell on the revision:
+#   from django.core.mail import send_mail
+#   send_mail("Teste", "corpo", None, ["seu-endereco@gmail.com"])
+```
+
+`send_mail` returns `1`. A return of `0`, or a `SMTPAuthenticationError`, means
+the key or the from-address is wrong — see above.
+
+### 4. The deliverability check (S05-2's last bullet)
+
+Not a formality, and not satisfiable by a passing test. Send to a **real Gmail
+address** and confirm:
+
+- [ ] it arrives in **Inbox** — not Promotions, not Spam;
+- [ ] "Show original" reports `spf=pass` and `dkim=pass`;
+- [ ] the `Authentication-Results` header is pasted below as evidence.
+
+```
+Authentication-Results: mx.google.com;
+       <paste the real header here after the first successful send>
+```
+
+An empty block above means this check has not been done, whatever the test
+suite says.
 
 ## Import batches
 

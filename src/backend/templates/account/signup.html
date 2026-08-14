@@ -1,0 +1,58 @@
+{% extends "account/base.html" %}
+
+{% block head_title %}Criar conta — Expense Tracker{% endblock %}
+{% block heading %}Criar conta{% endblock %}
+{% block subheading %}Comece a acompanhar as contas da casa.{% endblock %}
+
+{% block inner %}
+{% if form.non_field_errors %}
+<div role="alert" class="alert alert-error mb-4"><span>{{ form.non_field_errors|first }}</span></div>
+{% endif %}
+
+<form method="post" action="{% url 'account_signup' %}">
+    {% csrf_token %}
+    <fieldset class="fieldset">
+        <label class="label" for="{{ form.email.id_for_label }}">E-mail</label>
+        <input type="email" name="{{ form.email.html_name }}" id="{{ form.email.id_for_label }}"
+               class="input w-full {% if form.email.errors %}input-error {% endif %}"
+               autocomplete="email" autocapitalize="none" inputmode="email"
+               value="{{ form.email.value|default:'' }}" required autofocus>
+        {% if form.email.errors %}
+        <p class="label text-error">{{ form.email.errors|first }}</p>
+        {% endif %}
+
+        <label class="label" for="{{ form.email2.id_for_label }}">Confirme o e-mail</label>
+        <input type="email" name="{{ form.email2.html_name }}" id="{{ form.email2.id_for_label }}"
+               class="input w-full {% if form.email2.errors %}input-error {% endif %}"
+               autocomplete="email" autocapitalize="none" inputmode="email" required>
+        {% if form.email2.errors %}
+        <p class="label text-error">{{ form.email2.errors|first }}</p>
+        {% endif %}
+
+        <label class="label" for="{{ form.password1.id_for_label }}">Senha</label>
+        <input type="password" name="{{ form.password1.html_name }}" id="{{ form.password1.id_for_label }}"
+               class="input w-full {% if form.password1.errors %}input-error {% endif %}"
+               autocomplete="new-password" required>
+        {% if form.password1.errors %}
+        <p class="label text-error">{{ form.password1.errors|first }}</p>
+        {% else %}
+        <p class="label">Pelo menos 8 caracteres. Evite senhas comuns.</p>
+        {% endif %}
+
+        <label class="label" for="{{ form.password2.id_for_label }}">Repita a senha</label>
+        <input type="password" name="{{ form.password2.html_name }}" id="{{ form.password2.id_for_label }}"
+               class="input w-full {% if form.password2.errors %}input-error {% endif %}"
+               autocomplete="new-password" required>
+        {% if form.password2.errors %}
+        <p class="label text-error">{{ form.password2.errors|first }}</p>
+        {% endif %}
+    </fieldset>
+    {% if redirect_field_value %}
+    <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
+    {% endif %}
+    <button type="submit" class="btn btn-accent w-full mt-4" data-pending="Criando…">Criar conta</button>
+</form>
+
+<div class="divider text-xs opacity-60">ou</div>
+<a href="{% url 'account_login' %}" class="btn btn-ghost btn-sm w-full">Já tenho conta</a>
+{% endblock %}

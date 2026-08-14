@@ -95,7 +95,7 @@ class TestIconFiles(TestCase):
 
 class TestBaseHeadTags(TestCase):
     def setUp(self):
-        self.client.force_login(baker.make(CustomUser))
+        self.client.force_login(baker.make(CustomUser, email="pwa@example.com"))
 
     def test_page_links_manifest(self):
         body = self.client.get("/").content.decode()
@@ -121,23 +121,24 @@ class TestLoginPagePwa(TestCase):
     """The unauthenticated landing must advertise the PWA, so the browser
     offers install before sign-in.
 
-    Both doors are checked: /login/ is the family's, and /admin/login/ is still
-    reachable directly by the maintainer. They share the head tags through
-    partials/_pwa_head.html — these tests are what keeps them shared.
+    There is exactly one door to check now. E05 moved the family's from /login/
+    (a 301 since, with no head of its own) to allauth's URL, and closed
+    /admin/login/ outright — `core.admin_gate` 404s anonymous requests, so the
+    maintainer signs in here too.
     """
 
     def test_login_page_links_manifest(self):
-        for door in ("/login/", "/admin/login/"):
+        for door in ("/accounts/login/",):
             body = self.client.get(door).content.decode()
             self.assertIn('rel="manifest"', body, door)
             self.assertIn("/manifest.webmanifest", body, door)
 
     def test_login_page_registers_service_worker(self):
-        for door in ("/login/", "/admin/login/"):
+        for door in ("/accounts/login/",):
             body = self.client.get(door).content.decode()
             self.assertIn("serviceWorker", body, door)
             self.assertIn("/sw.js", body, door)
 
     def test_login_page_has_brand_tile_color(self):
-        for door in ("/login/", "/admin/login/"):
+        for door in ("/accounts/login/",):
             self.assertIn("#147874", self.client.get(door).content.decode(), door)

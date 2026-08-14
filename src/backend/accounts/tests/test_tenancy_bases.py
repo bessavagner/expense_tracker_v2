@@ -72,11 +72,18 @@ def test_created_by_survives_the_author_leaving_the_household():
     assert field.remote_field.on_delete is models.SET_NULL
 
 
-def test_registry_holds_exactly_the_thirteen_re_tenanted_models():
+def test_registry_holds_exactly_the_fourteen_household_owned_models():
     """A model that grows a household column without a decision, or loses one,
     changes this number. That is the point — it should be a conversation, not
-    a silent diff."""
+    a silent diff.
+
+    Thirteen of these are E04's re-tenanted models. The fourteenth,
+    `accounts.Invitation`, is E05's and was born household-owned: it inherits
+    the base precisely so the cross-household isolation suite covers it without
+    anyone adding it to a list. This assertion is that conversation happening.
+    """
     expected = {
+        "accounts.Invitation",
         "finances.Entry",
         "finances.Income",
         "finances.Category",

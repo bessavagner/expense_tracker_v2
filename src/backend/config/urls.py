@@ -1,6 +1,7 @@
+from django.conf import settings
 from django.contrib import admin
-from django.contrib.auth.views import LogoutView
 from django.urls import include, path
+from django.views.generic import RedirectView
 
 from core.views import (
     AppLoginView,
@@ -15,11 +16,49 @@ urlpatterns = [
     path("healthz/", health_check, name="health-check"),
     path("manifest.webmanifest", ManifestView.as_view(), name="manifest"),
     path(".well-known/assetlinks.json", AssetLinksView.as_view(), name="assetlinks"),
-    path("login/", AppLoginView.as_view(), name="login"),
-    path("logout/", LogoutView.as_view(next_page="/login/"), name="logout"),
-    path("admin/", admin.site.urls),
+    # The installed Android TWA and the PWA shortcut both point at these two
+    # paths. They are permanent redirects rather than deletions because there
+    # is no way to push a URL change to a phone that already has the app.
+    # Note a 301 cannot carry a POST body, so `/logout/` lands on allauth's
+    # confirmation page rather than ending the session; the navbar posts to
+    # `account_logout` directly, which does.
+    path(
+        "login/",
+        RedirectView.as_view(url="/accounts/login/", permanent=True, query_string=True),
+        name="login",
+    ),
+    path(
+        "logout/",
+        RedirectView.as_view(url="/accounts/logout/", permanent=True),
+        name="logout",
+    ),
+    # Declared *before* allauth's include so this one wins the `account_login`
+    # name — reverse() resolves to the first pattern registered under a name,
+    # and resolution matches in order too, so allauth's own view never gets a
+    # chance.
+    path("accounts/login/", AppLoginView.as_view(), name="account_login"),
+    path("accounts/", include("allauth.urls")),
+    # Not "admin/". The path is an environment variable and the middleware
+    # above 404s anyone who is not staff with a second factor — two
+    # independent controls, because this service is public by necessity.
+    #
+    # The unslashed form is registered on purpose, and it is a security
+    # control rather than a convenience. CommonMiddleware's APPEND_SLASH
+    # rewrites a 404 into a 301 whenever the unslashed URL does *not* resolve
+    # and the slashed one does — so `/gestao-xxxx` answered 301 while every
+    # wrong guess answered 404, confirming the secret path to anyone who tried
+    # it. Registering it makes it resolve, which is precisely what stops
+    # APPEND_SLASH touching it; the gate above still 404s the request first
+    # for anyone who is not staff, and this redirect only ever runs for
+    # someone already allowed in.
+    path(
+        settings.ADMIN_URL_PATH.rstrip("/"),
+        RedirectView.as_view(url="/" + settings.ADMIN_URL_PATH, permanent=False),
+    ),
+    path(settings.ADMIN_URL_PATH, admin.site.urls),
     path("api/assistant/", include("assistant.urls")),
     path("sw.js", ServiceWorkerView.as_view(), name="service-worker"),
     path("offline/", OfflineView.as_view(), name="offline"),
+    path("casa/", include("accounts.urls")),
     path("", include("finances.urls")),
 ]

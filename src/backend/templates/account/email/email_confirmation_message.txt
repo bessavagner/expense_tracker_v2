@@ -1,0 +1,12 @@
+{% autoescape off %}Olá,
+
+Alguém — esperamos que você — criou uma conta no Expense Tracker com este endereço.
+
+Confirme clicando no link abaixo:
+
+{{ activate_url }}
+
+O link vale por {{ expiration_days|default:3 }} dias. Se não foi você, ignore esta mensagem: sem a confirmação, a conta não é ativada.
+
+— Expense Tracker
+{% endautoescape %}

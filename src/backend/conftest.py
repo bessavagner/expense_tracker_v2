@@ -35,15 +35,35 @@ def shifted_clock():
         yield
 
 
+@pytest.fixture(autouse=True)
+def clean_cache():
+    """Empty the cache between tests.
+
+    The database is rolled back per test; the cache is not, and from E05 there
+    is rate-limiting state in it (allauth keys its throttles by IP and by
+    login). Without this, a module's second test inherits the first one's
+    counters and fails only when run alongside its neighbours — the worst
+    possible failure to debug, because it passes in isolation.
+    """
+    from django.core.cache import cache
+
+    cache.clear()
+    yield
+    cache.clear()
+
+
 @pytest.fixture
 def user(db):
-    return baker.make("core.CustomUser", username="vagner")
+    # The address is pinned rather than left to model-bakery. From E05 the
+    # email is unique and required, and bakery's random filler is only
+    # *usually* distinct — "usually" is how a suite becomes flaky.
+    return baker.make("core.CustomUser", username="vagner", email="vagner@example.com")
 
 
 @pytest.fixture
 def other_user(db):
     """A second tenant, for asserting that a query stays scoped to one owner."""
-    return baker.make("core.CustomUser", username="amanda")
+    return baker.make("core.CustomUser", username="amanda", email="amanda@example.com")
 
 
 @pytest.fixture

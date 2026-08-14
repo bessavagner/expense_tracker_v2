@@ -44,6 +44,11 @@ INSTALLED_APPS = [
     "django_tailwind_cli",
     "django_htmx",
     "rest_framework",
+    # Identity (E05, ADR-007). `allauth.mfa` is the second factor Task 15
+    # requires of staff before admin will answer them.
+    "allauth",
+    "allauth.account",
+    "allauth.mfa",
     # Local apps
     "core",
     "accounts",
@@ -63,9 +68,25 @@ MIDDLEWARE = [
     "django_htmx.middleware.HtmxMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # Must sit after AuthenticationMiddleware: it reads request.user. Must sit
+    # before the household resolver, because a request allauth rejects should
+    # never have cost us a membership query.
+    "allauth.account.middleware.AccountMiddleware",
     "accounts.middleware.active_household_middleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Last on purpose, which is a security requirement and not a preference.
+    # It reads request.user, so it has to follow AuthenticationMiddleware — but
+    # being *innermost* is what makes its 404 indistinguishable from a routing
+    # 404. A middleware's response travels back out through everything listed
+    # above it and through nothing listed below; registered any higher, the
+    # gate's 404 skipped XFrameOptionsMiddleware and came back without
+    # `X-Frame-Options: DENY` while every genuine 404 carried it. One
+    # `curl -sI` then confirmed the secret path.
+    #
+    # The cost is that a refused admin request has already run the household
+    # resolver. That is one query on a path nobody legitimate takes.
+    "core.admin_gate.admin_staff_only_middleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -187,17 +208,94 @@ TAILWIND_CLI_DIST_CSS = "css/tailwind.css"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-LOGIN_URL = "/login/"
+LOGIN_URL = "/accounts/login/"
 # Signing in belongs on the dashboard, not on Django's admin index. Without
 # this, Django's default sends people to /accounts/profile/, which does not
 # exist here.
 LOGIN_REDIRECT_URL = "/"
+ACCOUNT_LOGOUT_REDIRECT_URL = "/accounts/login/"
 
 # Brute-force protection lives in the authentication backend, not a view, so it
-# applies to both doors: the app's /login/ page and the admin's own form.
-AUTHENTICATION_BACKENDS = ["core.auth_backends.LockoutModelBackend"]
+# applies to every door: the allauth login page and the admin's own form.
+# Exactly one backend is registered on purpose — a second, lockout-free backend
+# would silently answer the credential the first one refused.
+AUTHENTICATION_BACKENDS = ["core.auth_backends.LockoutAuthenticationBackend"]
 LOGIN_FAILURE_LIMIT = int(os.environ.get("LOGIN_FAILURE_LIMIT", "10"))
 LOGIN_FAILURE_WINDOW_MINUTES = int(os.environ.get("LOGIN_FAILURE_WINDOW_MINUTES", "15"))
+
+# --- Staff isolation (E05 S05-5) ----------------------------------------
+# Admin holds every household's financial records and every user's raw chat,
+# on a service deployed --allow-unauthenticated because the product needs to
+# be. Two independent controls: an unguessable path so it is not enumerable,
+# and `core.admin_gate` so guessing it correctly still yields a 404 to anyone
+# who is not staff with a second factor.
+#
+# The path is an env var, never a literal in a committed file. The dev default
+# is deliberately not "admin/" so that a missing env var is loud in tests
+# rather than silently restoring the old front door.
+ADMIN_URL_PATH = os.environ.get("ADMIN_URL_PATH", "gestao-dev/").strip("/") + "/"
+
+# --- Identity (E05 / ADR-007) -------------------------------------------
+# Email is the login identifier. `username` stays on CustomUser because ten
+# models and every historical migration reference it, but allauth derives it
+# from the email at signup and no screen ever shows it.
+ACCOUNT_LOGIN_METHODS = {"email"}
+ACCOUNT_SIGNUP_FIELDS = ["email*", "email2*", "password1*", "password2*"]
+ACCOUNT_UNIQUE_EMAIL = True
+# Mandatory rather than optional: a half-verified account is a state every
+# downstream feature would have to reason about, and E11's activation funnel
+# would inherit the ambiguity. Decided with E11, per the epic's question 3.
+ACCOUNT_EMAIL_VERIFICATION = "mandatory"
+# Do not confirm or deny that an address has an account — applies to signup
+# and to password reset alike.
+ACCOUNT_PREVENT_ENUMERATION = True
+ACCOUNT_EMAIL_SUBJECT_PREFIX = ""
+ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION = True
+ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 3
+# No custom adapter. Marking an invited address verified has to happen
+# before `perform_login` decides whether the signup may proceed, and the
+# adapter's send-the-mail hooks all run after that decision — see
+# `accounts.signals.verify_invited_email`.
+ACCOUNT_ADAPTER = "allauth.account.adapter.DefaultAccountAdapter"
+# allauth ships its own login throttle (`10/m/ip, 5/300s/key`, cache-backed).
+# It is switched off because E01's lockout already answers this question, and
+# two throttles with different windows is worse than either alone: allauth's is
+# the stricter of the two, so it would fire first, show its own generic error,
+# and the login page's "muitas tentativas, espere N minutos" — the whole point
+# of explaining a lockout rather than letting people keep guessing — would
+# never be reached. E01's also covers Django's admin form, which allauth's
+# documentation is explicit about not covering. Every OTHER allauth rate limit
+# (password reset, email management, reauthentication) stays on: those guard
+# endpoints the lockout does not.
+ACCOUNT_RATE_LIMITS = {"login_failed": None}
+
+# The second factor Task 15 demands of staff. Recovery codes are on by
+# default and stay on: losing a phone must not lock the only operator out of
+# their own admin.
+MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
+
+# --- Transactional email (E05 S05-2) ------------------------------------
+# Resend over plain SMTP, deliberately: an API-key-in-a-header SDK would be a
+# dependency and a code path, and Django already speaks SMTP. Switching
+# provider is then an environment change, not a deploy.
+#
+# The absent-EMAIL_HOST branch is the important one. Django's default is an
+# SMTP backend pointed at localhost:25 — mail vanishes with no exception, so a
+# developer sees "e-mail enviado" and an empty inbox. Console backend instead.
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
+if EMAIL_HOST:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = True
+# Resend's SMTP username is the literal string "resend"; the password is the
+# API key, which lives in Secret Manager and never in this repo.
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "resend")
+EMAIL_HOST_PASSWORD = os.environ.get("RESEND_API_KEY", "")
+EMAIL_TIMEOUT = 10
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "Ledger <nao-responda@localhost>")
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
 # AI Assistant
 LLM_MODEL = os.environ.get("LLM_MODEL", "openai:gpt-5.4")

@@ -1,0 +1,51 @@
+{% extends "account/base.html" %}
+
+{% block head_title %}Entrar — Expense Tracker{% endblock %}
+{% block heading %}Expense Tracker{% endblock %}
+{% block subheading %}Entre para ver as contas da casa.{% endblock %}
+
+{% block inner %}
+{% if locked_out %}
+{# Distinct from a wrong password on purpose: through the admin form a #}
+{# locked-out user saw the same "credenciais inválidas" as a typo, so  #}
+{# the natural response was to keep trying.                            #}
+<div role="alert" class="alert alert-warning mb-4">
+    <span>Muitas tentativas de entrada. Espere {{ lockout_minutes }} minutos e tente de novo.</span>
+</div>
+{% elif form.errors %}
+<div role="alert" class="alert alert-error mb-4">
+    <span>E-mail ou senha incorretos.</span>
+</div>
+{% endif %}
+
+<form method="post" action="{% url 'account_login' %}{% if next_url %}?next={{ next_url|urlencode }}{% endif %}">
+    {% csrf_token %}
+    <fieldset class="fieldset">
+        <label class="label" for="{{ form.login.id_for_label }}">E-mail</label>
+        {# allauth's field is `login`, and it holds an address now — so #}
+        {# type/inputmode/autocomplete all say email, which is what     #}
+        {# gets a phone keyboard to offer @ without a long-press.       #}
+        <input type="email" name="{{ form.login.html_name }}"
+               id="{{ form.login.id_for_label }}"
+               class="input w-full"
+               autocomplete="email" autocapitalize="none" inputmode="email"
+               value="{{ form.login.value|default:'' }}" required autofocus>
+
+        <label class="label" for="{{ form.password.id_for_label }}">Senha</label>
+        <input type="password" name="{{ form.password.html_name }}"
+               id="{{ form.password.id_for_label }}"
+               class="input w-full"
+               autocomplete="current-password" required>
+    </fieldset>
+    {% if redirect_field_value %}
+    <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
+    {% endif %}
+    <button type="submit" class="btn btn-accent w-full mt-4" data-pending="Entrando…">Entrar</button>
+</form>
+
+{# A front door with no way to sign up, and no way back from a forgotten #}
+{# password, is the problem this epic exists to fix — restated.          #}
+<a href="{% url 'account_reset_password' %}" class="link link-hover text-sm text-center mt-3">Esqueceu a senha?</a>
+<div class="divider text-xs opacity-60">ou</div>
+<a href="{% url 'account_signup' %}" class="btn btn-ghost btn-sm w-full">Criar conta</a>
+{% endblock %}

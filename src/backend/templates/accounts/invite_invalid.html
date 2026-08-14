@@ -1,0 +1,17 @@
+{% extends "base_public.html" %}
+
+{% block title %}Convite inválido — Expense Tracker{% endblock %}
+
+{% block content %}
+<div class="card bg-base-100 shadow-sm w-full max-w-sm">
+    <div class="card-body">
+        <h1 class="text-2xl font-semibold text-center mb-1">Convite inválido</h1>
+        <p class="text-sm opacity-70 text-center mb-4">Ele não vale mais.</p>
+        <p class="text-sm">
+            Este convite pode ter expirado, já ter sido usado ou ter sido cancelado.
+            Peça um novo para quem convidou você.
+        </p>
+        <a href="{% url 'account_login' %}" class="btn btn-ghost btn-sm w-full mt-4">Ir para entrar</a>
+    </div>
+</div>
+{% endblock %}

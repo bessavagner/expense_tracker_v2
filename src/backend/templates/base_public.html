@@ -34,7 +34,14 @@ of it.
 </head>
 <body class="min-h-screen bg-base-200">
     <main class="min-h-screen flex items-center justify-center p-4">
-        {% block content %}{% endblock %}
+        {% comment %}
+        `shell` wraps `content` so a layout in between can supply chrome — the
+        card every auth page sits in — while the page itself keeps filling
+        `content`. Without the outer block, allauth's own pages (which fill
+        `content`) would replace the wrapper rather than sit inside it. Pages
+        that extend this file directly are unaffected.
+        {% endcomment %}
+        {% block shell %}{% block content %}{% endblock %}{% endblock %}
     </main>
     {% include "partials/_submit_guard.html" %}
 </body>

@@ -1,0 +1,12 @@
+{% autoescape off %}Olá,
+
+{% if inviter %}{{ inviter.email }}{% else %}Alguém{% endif %} convidou você para acompanhar as contas da {{ household.name }} no Expense Tracker.
+
+Aceite o convite aqui:
+
+{{ url }}
+
+O convite vale até {{ expires_at|date:"d/m/Y" }} e só pode ser usado uma vez. Se você não esperava este convite, ignore esta mensagem.
+
+— Expense Tracker
+{% endautoescape %}

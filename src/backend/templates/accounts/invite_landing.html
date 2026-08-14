@@ -1,0 +1,41 @@
+{% extends "base_public.html" %}
+
+{% block title %}Convite para a {{ invitation.household.name }} — Expense Tracker{% endblock %}
+
+{% block content %}
+<div class="card bg-base-100 shadow-sm w-full max-w-sm">
+    <div class="card-body">
+        <h1 class="text-2xl font-semibold text-center mb-1">Convite</h1>
+        <p class="text-sm opacity-70 text-center mb-4">
+            {% if invitation.created_by %}{{ invitation.created_by.email }}{% else %}Alguém{% endif %}
+            convidou você para acompanhar as contas da
+            <strong>{{ invitation.household.name }}</strong>.
+        </p>
+
+        {% if user.is_authenticated %}
+        <p class="text-sm">
+            Você está entrando como <strong>{{ user.email }}</strong>.
+        </p>
+        {# A POST, not a link: an email client fetches every URL in a message #}
+        {# before a human sees it, and a scanner must not spend the token.    #}
+        <form method="post" action="{% url 'invite_accept' token %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-accent w-full mt-4" data-pending="Entrando…">Aceitar convite</button>
+        </form>
+        {% else %}
+        <p class="text-sm">
+            Para aceitar, entre na sua conta ou crie uma com o e-mail que recebeu o convite.
+        </p>
+        <a href="{% url 'account_signup' %}?next={{ next|urlencode }}"
+           class="btn btn-accent w-full mt-4">Criar conta</a>
+        <div class="divider text-xs opacity-60">ou</div>
+        <a href="{% url 'account_login' %}?next={{ next|urlencode }}"
+           class="btn btn-ghost btn-sm w-full">Já tenho conta</a>
+        {% endif %}
+
+        <p class="text-xs opacity-60 text-center mt-4">
+            O convite vale até {{ invitation.expires_at|date:"d/m/Y" }} e só pode ser usado uma vez.
+        </p>
+    </div>
+</div>
+{% endblock %}

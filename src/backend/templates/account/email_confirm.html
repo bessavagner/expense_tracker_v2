@@ -1,0 +1,27 @@
+{% extends "account/base.html" %}
+
+{% block head_title %}Confirmar e-mail — Expense Tracker{% endblock %}
+{% block heading %}{% if confirmation %}Confirmar e-mail{% else %}Link inválido{% endif %}{% endblock %}
+{% block subheading %}{% if confirmation %}Último passo.{% else %}Ele expirou ou já foi usado.{% endif %}{% endblock %}
+
+{% block inner %}
+{% if confirmation %}
+<p class="text-sm">
+    Confirme que <strong>{{ confirmation.email_address.email }}</strong> é seu endereço.
+</p>
+{# A POST, not a link: an email scanner or a link preview fetches every URL in #}
+{# a message with GET, and a confirmation a scanner can complete is not proof  #}
+{# that a person read it.                                                      #}
+<form method="post" action="{{ action_url }}">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-accent w-full mt-4" data-pending="Confirmando…">Confirmar</button>
+</form>
+{% else %}
+<p class="text-sm">
+    Este link de confirmação não vale mais. Ele expira em 3 dias, e só pode ser usado
+    uma vez. Crie a conta de novo para receber outro.
+</p>
+<a href="{% url 'account_signup' %}" class="btn btn-accent w-full mt-4">Criar conta</a>
+{% endif %}
+<a href="{% url 'account_login' %}" class="link link-hover text-sm text-center mt-3">Voltar para entrar</a>
+{% endblock %}
