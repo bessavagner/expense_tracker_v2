@@ -20,8 +20,28 @@ from assistant.eval.dataset import (
 
 def test_every_committed_case_loads():
     cases = load_receipt_cases()
-    assert len(cases) >= 2
+    assert len(cases) >= 7
     assert len({c.id for c in cases}) == len(cases), "case ids must be unique"
+
+
+def test_the_set_covers_every_hard_case_it_claims_to():
+    """The coverage the epic asks for, asserted rather than described.
+
+    `already-registered` is deliberately absent: it is a BEHAVIOURAL case
+    (`refuses-to-double-register-a-known-receipt`), not a receipt to read.
+    """
+    covered = {h for c in load_receipt_cases() for h in c.hard_cases}
+    for required in (
+        "thermal-print",
+        "rotated",
+        "low-contrast",
+        "multi-category",
+        "discount",
+        "multi-unit-line",
+        "long-receipt",
+        "weighed-item",
+    ):
+        assert required in covered, required
 
 
 def test_every_committed_case_is_arithmetically_consistent():
@@ -53,23 +73,48 @@ def test_hipermacional_case_matches_the_known_gabarito():
     assert len({i.category for i in case.items}) == 6
 
 
+def make_case(**overrides) -> ReceiptCase:
+    data = {
+        "id": "broken",
+        "images": ["x.jpg"],
+        "image_source": "tracked",
+        "media_type": "image/jpeg",
+        "provenance": "synthetic",
+        "categories": ["Lanche"],
+        "payment_methods": [{"name": "Pix", "type": "pix"}],
+        "store": "Loja",
+        "store_key": "loja",
+        "date": "2026-06-12",
+        "discount": "0",
+        "amount_paid": "10.00",
+        "items": [{"description": "a", "line_total": "9.00", "category": "Lanche"}],
+    }
+    data.update(overrides)
+    return ReceiptCase(**data)
+
+
 def test_arithmetic_error_catches_a_wrong_total():
-    case = ReceiptCase(
-        id="broken",
-        image="x.jpg",
-        image_source="tracked",
-        media_type="image/jpeg",
-        provenance="synthetic",
-        categories=["Lanche"],
-        payment_methods=[{"name": "Pix", "type": "pix"}],
-        store="Loja",
-        store_key="loja",
-        date="2026-06-12",
-        discount="0",
-        amount_paid="10.00",
-        items=[{"description": "a", "line_total": "9.00", "category": "Lanche"}],
-    )
-    assert "9.00" in arithmetic_error(case)
+    assert "9.00" in arithmetic_error(make_case())
+
+
+def test_a_case_with_no_printed_total_skips_reconciliation():
+    """A marketplace order screen prints no total, and that is not a defect.
+
+    `EXTRACTION_PROMPT` tells the model to leave `amount_paid` null when the
+    document does not show one, so `None` is the expected answer rather than
+    missing ground truth. There is simply nothing to reconcile against.
+    """
+    assert arithmetic_error(make_case(amount_paid=None)) is None
+
+
+def test_a_discount_without_a_total_is_still_an_error():
+    """Half an arithmetic claim is worse than none — it cannot be checked."""
+    problem = arithmetic_error(make_case(amount_paid=None, discount="2.00"))
+    assert problem is not None and "discount" in problem
+
+
+def test_a_case_with_no_items_is_an_error():
+    assert "no items" in arithmetic_error(make_case(items=[]))
 
 
 def test_unknown_case_id_raises():
@@ -79,23 +124,46 @@ def test_unknown_case_id_raises():
 
 def test_tracked_images_resolve_inside_the_repo():
     (case,) = load_receipt_cases(["americanas-2026-06-12"])
-    path = case.image_path()
-    assert path is not None and path.exists()
-    assert path.parts[-2:] == ("fixtures", "receipt_americanas.jpg")
+    paths = case.image_paths()
+    assert paths is not None and len(paths) == 1 and paths[0].exists()
+    assert paths[0].parts[-2:] == ("fixtures", "receipt_americanas.jpg")
 
 
 def test_private_case_without_the_env_var_is_skipped_not_failed(settings, tmp_path):
     settings.EVAL_FIXTURES_DIR = str(tmp_path / "nowhere")
     cases, skipped = available_receipt_cases()
-    assert all(c.image_path() is not None for c in cases)
-    assert isinstance(skipped, list)
+    assert all(c.image_paths() is not None for c in cases)
+    assert skipped, "the private cases must be reported as skipped, not silently dropped"
 
 
-def test_read_image_returns_bytes_and_media_type():
+def test_read_images_returns_bytes_and_media_type():
     (case,) = load_receipt_cases(["americanas-2026-06-12"])
-    data, media_type = case.read_image()
+    ((data, media_type),) = case.read_images()
     assert isinstance(data, bytes) and len(data) > 1000
     assert media_type == "image/jpeg"
+
+
+def test_a_two_page_receipt_carries_both_photos():
+    """The 62-line Mateus receipt does not fit one frame.
+
+    Production's `extract_receipt` already accepts a list of images and reads
+    them as ONE document; a case that could hold only one photo could not
+    represent the longest receipt in the set.
+    """
+    (case,) = load_receipt_cases(["mateus-2026-06-22"])
+    assert len(case.images) == 2
+    assert len(case.items) == 62
+    assert case.amount_paid == Decimal("745.85")
+
+
+def test_a_multi_page_case_is_all_or_nothing(settings, tmp_path):
+    """Page 1 alone would score a perfect model as having missed half the items."""
+    only_page_one = tmp_path / "partial"
+    only_page_one.mkdir()
+    (case,) = load_receipt_cases(["mateus-2026-06-22"])
+    (only_page_one / case.images[0]).write_bytes(b"x")
+    settings.EVAL_FIXTURES_DIR = str(only_page_one)
+    assert case.image_paths() is None
 
 
 def test_dataset_ground_truth_matches_the_regression_test_constants():

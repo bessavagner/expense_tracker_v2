@@ -38,9 +38,8 @@ async def run_extraction_case(case: ReceiptCase, model) -> RawRun:
     Records failures, never raises them — a provider that refuses one image must
     not abort a 10-case comparison.
     """
-    data, media_type = case.read_image()
     prompt = build_extraction_prompt(
-        [(data, media_type)],
+        case.read_images(),
         categories=list(case.categories),
         payment_methods=[p.name for p in case.payment_methods],
     )

@@ -48,7 +48,11 @@ class ReceiptCase(BaseModel):
     """One scored receipt: an image plus everything a correct read produces."""
 
     id: str
-    image: str
+    # One entry per photo. A till roll longer than an arm gets photographed in
+    # two overlapping shots, and production already handles that: `extract_receipt`
+    # takes a LIST of images and reads them as one document. A case that pinned a
+    # single photo could not represent the longest receipt in the set.
+    images: list[str]
     image_source: Literal["tracked", "private"]
     media_type: str
     provenance: str
@@ -60,33 +64,48 @@ class ReceiptCase(BaseModel):
     # "americanas sa - 1063" and a model may answer "Lojas Americanas"; both are
     # right, and only a substring rule scores them that way.
     store_key: str
-    date: str  # ISO YYYY-MM-DD
+    # ISO YYYY-MM-DD, or None when the document does not print one. Marketplace
+    # order screens often do not, and EXTRACTION_PROMPT tells the model to leave
+    # such a field null — so `None` here is a real expectation, not missing data.
+    date: str | None = None
     payment_hint: str | None = None
     discount: Decimal = Decimal("0")
-    amount_paid: Decimal
+    # None when no total is printed. Scoring then expects the model to return
+    # None as well: inventing a total it could not read is the failure mode.
+    amount_paid: Decimal | None = None
     items: list[TruthItem]
 
     @property
     def items_total(self) -> Decimal:
         return sum((i.line_total for i in self.items), Decimal("0"))
 
-    def image_path(self) -> Path | None:
-        """Where the photo lives, or ``None`` when it cannot be resolved."""
-        if self.image_source == "tracked":
-            path = TRACKED_FIXTURES_DIR / self.image
-        else:
-            root = (settings.EVAL_FIXTURES_DIR or "").strip()
-            if not root:
-                return None
-            path = Path(root) / self.image
-        return path if path.exists() else None
+    def image_paths(self) -> list[Path] | None:
+        """Every photo of this receipt, or ``None`` if any one is unresolvable.
 
-    def read_image(self) -> tuple[bytes, str]:
-        """``(data, media_type)``, shaped for ``extract_receipt``."""
-        path = self.image_path()
-        if path is None:
-            raise DatasetError(f"{self.id}: image {self.image!r} not found")
-        return path.read_bytes(), self.media_type
+        All-or-nothing on purpose: reading page 1 of a two-page receipt and
+        scoring it against the full gabarito would report a perfect model as
+        having missed half the items.
+        """
+        root = (settings.EVAL_FIXTURES_DIR or "").strip()
+        paths: list[Path] = []
+        for name in self.images:
+            if self.image_source == "tracked":
+                path = TRACKED_FIXTURES_DIR / name
+            else:
+                if not root:
+                    return None
+                path = Path(root) / name
+            if not path.exists():
+                return None
+            paths.append(path)
+        return paths or None
+
+    def read_images(self) -> list[tuple[bytes, str]]:
+        """``[(data, media_type), ...]``, shaped for ``build_extraction_prompt``."""
+        paths = self.image_paths()
+        if paths is None:
+            raise DatasetError(f"{self.id}: image(s) {self.images!r} not found")
+        return [(p.read_bytes(), self.media_type) for p in paths]
 
 
 def arithmetic_error(case: ReceiptCase) -> str | None:
@@ -95,12 +114,21 @@ def arithmetic_error(case: ReceiptCase) -> str | None:
     The rule is exact, not tolerant: these numbers were typed by a person off a
     piece of paper, and a one-cent slip is a typo, not a rounding artefact.
     """
-    expected = case.items_total - case.discount
-    if expected != case.amount_paid:
-        return (
-            f"items ({case.items_total}) - discount ({case.discount}) = {expected}, "
-            f"but amount_paid is {case.amount_paid}"
-        )
+    if not case.items:
+        return "a case with no items cannot be scored"
+    if case.amount_paid is None:
+        # Nothing to reconcile against — the document prints no total. Guard the
+        # one thing that is still checkable: a case that also declares a discount
+        # is claiming arithmetic it has no total to support.
+        if case.discount:
+            return f"discount {case.discount} declared, but no amount_paid to reconcile it with"
+    else:
+        expected = case.items_total - case.discount
+        if expected != case.amount_paid:
+            return (
+                f"items ({case.items_total}) - discount ({case.discount}) = {expected}, "
+                f"but amount_paid is {case.amount_paid}"
+            )
     unknown = sorted({i.category for i in case.items} - set(case.categories))
     if unknown:
         return f"items use categories not declared in `categories`: {unknown}"
@@ -134,7 +162,7 @@ def available_receipt_cases(
     runnable: list[ReceiptCase] = []
     skipped: list[str] = []
     for case in load_receipt_cases(ids):
-        if case.image_path() is None:
+        if case.image_paths() is None:
             skipped.append(case.id)
         else:
             runnable.append(case)

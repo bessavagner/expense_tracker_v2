@@ -1,0 +1,31 @@
+{
+  "id": "cosmos-2026-06-19",
+  "images": ["IMG_20260619_204123336.jpg"],
+  "image_source": "private",
+  "media_type": "image/jpeg",
+  "provenance": "Real household receipt, rotated and low-contrast (pale thermal print under a hard overhead light). Carries a weighed line: beef at R$50,99/kg for 0,542kg charged as R$27,64. Not committed: real household receipt, public repository (plan decision D-A).",
+  "hard_cases": ["rotated", "low-contrast", "thermal-print", "weighed-item", "multi-category"],
+  "categories": ["Alimentacao", "Lanche", "Limpeza", "Casa"],
+  "payment_methods": [
+    {"name": "Credito C6", "type": "credit_card", "closing_day": 25},
+    {"name": "Pix", "type": "pix"},
+    {"name": "Dinheiro", "type": "cash"}
+  ],
+  "store": "SUPERMERCADO COSMOS LTDA",
+  "store_key": "cosmos",
+  "date": "2026-06-19",
+  "payment_hint": "CARTAO TEF",
+  "discount": "0",
+  "amount_paid": "112.94",
+  "items": [
+    {"description": "SABAO LIQ ALA 700ML LAVANDA", "line_total": "5.79", "category": "Limpeza"},
+    {"description": "SABAO LIQ ALA 700ML LAVANDA", "line_total": "5.79", "category": "Limpeza"},
+    {"description": "ESP SB N.RISCA L3P2 AZ", "line_total": "11.25", "category": "Limpeza"},
+    {"description": "COXAO MOLE FRIBOI RESERVA RE", "line_total": "27.64", "category": "Alimentacao", "quantity": "0.542"},
+    {"description": "REQUEIJAO LACTOLIVRE", "line_total": "11.49", "category": "Alimentacao"},
+    {"description": "CRE LEIT ZERO 200G", "line_total": "4.19", "category": "Alimentacao"},
+    {"description": "SALG ELMA CHIPS BACONZITOS 36G", "line_total": "5.25", "category": "Lanche"},
+    {"description": "LING TOSCANA REGINA CONG 500G C/", "line_total": "20.79", "category": "Alimentacao"},
+    {"description": "COXA/SOB FGO DESS 700G", "line_total": "20.75", "category": "Alimentacao"}
+  ]
+}

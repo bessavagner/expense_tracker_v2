@@ -20,7 +20,7 @@ from assistant.eval.scoring import (
 def make_case(**overrides) -> ReceiptCase:
     data = {
         "id": "t",
-        "image": "x.jpg",
+        "images": ["x.jpg"],
         "image_source": "tracked",
         "media_type": "image/jpeg",
         "provenance": "synthetic",
@@ -119,6 +119,52 @@ def test_discount_is_subtracted_before_reconciling():
     case = make_case(amount_paid="18.00", discount="2.00")
     ext = make_extraction(PERFECT_ITEMS, discount=Decimal("2.00"), amount_paid=Decimal("18.00"))
     assert score_extraction(case, ext).money_ok is True
+
+
+def test_when_no_total_is_printed_returning_none_is_the_right_answer():
+    """A marketplace order screen shows per-line prices and no total.
+
+    `EXTRACTION_PROMPT` forbids inventing one, so a model that answers `None`
+    and whose lines add up to what was really charged has read it correctly.
+    Scoring that as a money failure would mark the honest model down.
+    """
+    case = make_case(amount_paid=None)
+    ext = make_extraction(PERFECT_ITEMS, amount_paid=None)
+    assert score_extraction(case, ext).money_ok is True
+
+
+def test_inventing_a_total_that_was_never_printed_fails_the_money_invariant():
+    case = make_case(amount_paid=None)
+    ext = make_extraction(PERFECT_ITEMS, amount_paid=Decimal("20.00"))
+    score = score_extraction(case, ext)
+    assert score.money_ok is False
+    assert score.overall == 0.0
+
+
+def test_with_no_printed_total_the_lines_must_still_add_up():
+    """The Mercado Livre double-count: a 2-unit line multiplied a second time."""
+    case = make_case(amount_paid=None)
+    doubled = [
+        {
+            "description": "BACONZITOS B&G ELMA CHIPS M",
+            "line_total": "20.00",
+            "category": "Lanche",
+        },
+        {
+            "description": "SOUTIEN TOP B+ TAF21 BRANCO GG",
+            "line_total": "10.00",
+            "category": "Roupa",
+        },
+    ]
+    assert score_extraction(case, make_extraction(doubled, amount_paid=None)).money_ok is False
+
+
+def test_a_case_with_no_printed_date_expects_none_back():
+    case = make_case(date=None)
+    assert score_extraction(case, make_extraction(PERFECT_ITEMS, date=None)).date_ok is True
+    assert (
+        score_extraction(case, make_extraction(PERFECT_ITEMS, date="2026-06-12")).date_ok is False
+    )
 
 
 def test_a_missed_item_lowers_recall_and_is_named():

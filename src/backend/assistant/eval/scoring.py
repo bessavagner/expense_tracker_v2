@@ -111,12 +111,23 @@ def _money_ok(case: ReceiptCase, ext: ReceiptExtraction) -> bool:
     — the Americanas split reported the right total and produced R$0.00 on one
     category; the Mercado Livre read produced lines that summed to R$66.48 more
     than the order.
+
+    When the DOCUMENT prints no total (``case.amount_paid is None``) the rule
+    inverts: the correct answer is ``None``, because EXTRACTION_PROMPT forbids
+    inventing a total, and a guessed total is a wrong expense that looks entirely
+    normal in the ledger. The lines must still add up to what was really charged.
     """
+    lines = sum((i.line_total for i in ext.items), Decimal("0"))
+
+    if case.amount_paid is None:
+        if ext.amount_paid is not None:
+            return False  # invented a total the document never printed
+        return abs(lines - case.items_total) <= MONEY_TOLERANCE
+
     if ext.amount_paid is None:
         return False
     if abs(ext.amount_paid - case.amount_paid) > MONEY_TOLERANCE:
         return False
-    lines = sum((i.line_total for i in ext.items), Decimal("0"))
     net = lines - (ext.discount or Decimal("0"))
     return abs(net - case.amount_paid) <= MONEY_TOLERANCE
 

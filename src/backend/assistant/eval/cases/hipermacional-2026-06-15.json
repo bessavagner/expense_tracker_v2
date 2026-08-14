@@ -1,6 +1,6 @@
 {
   "id": "hipermacional-2026-06-15",
-  "image": "receipt_hipermacional.jpg",
+  "images": ["receipt_hipermacional.jpg"],
   "image_source": "tracked",
   "media_type": "image/jpeg",
   "provenance": "Real household receipt, already tracked in the repository. The double-count regression case.",

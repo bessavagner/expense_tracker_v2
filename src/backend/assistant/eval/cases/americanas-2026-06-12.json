@@ -1,6 +1,6 @@
 {
   "id": "americanas-2026-06-12",
-  "image": "receipt_americanas.jpg",
+  "images": ["receipt_americanas.jpg"],
   "image_source": "tracked",
   "media_type": "image/jpeg",
   "provenance": "Real household receipt, already tracked in the repository since the prompt-006 regression work. Kept public; retracting it would not un-publish it.",
