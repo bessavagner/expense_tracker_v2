@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from assistant.models import MemoryRule
+from assistant.models import MemoryRule, ModelPrice
 
 # ChatMessage is deliberately not registered (E05 S05-5). It holds every
 # user's raw conversation with the assistant — receipts, salaries, arguments
@@ -24,3 +24,16 @@ class MemoryRuleAdmin(admin.ModelAdmin):
     list_filter = ("source", "field")
     search_fields = ("trigger", "value")
     readonly_fields = ("created_at", "last_used_at")
+
+
+@admin.register(ModelPrice)
+class ModelPriceAdmin(admin.ModelAdmin):
+    list_display = (
+        "model_name",
+        "input_per_mtok",
+        "output_per_mtok",
+        "effective_from",
+        "checked_on",
+    )
+    list_filter = ("model_name",)
+    search_fields = ("model_name",)

@@ -211,3 +211,50 @@ class UsageInteraction(HouseholdOwnedModel):
 
     def __str__(self):
         return f"{self.user_id} {self.kind} {self.created_at:%Y-%m-%d %H:%M}"
+
+
+class ModelPrice(models.Model):
+    """What a provider charges for one model, per million tokens, in USD.
+
+    A database row rather than a setting (E07 spec D4) because spec D3 requires
+    prices to be re-checked against live provider docs rather than recalled —
+    and a correction must not need a deploy.
+
+    Not household-scoped: this is global product configuration, not tenant data.
+
+    ``effective_from`` keeps history rather than overwriting: the row that
+    applies is the newest one not after the date asked for. Note that a
+    ``UsageRecord`` stores its computed cost at write time, so re-pricing never
+    rewrites the past — this column exists so a *backfill* can be honest.
+
+    Token pricing only. Transcription models are priced per minute of audio by
+    the provider and deliberately have no row here; see the runbook.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    model_name = models.CharField(
+        max_length=120,
+        help_text="Exatamente como aparece em settings, incluindo o prefixo do provedor.",
+    )
+    input_per_mtok = models.DecimalField(max_digits=12, decimal_places=6)
+    output_per_mtok = models.DecimalField(max_digits=12, decimal_places=6)
+    effective_from = models.DateField()
+    source_url = models.URLField(
+        max_length=500,
+        help_text="A página de preços consultada. Obrigatória: preço sem fonte é palpite.",
+    )
+    checked_on = models.DateField(help_text="Quando esta linha foi conferida on-line.")
+
+    class Meta:
+        verbose_name = "preço de modelo"
+        verbose_name_plural = "preços de modelo"
+        ordering = ["model_name", "-effective_from"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["model_name", "effective_from"],
+                name="unique_model_price_per_date",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.model_name} @ {self.effective_from}"

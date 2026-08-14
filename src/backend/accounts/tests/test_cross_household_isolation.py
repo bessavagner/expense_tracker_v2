@@ -23,6 +23,13 @@ pytestmark = pytest.mark.django_db
 EXEMPT = {
     # Epic decision 4: scoped transitively through PaymentMethod.
     "finances.PaymentMethodClosingDay",
+    # E07: global product configuration, not tenant data. What OpenAI charges
+    # for a model is the same fact for every household, and giving it a
+    # household column would mean one price row per tenant to keep in sync —
+    # the opposite of the "correct a price without a deploy" property spec D4
+    # asked for. No user-supplied data reaches this table; only the admin
+    # writes it.
+    "assistant.ModelPrice",
 }
 
 
