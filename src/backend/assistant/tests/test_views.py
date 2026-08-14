@@ -10,6 +10,7 @@ from pydantic_ai.models.test import TestModel
 from accounts.resolution import household_for_user
 from assistant.agents.assistant import agents_override, assistant_agent
 from assistant.models import ChatMessage
+from assistant.tests.fakes import FakeAgent, FakeStream
 
 
 def consume_streaming(response):
@@ -692,46 +693,6 @@ class TestChokepointWiring:
     )
 
 
-class _FakeStream:
-    """The subset of PydanticAI's streamed-run handle `_sse_response` touches."""
-
-    def __init__(self, chunks, fail_after=None):
-        self._chunks = chunks
-        self._fail_after = fail_after
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc):
-        return False
-
-    async def stream_text(self, delta=True):
-        for i, chunk in enumerate(self._chunks):
-            if self._fail_after is not None and i >= self._fail_after:
-                raise RuntimeError("provider died mid-stream")
-            yield chunk
-
-    def all_messages(self):
-        return []
-
-
-class _FakeAgent:
-    """An agent whose per-attempt behaviour is scripted by model name.
-
-    `agent.override(model=...)` cannot be used to test the fallback retry: the
-    override wins over the per-run `model=` argument, so both attempts would
-    run the same model and the retry would be invisible.
-    """
-
-    def __init__(self, behaviour):
-        self.behaviour = behaviour
-        self.calls = []
-
-    def run_stream(self, prompt, *, deps, message_history, model=None):
-        self.calls.append(model)
-        return self.behaviour[model]
-
-
 @pytest.mark.django_db
 class TestEssentialFallbackRetry:
     def _run(self, scope, agent, **kwargs):
@@ -740,10 +701,10 @@ class TestEssentialFallbackRetry:
         return consume_streaming(_sse_response(scope, agent, "oi", message_history=None, **kwargs))
 
     def test_a_first_attempt_that_dies_before_any_token_retries_the_fallback(self, scope):
-        agent = _FakeAgent(
+        agent = FakeAgent(
             {
-                "primary": _FakeStream(["nope"], fail_after=0),
-                "fallback": _FakeStream(["ok"]),
+                "primary": FakeStream(["nope"], fail_after=0),
+                "fallback": FakeStream(["ok"]),
             }
         )
         body = self._run(scope, agent, model="primary", fallback_model="fallback")
@@ -754,10 +715,10 @@ class TestEssentialFallbackRetry:
     def test_a_failure_after_the_first_token_is_not_retried(self, scope):
         """The client already rendered those tokens; a replay would duplicate
         them, and there is no way to unsay them."""
-        agent = _FakeAgent(
+        agent = FakeAgent(
             {
-                "primary": _FakeStream(["meio ", "caminho"], fail_after=1),
-                "fallback": _FakeStream(["ok"]),
+                "primary": FakeStream(["meio ", "caminho"], fail_after=1),
+                "fallback": FakeStream(["ok"]),
             }
         )
         body = self._run(scope, agent, model="primary", fallback_model="fallback")
@@ -765,16 +726,16 @@ class TestEssentialFallbackRetry:
         assert '"type": "error"' in body
 
     def test_without_a_fallback_a_failure_stays_a_failure(self, scope):
-        agent = _FakeAgent({"primary": _FakeStream(["nope"], fail_after=0)})
+        agent = FakeAgent({"primary": FakeStream(["nope"], fail_after=0)})
         body = self._run(scope, agent, model="primary")
         assert agent.calls == ["primary"]
         assert '"type": "error"' in body
 
     def test_a_fallback_that_also_dies_reports_the_error_once(self, scope):
-        agent = _FakeAgent(
+        agent = FakeAgent(
             {
-                "primary": _FakeStream(["nope"], fail_after=0),
-                "fallback": _FakeStream(["nope"], fail_after=0),
+                "primary": FakeStream(["nope"], fail_after=0),
+                "fallback": FakeStream(["nope"], fail_after=0),
             }
         )
         body = self._run(scope, agent, model="primary", fallback_model="fallback")

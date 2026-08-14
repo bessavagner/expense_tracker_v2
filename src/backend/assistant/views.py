@@ -14,11 +14,13 @@ from assistant.agents.extraction import (
     receipt_needs_review,
 )
 from assistant.agents.scope import AgentScope
+from assistant.metering import Timer, record_usage
 from assistant.models import (
     ChatMessage,
     InteractionKind,
     MessageRole,
     ReceiptDraft,
+    UsageKind,
 )
 from assistant.quota import decide, fallback_model_for, model_for, open_interaction
 from assistant.services.image_prep import prepare_receipt_image
@@ -144,27 +146,57 @@ def _sse_response(
         data_changed = False
         attempts = [model] + ([fallback_model] if fallback_model else [])
         for attempt, attempt_model in enumerate(attempts):
+            timer = Timer()
+            run_usage = None
             try:
-                async with agent.run_stream(
-                    prompt, deps=scope, message_history=message_history, model=attempt_model
-                ) as stream:
-                    async for text in stream.stream_text(delta=True):
-                        full_response += text
-                        yield (
-                            json.dumps({"type": "token", "content": text}, ensure_ascii=False)
-                            + "\n"
-                        )
-                    try:
-                        data_changed = _run_mutated_data(stream.all_messages())
-                    except Exception:
-                        # Reported rather than swallowed: this failing means the
-                        # "your data changed" signal is wrong, which shows up to
-                        # the user as a stale screen with no error — the hardest
-                        # class of bug to hear about from a user.
-                        sentry_sdk.capture_exception()
-                        data_changed = False
+                with timer:
+                    async with agent.run_stream(
+                        prompt, deps=scope, message_history=message_history, model=attempt_model
+                    ) as stream:
+                        async for text in stream.stream_text(delta=True):
+                            full_response += text
+                            yield (
+                                json.dumps({"type": "token", "content": text}, ensure_ascii=False)
+                                + "\n"
+                            )
+                        # `usage()` is only complete once the stream is drained,
+                        # so it is read here rather than after the `async with`.
+                        run_usage = stream.usage()
+                        try:
+                            data_changed = _run_mutated_data(stream.all_messages())
+                        except Exception:
+                            # Reported rather than swallowed: this failing means
+                            # the "your data changed" signal is wrong, which
+                            # shows up to the user as a stale screen with no
+                            # error — the hardest class of bug to hear about
+                            # from a user.
+                            sentry_sdk.capture_exception()
+                            data_changed = False
+                await record_usage(
+                    interaction=getattr(scope, "interaction", None),
+                    household=scope.household,
+                    user=scope.user,
+                    kind=UsageKind.CHAT,
+                    model=attempt_model,
+                    usage=run_usage,
+                    latency_ms=timer.ms,
+                    ok=True,
+                )
                 break
             except Exception:
+                # Recorded before anything else: the provider consumed tokens
+                # before dying and those are billed (S07-2). Skipping them makes
+                # the free tier's retry look cheaper than it is.
+                await record_usage(
+                    interaction=getattr(scope, "interaction", None),
+                    household=scope.household,
+                    user=scope.user,
+                    kind=UsageKind.CHAT,
+                    model=attempt_model,
+                    usage=None,
+                    latency_ms=timer.ms,
+                    ok=False,
+                )
                 # The single most important report in E06: every unhandled agent
                 # failure in production used to land here and vanish. The message
                 # the user sees is deliberately unchanged — S06-4 improves

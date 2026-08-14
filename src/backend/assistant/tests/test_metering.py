@@ -197,3 +197,138 @@ def test_timer_reports_elapsed_milliseconds():
         pass
     assert isinstance(t.ms, int)
     assert t.ms >= 0
+
+
+class TestTheChatRunIsMetered:
+    """S07-2 for the largest call site: every agent run leaves a cost row.
+
+    The two endpoint tests prove the wiring; the rest drive `_sse_response`
+    directly with a scripted agent, because `agent.override(model=...)` cannot
+    express "die after the first token" or "answer differently on the second
+    attempt".
+    """
+
+    def _stream(self, scope, agent, **kwargs):
+        from assistant.tests.test_views import consume_streaming
+        from assistant.views import _sse_response
+
+        return consume_streaming(_sse_response(scope, agent, "oi", message_history=None, **kwargs))
+
+    def _scope_with(self, household, user, interaction):
+        from assistant.agents.scope import AgentScope
+
+        return AgentScope(household=household, user=user, interaction=interaction)
+
+    def test_a_chat_turn_produces_one_usage_record(self, logged_client, user, household, settings):
+        import json as _json
+
+        from pydantic_ai.models.test import TestModel
+
+        from assistant.agents.assistant import agents_override
+        from assistant.tests.test_views import consume_streaming
+
+        with agents_override(TestModel()):
+            resp = logged_client.post(
+                "/api/assistant/chat/",
+                data=_json.dumps({"message": "oi"}),
+                content_type="application/json",
+            )
+            consume_streaming(resp)
+
+        rec = UsageRecord.objects.get()
+        assert rec.kind == UsageKind.CHAT
+        assert rec.ok is True
+        # Correlated back to the action that authorised it (S07-1), and stamped
+        # with the tier the chokepoint picked, not with whatever the agent was
+        # constructed with.
+        assert rec.interaction_id is not None
+        assert rec.model == settings.LLM_TIER_ADVANCED
+        assert rec.latency_ms is not None
+
+    def test_the_record_belongs_to_the_household_that_asked(
+        self, logged_client, user, household, other_household
+    ):
+        import json as _json
+
+        from pydantic_ai.models.test import TestModel
+
+        from assistant.agents.assistant import agents_override
+        from assistant.tests.test_views import consume_streaming
+
+        with agents_override(TestModel()):
+            resp = logged_client.post(
+                "/api/assistant/chat/",
+                data=_json.dumps({"message": "oi"}),
+                content_type="application/json",
+            )
+            consume_streaming(resp)
+
+        assert UsageRecord.objects.get().household_id == household.id
+
+    def test_a_failed_chat_run_is_still_recorded(self, household, user, interaction, priced):
+        """The provider consumed tokens before dying. Those are billed."""
+        from assistant.tests.fakes import FakeAgent, FakeStream
+
+        agent = FakeAgent({"openai:test": FakeStream(["nada"], fail_after=0)})
+        body = self._stream(
+            self._scope_with(household, user, interaction), agent, model="openai:test"
+        )
+
+        assert '"type": "error"' in body
+        rec = UsageRecord.objects.get()
+        assert rec.ok is False
+        assert rec.cost_usd is None
+        assert rec.interaction_id == interaction.id
+
+    def test_a_fallback_retry_records_both_attempts(self, household, user, interaction, priced):
+        """Otherwise the free tier looks cheaper than it is: the failed first
+        attempt is a real provider call with a real bill."""
+        from assistant.tests.fakes import FakeAgent, FakeStream
+
+        agent = FakeAgent(
+            {
+                "openai:test": FakeStream(["nada"], fail_after=0),
+                "openai:cheap": FakeStream(["ok"]),
+            }
+        )
+        self._stream(
+            self._scope_with(household, user, interaction),
+            agent,
+            model="openai:test",
+            fallback_model="openai:cheap",
+        )
+
+        assert UsageRecord.objects.filter(interaction=interaction).count() == 2
+        assert UsageRecord.objects.get(model="openai:test").ok is False
+        assert UsageRecord.objects.get(model="openai:cheap").ok is True
+
+    def test_the_recorded_cost_uses_the_model_that_actually_ran(
+        self, household, user, interaction, priced
+    ):
+        from assistant.tests.fakes import FakeAgent, FakeStream, FakeUsage
+
+        agent = FakeAgent({"openai:test": FakeStream(["ok"], usage=FakeUsage(1_000_000, 100_000))})
+        self._stream(self._scope_with(household, user, interaction), agent, model="openai:test")
+
+        rec = UsageRecord.objects.get()
+        assert rec.input_tokens == 1_000_000
+        assert rec.cost_usd == Decimal("2.000000")
+
+    def test_a_metering_failure_does_not_break_the_stream(
+        self, household, user, interaction, priced
+    ):
+        """The module's cardinal rule, asserted end-to-end rather than on the
+        writer alone: the user still gets their answer."""
+        from assistant.tests.fakes import FakeAgent, FakeStream
+
+        agent = FakeAgent({"openai:test": FakeStream(["tudo certo"])})
+        with patch(
+            "assistant.models.UsageRecord.objects.acreate",
+            side_effect=RuntimeError("database on fire"),
+        ):
+            body = self._stream(
+                self._scope_with(household, user, interaction), agent, model="openai:test"
+            )
+
+        assert "tudo certo" in body
+        assert '"type": "error"' not in body
