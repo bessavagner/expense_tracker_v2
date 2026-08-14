@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from assistant.models import MemoryRule, ModelPrice
+from assistant.models import CreditPrice, MemoryRule, ModelPrice
 
 # ChatMessage is deliberately not registered (E05 S05-5). It holds every
 # user's raw conversation with the assistant — receipts, salaries, arguments
@@ -37,3 +37,13 @@ class ModelPriceAdmin(admin.ModelAdmin):
     )
     list_filter = ("model_name",)
     search_fields = ("model_name",)
+
+
+@admin.register(CreditPrice)
+class CreditPriceAdmin(admin.ModelAdmin):
+    """The (tier x kind) grid. Editable in the list so the beta's economics can
+    be retuned from real cost data without a deploy (E07 spec D4)."""
+
+    list_display = ("tier", "kind", "credits")
+    list_editable = ("credits",)
+    list_filter = ("tier", "kind")

@@ -4,6 +4,47 @@ from django.conf import settings
 from django.db import models
 
 from accounts.scoping import HouseholdScopedManager
+from core.tiers import Tier
+
+
+class Plan(models.Model):
+    """What a household is entitled to per month.
+
+    Credits are a product currency, deliberately NOT real tokens (E07 spec D2).
+    They are a stable unit a customer can reason about and we can reprice
+    without changing what they were promised. Real token counts live in
+    ``assistant.UsageRecord``.
+
+    E15 extends this with money. Today nothing is charged (PD-3: free capped
+    beta, paid at GA), so there is no price column yet.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=80)
+    slug = models.SlugField(max_length=40, unique=True)
+    monthly_credits = models.PositiveIntegerField(
+        help_text="Créditos concedidos no início de cada mês civil."
+    )
+    # A household with no plan falls back to this one, so `balance_for` never
+    # has to decide what "no plan" means. The partial unique constraint below
+    # makes "exactly one default" a database fact rather than a convention.
+    is_default = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "plano"
+        verbose_name_plural = "planos"
+        ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["is_default"],
+                condition=models.Q(is_default=True),
+                name="only_one_default_plan",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.monthly_credits} créditos/mês)"
 
 
 class Household(models.Model):
@@ -11,6 +52,18 @@ class Household(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=120)
+    # Nullable: E15 assigns paid plans later without backfilling every beta
+    # household. `None` resolves to the default plan at read time.
+    plan = models.ForeignKey(
+        "accounts.Plan",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="households",
+    )
+    # The tier the household WANTS. The chokepoint may override it downward
+    # when credits run out; it never overrides upward (E07 spec D2).
+    preferred_tier = models.CharField(max_length=20, choices=Tier.choices, default=Tier.ADVANCED)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

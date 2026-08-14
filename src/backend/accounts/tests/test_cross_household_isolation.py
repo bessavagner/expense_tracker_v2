@@ -30,6 +30,12 @@ EXEMPT = {
     # asked for. No user-supplied data reaches this table; only the admin
     # writes it.
     "assistant.ModelPrice",
+    # E07, same reasoning as ModelPrice: the (tier x kind) credit grid is one
+    # global product decision, not a per-tenant one. Per-household pricing is
+    # E15's problem and would be a new column, not a household FK on all six
+    # rows. `accounts.Plan` is the same kind of thing; it escapes this list
+    # only because the scan covers `finances` and `assistant`.
+    "assistant.CreditPrice",
 }
 
 

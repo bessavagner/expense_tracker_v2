@@ -299,3 +299,39 @@ def test_an_admitted_turn_records_its_household(user, household):
 
     event = UsageInteraction.objects.get(user=user)
     assert event.household == household
+
+
+# --- the credit price grid (E07 Task 5) ---------------------------------
+
+
+@pytest.mark.django_db
+def test_essential_costs_zero_credits_for_every_kind():
+    """E07 spec D2: ESSENTIAL is the free floor. Charging for it defeats it."""
+    from assistant.models import CreditPrice, InteractionKind
+    from core.tiers import Tier
+
+    for kind in InteractionKind.values:
+        price = CreditPrice.objects.get(tier=Tier.ESSENTIAL, kind=kind)
+        assert price.credits == 0
+
+
+@pytest.mark.django_db
+def test_an_image_costs_more_credits_than_text_in_every_paid_tier():
+    """A vision call is genuinely more expensive. The currency must say so."""
+    from assistant.models import CreditPrice, InteractionKind
+    from core.tiers import Tier
+
+    for tier in (Tier.ADVANCED, Tier.STANDARD):
+        text = CreditPrice.objects.get(tier=tier, kind=InteractionKind.TEXT).credits
+        image = CreditPrice.objects.get(tier=tier, kind=InteractionKind.IMAGE).credits
+        assert image > text
+
+
+@pytest.mark.django_db
+def test_advanced_costs_more_credits_than_standard():
+    from assistant.models import CreditPrice, InteractionKind
+    from core.tiers import Tier
+
+    adv = CreditPrice.objects.get(tier=Tier.ADVANCED, kind=InteractionKind.TEXT).credits
+    std = CreditPrice.objects.get(tier=Tier.STANDARD, kind=InteractionKind.TEXT).credits
+    assert adv > std

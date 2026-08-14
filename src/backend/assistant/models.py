@@ -6,6 +6,7 @@ from django.utils import timezone
 from pgvector.django import HnswIndex, VectorField
 
 from accounts.models import AuthoredHouseholdModel, HouseholdOwnedModel
+from core.tiers import Tier
 
 
 class MessageRole(models.TextChoices):
@@ -193,6 +194,13 @@ class UsageInteraction(HouseholdOwnedModel):
         related_name="assistant_usage_events",
     )
     kind = models.CharField(max_length=20, choices=InteractionKind.choices)
+    # Which tier actually served this turn — not which one was asked for. The
+    # operator report joins on it, and the UI uses it to tell a degraded user
+    # what answered them.
+    tier = models.CharField(max_length=20, choices=Tier.choices, default=Tier.ADVANCED)
+    # Frozen at write time from CreditPrice, so retuning credit prices never
+    # rewrites a household's spent balance. Zero for ESSENTIAL.
+    credits_charged = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -330,3 +338,32 @@ class UsageRecord(HouseholdOwnedModel):
 
     def __str__(self):
         return f"{self.kind} {self.model} {self.cost_usd}"
+
+
+class CreditPrice(models.Model):
+    """How many credits one interaction costs, by tier and kind.
+
+    A database row (E07 spec D4) so the beta's economics can be retuned from
+    the admin once Task 10's report shows what things actually cost.
+
+    ESSENTIAL is zero by definition — it is the free floor a household lands on
+    when its credits run out, and charging for it would defeat the whole point.
+
+    Not household-scoped: this is global product configuration, like
+    ``ModelPrice``. Per-tenant pricing is E15's problem, and would be a
+    different column here rather than a household FK on every row.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tier = models.CharField(max_length=20, choices=Tier.choices)
+    kind = models.CharField(max_length=20, choices=InteractionKind.choices)
+    credits = models.PositiveIntegerField()
+
+    class Meta:
+        verbose_name = "preço em créditos"
+        verbose_name_plural = "preços em créditos"
+        ordering = ["tier", "kind"]
+        constraints = [models.UniqueConstraint(fields=["tier", "kind"], name="unique_credit_price")]
+
+    def __str__(self):
+        return f"{self.tier}/{self.kind} = {self.credits}"
