@@ -47,6 +47,17 @@ class FakeStream:
         return []
 
 
+class FakeRunResult:
+    """What a non-streamed PydanticAI run returns, as `extract_receipt` uses it."""
+
+    def __init__(self, output, usage=None):
+        self.output = output
+        self._usage = usage if usage is not None else FakeUsage()
+
+    def usage(self):
+        return self._usage
+
+
 class FakeAgent:
     """An agent whose behaviour per attempt is keyed by the model name asked for."""
 

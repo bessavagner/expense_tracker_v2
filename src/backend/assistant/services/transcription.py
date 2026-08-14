@@ -10,6 +10,8 @@ import logging
 from django.conf import settings
 from openai import AsyncOpenAI
 
+from assistant.metering import Timer
+
 logger = logging.getLogger(__name__)
 
 # Singleton preguiçoso: evita construir o cliente na importação (que exigiria
@@ -30,6 +32,7 @@ async def transcribe_audio(
     content_type: str,
     *,
     client: AsyncOpenAI | None = None,
+    scope=None,
 ) -> str:
     """Transcreve ``data`` (bytes de áudio) para texto pt-BR.
 
@@ -38,6 +41,8 @@ async def transcribe_audio(
         filename: nome original (ajuda o SDK a inferir o formato).
         content_type: mime real do upload (ex.: "audio/webm").
         client: cliente OpenAI injetável (testes); default usa o singleton.
+        scope: ``AgentScope`` da interação; quando dado, CADA tentativa vira uma
+            linha em ``UsageRecord`` (E07 S07-2).
 
     Tenta ``LLM_TRANSCRIBE_MODEL`` e, em caso de falha (ex.: o modelo rejeita o
     webm/opus do navegador como "corrupted or unsupported"), recorre a
@@ -53,15 +58,23 @@ async def transcribe_audio(
 
     last_exc: Exception | None = None
     for model in models:
+        timer = Timer()
         try:
-            result = await client.audio.transcriptions.create(
-                model=model,
-                file=(filename, data, content_type),
-                language="pt",
-            )
+            with timer:
+                result = await client.audio.transcriptions.create(
+                    model=model,
+                    file=(filename, data, content_type),
+                    language="pt",
+                )
+            await _meter(scope, model, getattr(result, "usage", None), timer.ms, ok=True)
             return result.text.strip()
         except Exception as exc:
             last_exc = exc
+            # Metered even though it failed: the provider processed the request
+            # and charged for it. This loop is why E07's DoD has a box of its
+            # own for "the transcription fallback bills twice" — the browser's
+            # webm/opus routinely trips the primary model.
+            await _meter(scope, model, None, timer.ms, ok=False)
             logger.warning(
                 "Transcrição falhou (modelo=%s, content_type=%s, %d bytes): %s",
                 model,
@@ -71,3 +84,29 @@ async def transcribe_audio(
             )
 
     raise last_exc
+
+
+async def _meter(scope, model: str, usage, latency_ms: int, *, ok: bool) -> None:
+    """Record one transcription attempt, if we know whose it was.
+
+    ``cost_usd`` will be ``None``: providers price transcription per MINUTE of
+    audio, and ``ModelPrice`` models token pricing only. That gap is deliberate
+    and bounded — a transcription is roughly two orders of magnitude cheaper
+    than a vision call (E01), so it does not move p50/p90/p99. Documented in
+    the runbook and asserted by ``test_pricing_gaps_are_declared``.
+    """
+    if scope is None:
+        return
+    from assistant.metering import record_usage
+    from assistant.models import UsageKind
+
+    await record_usage(
+        interaction=getattr(scope, "interaction", None),
+        household=scope.household,
+        user=scope.user,
+        kind=UsageKind.TRANSCRIPTION,
+        model=model,
+        usage=usage,
+        latency_ms=latency_ms,
+        ok=ok,
+    )

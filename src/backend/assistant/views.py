@@ -376,7 +376,7 @@ async def _handle_audio(request, scope, decision, audio, caption):
 
     data = audio.read()
     try:
-        text = await transcribe_audio(data, audio.name, audio.content_type)
+        text = await transcribe_audio(data, audio.name, audio.content_type, scope=scope)
     except Exception:
         # No explicit capture_exception: Sentry's logging integration turns an
         # ERROR-level record into an event, and logger.exception is ERROR. Adding
@@ -513,7 +513,9 @@ async def _handle_images(request, scope, decision, images, caption):
     # Fase 1: extração estruturada (combina todas as imagens num recibo).
     extraction = None
     try:
-        extraction = await extract_receipt(prepared, categories=cats, payment_methods=pms)
+        extraction = await extract_receipt(
+            prepared, categories=cats, payment_methods=pms, scope=scope
+        )
     except Exception:
         # No explicit capture_exception: Sentry's logging integration turns an
         # ERROR-level record into an event, and logger.exception is ERROR. Adding
@@ -529,7 +531,11 @@ async def _handle_images(request, scope, decision, images, caption):
     # pede reenvio (nunca grava direto).
     try:
         extraction = await extract_receipt(
-            prepared, categories=cats, payment_methods=pms, model=settings.LLM_VISION_MODEL
+            prepared,
+            categories=cats,
+            payment_methods=pms,
+            model=settings.LLM_VISION_MODEL,
+            scope=scope,
         )
     except Exception:
         # No explicit capture_exception: Sentry's logging integration turns an

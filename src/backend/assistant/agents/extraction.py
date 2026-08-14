@@ -16,6 +16,8 @@ from django.conf import settings
 from pydantic import BaseModel, field_validator
 from pydantic_ai import Agent, BinaryContent
 
+from assistant.metering import Timer
+
 _BR_DATE_RE = re.compile(r"^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})$")
 
 
@@ -168,6 +170,8 @@ async def extract_receipt(
     categories: list[str] | None = None,
     payment_methods: list[str] | None = None,
     model=None,
+    *,
+    scope=None,
 ) -> ReceiptExtraction:
     """Lê as fotos do recibo e devolve a extração estruturada.
 
@@ -176,6 +180,11 @@ async def extract_receipt(
     ``categories`` injeta a taxonomia do usuário para que o modelo atribua
     category por item. ``payment_methods`` lista as formas cadastradas.
     ``model`` permite sobrescrever o modelo por chamada (usado no fallback de visão).
+
+    ``scope`` é o ``AgentScope`` da interação; quando dado, a chamada vira uma
+    linha em ``UsageRecord`` (E07 S07-2). É opcional porque esta função também
+    roda fora de um request (harness de avaliação), e um registro de custo sem
+    household é pior que nenhum: não dá para escopar nem cobrar de ninguém.
     """
     instruction = EXTRACTION_INSTRUCTION
     if categories:
@@ -192,8 +201,47 @@ async def extract_receipt(
         )
     prompt = [instruction]
     prompt += [BinaryContent(data=data, media_type=mt) for data, mt in images]
-    result = await extraction_agent.run(prompt, model=model)
+
+    # `model=None` means the agent runs the model it was constructed with,
+    # which is LLM_VISION_MODEL — the same string the vision retry passes
+    # explicitly. Recording the resolved name keeps both attempts comparable in
+    # the operator report.
+    resolved = str(model or settings.LLM_VISION_MODEL)
+    timer = Timer()
+    try:
+        with timer:
+            result = await extraction_agent.run(prompt, model=model)
+    except Exception:
+        # Metered before re-raising: the provider read the image and charged
+        # for it whether or not it gave us usable JSON back (S07-2).
+        await _meter(scope, resolved, None, timer.ms, ok=False)
+        raise
+    await _meter(scope, resolved, result.usage(), timer.ms, ok=True)
     return result.output
+
+
+async def _meter(scope, model: str, usage, latency_ms: int, *, ok: bool) -> None:
+    """Record one extraction attempt, if we know whose it was.
+
+    Imported lazily: `assistant.models` pulls in `accounts.models`, and this
+    module is imported by `assistant.views` at startup. Same pattern the views
+    already use for tool imports.
+    """
+    if scope is None:
+        return
+    from assistant.metering import record_usage
+    from assistant.models import UsageKind
+
+    await record_usage(
+        interaction=getattr(scope, "interaction", None),
+        household=scope.household,
+        user=scope.user,
+        kind=UsageKind.EXTRACTION,
+        model=model,
+        usage=usage,
+        latency_ms=latency_ms,
+        ok=ok,
+    )
 
 
 def _payment_guidance(ext: ReceiptExtraction) -> str:

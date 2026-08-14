@@ -92,7 +92,7 @@ class TestChatCsrf:
     def test_multipart_audio_with_valid_token_succeeds(self, csrf_client, household, monkeypatch):
         from django.core.files.uploadedfile import SimpleUploadedFile
 
-        async def fake_transcribe(data, filename, content_type, *, client=None):
+        async def fake_transcribe(data, filename, content_type, *, client=None, scope=None):
             return "mercado 80 no pix"
 
         monkeypatch.setattr("assistant.views.transcribe_audio", fake_transcribe)

@@ -89,7 +89,7 @@ class TestChatEndpoint:
         self, logged_client, user, monkeypatch, household
     ):
 
-        async def fake_transcribe(data, filename, content_type, *, client=None):
+        async def fake_transcribe(data, filename, content_type, *, client=None, scope=None):
             return "mercado 80 no pix"
 
         monkeypatch.setattr("assistant.views.transcribe_audio", fake_transcribe)
@@ -186,7 +186,9 @@ class TestChatEndpoint:
         )
         before = ReceiptDraft.objects.for_household(household).count()
 
-        async def fake_extract(images, categories=None, payment_methods=None, model=None):
+        async def fake_extract(
+            images, categories=None, payment_methods=None, model=None, *, scope=None
+        ):
 
             return ReceiptExtraction(
                 store="EMPREENDIMENTOS PAGUE MENOS S/A",
@@ -234,7 +236,7 @@ class TestChatEndpoint:
         parâmetro de codec não pode fazer a validação rejeitar (era 400 →
         'Erro de conexão' no widget)."""
 
-        async def fake_transcribe(data, filename, content_type, *, client=None):
+        async def fake_transcribe(data, filename, content_type, *, client=None, scope=None):
 
             return "mercado 80 no pix"
 
@@ -262,7 +264,9 @@ class TestChatEndpoint:
         settings.LLM_VISION_MODEL = "openai:vision-sentinel"
         captured = {}
 
-        async def fake_extract(images, categories=None, payment_methods=None, model=None):
+        async def fake_extract(
+            images, categories=None, payment_methods=None, model=None, *, scope=None
+        ):
 
             captured.setdefault("calls", []).append(model)
             if model is None:
@@ -301,7 +305,9 @@ class TestChatEndpoint:
 
         from assistant.agents.extraction import ReceiptExtraction
 
-        async def fake_extract(images, categories=None, payment_methods=None, model=None):
+        async def fake_extract(
+            images, categories=None, payment_methods=None, model=None, *, scope=None
+        ):
 
             calls["extract_images"] = images
             return ReceiptExtraction()
@@ -331,7 +337,9 @@ class TestChatEndpoint:
 
         captured = {}
 
-        async def fake_extract(images, categories=None, payment_methods=None, model=None):
+        async def fake_extract(
+            images, categories=None, payment_methods=None, model=None, *, scope=None
+        ):
 
             captured["images"] = images
             return ReceiptExtraction()
@@ -458,7 +466,7 @@ class TestChatEndpoint:
         )
         propose_receipt(seeded_scope, {"Alimentação": [0], "Lanche": [1]}, "Pix")
 
-        async def fake_transcribe(data, filename, content_type, *, client=None):
+        async def fake_transcribe(data, filename, content_type, *, client=None, scope=None):
 
             return "sim"
 
@@ -485,7 +493,9 @@ class TestChatEndpoint:
 
         captured = {}
 
-        async def fake_extract(images, categories=None, payment_methods=None, model=None):
+        async def fake_extract(
+            images, categories=None, payment_methods=None, model=None, *, scope=None
+        ):
 
             captured["categories"] = categories
             captured["payment_methods"] = payment_methods
@@ -647,7 +657,7 @@ class TestChokepointWiring:
 
         captured = {}
 
-        async def fake_transcribe(data, filename, content_type, *, client=None):
+        async def fake_transcribe(data, filename, content_type, *, client=None, scope=None):
             return "mercado 80 no pix"
 
         def fake_sse(scope, agent, prompt, **kwargs):
@@ -671,7 +681,9 @@ class TestChokepointWiring:
 
         captured = {}
 
-        async def fake_extract(images, categories=None, payment_methods=None, model=None):
+        async def fake_extract(
+            images, categories=None, payment_methods=None, model=None, *, scope=None
+        ):
             return ReceiptExtraction()
 
         def fake_sse(scope, agent, prompt, **kwargs):

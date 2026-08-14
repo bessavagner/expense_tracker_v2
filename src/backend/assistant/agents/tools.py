@@ -1221,7 +1221,7 @@ async def lookup_memory_async(scope, message: str) -> str:
         return "\n".join(lines)
 
     # Fallback: semantic search
-    query_vector = await get_embedding(message)
+    query_vector = await get_embedding(message, scope=scope)
     if query_vector:
         matches = await _sync_to_async(find_semantic_matches)(scope, query_vector)
         if matches:

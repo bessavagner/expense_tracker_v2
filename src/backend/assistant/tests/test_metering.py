@@ -235,8 +235,9 @@ class TestTheChatRunIsMetered:
             )
             consume_streaming(resp)
 
-        rec = UsageRecord.objects.get()
-        assert rec.kind == UsageKind.CHAT
+        # Filtered by kind rather than `.get()`: `TestModel` calls every tool,
+        # and `check_memory` reaches the embedding service, which is metered too.
+        rec = UsageRecord.objects.get(kind=UsageKind.CHAT)
         assert rec.ok is True
         # Correlated back to the action that authorised it (S07-1), and stamped
         # with the tier the chokepoint picked, not with whatever the agent was
@@ -263,7 +264,7 @@ class TestTheChatRunIsMetered:
             )
             consume_streaming(resp)
 
-        assert UsageRecord.objects.get().household_id == household.id
+        assert {r.household_id for r in UsageRecord.objects.all()} == {household.id}
 
     def test_a_failed_chat_run_is_still_recorded(self, household, user, interaction, priced):
         """The provider consumed tokens before dying. Those are billed."""
@@ -332,3 +333,283 @@ class TestTheChatRunIsMetered:
 
         assert "tudo certo" in body
         assert '"type": "error"' not in body
+
+
+_PNG = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00"
+    b"\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9c"
+    b"c\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
+class TestExtractionIsMetered:
+    def _post_image(self, logged_client):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from assistant.tests.test_views import consume_streaming
+
+        image = SimpleUploadedFile("recibo.png", _PNG, content_type="image/png")
+        resp = logged_client.post("/api/assistant/chat/", data={"image": image})
+        consume_streaming(resp)
+        return resp
+
+    def test_a_receipt_photo_correlates_extraction_and_chat(
+        self, logged_client, user, household, priced
+    ):
+        """DoD: one photo, several provider calls, all analysable as one event."""
+        from pydantic_ai.models.test import TestModel
+
+        from assistant.agents.assistant import assistant_agent
+        from assistant.agents.extraction import extraction_agent
+        from assistant.models import UsageInteraction
+
+        with (
+            extraction_agent.override(model=TestModel()),
+            assistant_agent.override(model=TestModel()),
+        ):
+            self._post_image(logged_client)
+
+        interaction = UsageInteraction.objects.get()
+        kinds = set(
+            UsageRecord.objects.filter(interaction=interaction).values_list("kind", flat=True)
+        )
+        assert UsageKind.EXTRACTION in kinds
+        assert UsageKind.CHAT in kinds
+
+    def test_the_vision_retry_produces_a_second_extraction_record(
+        self, logged_client, user, household, monkeypatch, priced
+    ):
+        """The expensive retry is a separate billable call, and the attempt that
+        failed is billable too — the provider read the image either way."""
+        from pydantic_ai.models.test import TestModel
+
+        from assistant.agents import extraction as extraction_module
+        from assistant.agents.assistant import assistant_agent
+        from assistant.agents.extraction import ReceiptExtraction
+        from assistant.tests.fakes import FakeRunResult
+
+        async def flaky_run(prompt, model=None):
+            if model is None:
+                raise RuntimeError("primeira extração falha")
+            return FakeRunResult(ReceiptExtraction())
+
+        monkeypatch.setattr(extraction_module.extraction_agent, "run", flaky_run)
+        with assistant_agent.override(model=TestModel()):
+            self._post_image(logged_client)
+
+        extractions = UsageRecord.objects.filter(kind=UsageKind.EXTRACTION)
+        assert extractions.count() == 2
+        assert sorted(extractions.values_list("ok", flat=True)) == [False, True]
+
+    def test_extraction_outside_a_request_is_not_metered(self):
+        """`extract_receipt` is called by eval harnesses with no household. A
+        record with no tenant is worse than no record — it cannot be scoped,
+        reported, or billed to anyone."""
+        from asgiref.sync import async_to_sync
+        from pydantic_ai.models.test import TestModel
+
+        from assistant.agents.extraction import extract_receipt, extraction_agent
+
+        with extraction_agent.override(model=TestModel()):
+            async_to_sync(extract_receipt)([(_PNG, "image/png")])
+
+        assert UsageRecord.objects.count() == 0
+
+
+class TestTranscriptionIsMetered:
+    def test_the_transcription_fallback_bills_twice(self, household, user, settings):
+        """DoD: the fallback loop bills twice when the primary rejects the audio.
+
+        The failed attempt is a real request the provider processed and charged
+        for; counting only the success makes the browser's webm/opus problem
+        look free.
+        """
+        from types import SimpleNamespace
+
+        from assistant.agents.scope import AgentScope
+        from assistant.services.transcription import transcribe_audio
+
+        settings.LLM_TRANSCRIBE_MODEL = "gpt-4o-mini-transcribe"
+        settings.LLM_TRANSCRIBE_FALLBACK_MODEL = "whisper-1"
+
+        class FallbackTranscriptions:
+            async def create(self, **kwargs):
+                if kwargs["model"] == "gpt-4o-mini-transcribe":
+                    raise RuntimeError("Audio file might be corrupted or unsupported")
+                return SimpleNamespace(text="mercado 80 no pix")
+
+        client = SimpleNamespace(audio=SimpleNamespace(transcriptions=FallbackTranscriptions()))
+        async_to_sync(transcribe_audio)(
+            b"\x00",
+            "nota.webm",
+            "audio/webm",
+            client=client,
+            scope=AgentScope(household=household, user=user),
+        )
+
+        assert UsageRecord.objects.filter(kind=UsageKind.TRANSCRIPTION).count() == 2
+        assert UsageRecord.objects.get(model="gpt-4o-mini-transcribe").ok is False
+        assert UsageRecord.objects.get(model="whisper-1").ok is True
+
+    def test_transcription_cost_is_null_not_zero(self, household, user):
+        """Providers price transcription per MINUTE of audio; ModelPrice models
+        tokens. The gap is declared (see `test_pricing_gaps_are_declared`), and
+        a zero here would look like a measurement instead of a hole."""
+        from types import SimpleNamespace
+
+        from assistant.agents.scope import AgentScope
+        from assistant.services.transcription import transcribe_audio
+
+        class Transcriptions:
+            async def create(self, **kwargs):
+                return SimpleNamespace(text="oi")
+
+        client = SimpleNamespace(audio=SimpleNamespace(transcriptions=Transcriptions()))
+        async_to_sync(transcribe_audio)(
+            b"\x00",
+            "nota.webm",
+            "audio/webm",
+            client=client,
+            scope=AgentScope(household=household, user=user),
+        )
+
+        assert UsageRecord.objects.get().cost_usd is None
+
+    def test_transcription_without_a_scope_is_not_metered(self, household, user):
+        from types import SimpleNamespace
+
+        from assistant.services.transcription import transcribe_audio
+
+        class Transcriptions:
+            async def create(self, **kwargs):
+                return SimpleNamespace(text="oi")
+
+        client = SimpleNamespace(audio=SimpleNamespace(transcriptions=Transcriptions()))
+        async_to_sync(transcribe_audio)(b"\x00", "nota.webm", "audio/webm", client=client)
+        assert UsageRecord.objects.count() == 0
+
+    def test_the_audio_turn_meters_its_transcription(
+        self, logged_client, user, household, monkeypatch
+    ):
+        """The wiring: `chat_view` must hand the scope down, or every real
+        transcription in production goes unbilled while the unit test passes."""
+        from types import SimpleNamespace
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from pydantic_ai.models.test import TestModel
+
+        from assistant.agents.assistant import agents_override
+        from assistant.tests.test_views import consume_streaming
+
+        class Transcriptions:
+            async def create(self, **kwargs):
+                return SimpleNamespace(text="mercado 80 no pix")
+
+        monkeypatch.setattr(
+            "assistant.services.transcription._get_client",
+            lambda: SimpleNamespace(audio=SimpleNamespace(transcriptions=Transcriptions())),
+        )
+
+        audio = SimpleUploadedFile("nota.webm", b"\x00\x01", content_type="audio/webm")
+        with agents_override(TestModel()):
+            resp = logged_client.post("/api/assistant/chat/", data={"audio": audio})
+            consume_streaming(resp)
+
+        rec = UsageRecord.objects.get(kind=UsageKind.TRANSCRIPTION)
+        assert rec.interaction_id is not None
+
+
+class TestEmbeddingIsMetered:
+    def _fake_response(self, prompt_tokens=5):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            data=[SimpleNamespace(embedding=[0.1] * 1536)],
+            usage=SimpleNamespace(prompt_tokens=prompt_tokens, total_tokens=prompt_tokens),
+        )
+
+    def test_an_embedding_is_metered(self, household, user):
+        from unittest.mock import AsyncMock
+
+        from assistant.agents.scope import AgentScope
+        from assistant.services.embedding import get_embedding
+
+        with patch("assistant.services.embedding.async_client") as client:
+            client.embeddings.create = AsyncMock(return_value=self._fake_response())
+            async_to_sync(get_embedding)("oi", scope=AgentScope(household=household, user=user))
+
+        rec = UsageRecord.objects.get(kind=UsageKind.EMBEDDING)
+        assert rec.model == "text-embedding-3-small"
+
+    def test_the_embedding_token_count_is_not_silently_zero(self, household, user):
+        """OpenAI's embeddings endpoint names them `prompt_tokens`, not
+        `input_tokens`. Reading the wrong attribute records a real call as zero
+        tokens, which is indistinguishable from a free one."""
+        from unittest.mock import AsyncMock
+
+        from assistant.agents.scope import AgentScope
+        from assistant.services.embedding import get_embedding
+
+        with patch("assistant.services.embedding.async_client") as client:
+            client.embeddings.create = AsyncMock(return_value=self._fake_response(742))
+            async_to_sync(get_embedding)("oi", scope=AgentScope(household=household, user=user))
+
+        assert UsageRecord.objects.get().input_tokens == 742
+
+    def test_a_failed_embedding_is_recorded(self, household, user):
+        from unittest.mock import AsyncMock
+
+        from assistant.agents.scope import AgentScope
+        from assistant.services.embedding import get_embedding
+
+        with patch("assistant.services.embedding.async_client") as client:
+            client.embeddings.create = AsyncMock(side_effect=Exception("API error"))
+            result = async_to_sync(get_embedding)(
+                "oi", scope=AgentScope(household=household, user=user)
+            )
+
+        assert result is None  # the contract callers rely on is unchanged
+        assert UsageRecord.objects.get().ok is False
+
+    def test_an_embedding_without_a_scope_is_not_metered(self):
+        from unittest.mock import AsyncMock
+
+        from assistant.services.embedding import get_embedding
+
+        with patch("assistant.services.embedding.async_client") as client:
+            client.embeddings.create = AsyncMock(return_value=self._fake_response())
+            async_to_sync(get_embedding)("oi")
+
+        assert UsageRecord.objects.count() == 0
+
+
+def test_no_unmetered_provider_call_site_exists():
+    """The ratchet. E07 DoD: fails if a new unmetered call site is added.
+
+    Every module that reaches a provider must import `record_usage`. Coarse on
+    purpose — a precise AST check would be brittle, and coarse-but-loud beats
+    precise-but-skipped. If you are adding a legitimate new call site, meter it;
+    if you genuinely cannot, add it to EXEMPT with a comment saying why.
+    """
+    import pathlib
+    import re
+
+    root = pathlib.Path(__file__).resolve().parents[2]
+    CALL = re.compile(
+        r"\.(run_stream|run)\(|"
+        r"client\.audio\.transcriptions\.create\(|"
+        r"\.embeddings\.create\("
+    )
+
+    offenders = []
+    for path in root.rglob("*.py"):
+        rel = str(path.relative_to(root))
+        # Test modules make deliberate unmetered calls through doubles, and
+        # migrations never reach a provider at all.
+        if "/tests/" in f"/{rel}" or "/migrations/" in rel:
+            continue
+        text = path.read_text(encoding="utf-8")
+        if CALL.search(text) and "record_usage" not in text:
+            offenders.append(rel)
+
+    assert not offenders, "Unmetered provider call sites (E07 S07-2):\n  " + "\n  ".join(offenders)

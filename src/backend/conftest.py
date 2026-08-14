@@ -52,6 +52,40 @@ def clean_cache():
     cache.clear()
 
 
+@pytest.fixture(autouse=True)
+def no_real_embedding_calls():
+    """Stop the suite from paying OpenAI for embeddings.
+
+    ``pydantic_ai.models.ALLOW_MODEL_REQUESTS = False`` guards the *agent*
+    calls, but the embedding and transcription services talk to the OpenAI SDK
+    directly and are not covered by it. `TestModel` calls every tool it is
+    given, `check_memory` is one of them, and it reaches `get_embedding` — so
+    until E07 made these calls visible in `UsageRecord`, every image and chat
+    test was quietly billing a real embeddings request against
+    `OPENAI_API_KEY`.
+
+    Same opt-in as the agent guard: ``RUN_LLM_TESTS=1`` lets the real calls
+    through. A test that wants a fake response patches this same attribute and
+    wins, because the patch replaces the object rather than wrapping it.
+    """
+    if os.environ.get("RUN_LLM_TESTS") == "1":
+        yield
+        return
+
+    from types import SimpleNamespace
+    from unittest import mock
+
+    async def refuse(*args, **kwargs):
+        raise RuntimeError(
+            "Real embedding request in a test. Patch "
+            "`assistant.services.embedding.async_client`, or set RUN_LLM_TESTS=1."
+        )
+
+    stub = SimpleNamespace(embeddings=SimpleNamespace(create=refuse))
+    with mock.patch("assistant.services.embedding.async_client", stub):
+        yield
+
+
 @pytest.fixture
 def user(db):
     # The address is pinned rather than left to model-bakery. From E05 the
