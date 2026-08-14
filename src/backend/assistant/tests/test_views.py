@@ -501,6 +501,288 @@ class TestChatEndpoint:
 
 
 @pytest.mark.django_db
+class TestChokepointWiring:
+    """E07 S07-3: chat_view decides quota BEFORE any model call, and every
+    branch carries the chosen tier's model plus the degrade notice down to the
+    stream.
+
+    Written sync + `consume_streaming` rather than `async def`: an async test
+    body runs its ORM calls on a different connection from the one holding
+    pytest-django's uncommitted fixture transaction, so `household` and `user`
+    are invisible to it. See the module docstring of `test_metering.py`.
+    """
+
+    def test_an_abuse_refusal_makes_zero_model_calls(self, logged_client, user, settings):
+        """DoD: a ceiling-refused request produces zero model calls and no row.
+
+        No `agents_override` here on purpose — `ALLOW_MODEL_REQUESTS` is False
+        in this suite, so reaching a model at all raises rather than costing
+        money.
+        """
+        from assistant.models import UsageInteraction
+
+        settings.ASSISTANT_ABUSE_TEXT_PER_HOUR = 0
+        response = logged_client.post(
+            "/api/assistant/chat/",
+            data=json.dumps({"message": "oi"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 429
+        # Refused before `open_interaction`, so the turn is not charged either.
+        assert UsageInteraction.objects.count() == 0
+
+    def test_a_household_out_of_credits_still_gets_an_answer(
+        self, logged_client, user, household, plan
+    ):
+        """DoD: zero credits degrades to ESSENTIAL, it does NOT refuse."""
+        from assistant.models import InteractionKind, UsageInteraction
+        from core.tiers import Tier
+
+        UsageInteraction.objects.create(
+            household=household,
+            user=user,
+            kind=InteractionKind.TEXT,
+            tier=Tier.ADVANCED,
+            credits_charged=plan.monthly_credits,
+        )
+        with agents_override(TestModel()):
+            response = logged_client.post(
+                "/api/assistant/chat/",
+                data=json.dumps({"message": "oi"}),
+                content_type="application/json",
+            )
+            body = consume_streaming(response)
+
+        assert response.status_code == 200
+        assert '"type": "notice"' in body
+        assert "Essencial" in body
+
+        opened = UsageInteraction.objects.get(tier=Tier.ESSENTIAL)
+        assert opened.credits_charged == 0
+
+    def test_the_degrade_notice_arrives_before_any_token(
+        self, logged_client, user, household, plan
+    ):
+        """A notice after the answer is a footnote nobody reads."""
+        from assistant.models import InteractionKind, UsageInteraction
+        from core.tiers import Tier
+
+        UsageInteraction.objects.create(
+            household=household,
+            user=user,
+            kind=InteractionKind.TEXT,
+            tier=Tier.ADVANCED,
+            credits_charged=plan.monthly_credits,
+        )
+        with agents_override(TestModel()):
+            response = logged_client.post(
+                "/api/assistant/chat/",
+                data=json.dumps({"message": "oi"}),
+                content_type="application/json",
+            )
+            body = consume_streaming(response)
+
+        assert body.index('"notice"') < body.index('"token"')
+
+    def test_a_household_with_credits_gets_no_notice(self, logged_client, user, household, plan):
+        """The notice is for a degrade. Emitting it always would train the user
+        to ignore it."""
+        with agents_override(TestModel()):
+            response = logged_client.post(
+                "/api/assistant/chat/",
+                data=json.dumps({"message": "oi"}),
+                content_type="application/json",
+            )
+            body = consume_streaming(response)
+
+        assert '"type": "notice"' not in body
+
+    def test_the_interaction_is_opened_before_any_model_call(
+        self, logged_client, user, household, monkeypatch
+    ):
+        """A stream that dies mid-flight must still have counted against budget."""
+        from assistant.models import UsageInteraction
+
+        def exploding_sse(*args, **kwargs):
+            raise AssertionError("must not be reached")
+
+        # The interaction is written by `chat_view` itself, so it exists even
+        # when everything downstream of it fails.
+        monkeypatch.setattr("assistant.views._sse_response", exploding_sse)
+        with pytest.raises(AssertionError):
+            logged_client.post(
+                "/api/assistant/chat/",
+                data=json.dumps({"message": "oi"}),
+                content_type="application/json",
+            )
+        assert UsageInteraction.objects.count() == 1
+
+    @pytest.mark.parametrize("field", ["model", "notice"])
+    def test_the_text_path_threads_the_decision(
+        self, logged_client, user, household, monkeypatch, settings, field
+    ):
+        from django.http import JsonResponse
+
+        captured = {}
+
+        def fake_sse(scope, agent, prompt, **kwargs):
+            captured.update(kwargs)
+            return JsonResponse({})
+
+        monkeypatch.setattr("assistant.views._sse_response", fake_sse)
+        logged_client.post(
+            "/api/assistant/chat/",
+            data=json.dumps({"message": "oi"}),
+            content_type="application/json",
+        )
+        assert field in captured
+        if field == "model":
+            assert captured["model"] == settings.LLM_TIER_ADVANCED
+
+    def test_the_audio_path_threads_the_decision(
+        self, logged_client, user, household, monkeypatch, settings
+    ):
+        from django.http import JsonResponse
+
+        captured = {}
+
+        async def fake_transcribe(data, filename, content_type, *, client=None):
+            return "mercado 80 no pix"
+
+        def fake_sse(scope, agent, prompt, **kwargs):
+            captured.update(kwargs)
+            return JsonResponse({})
+
+        monkeypatch.setattr("assistant.views.transcribe_audio", fake_transcribe)
+        monkeypatch.setattr("assistant.views._sse_response", fake_sse)
+
+        audio = SimpleUploadedFile("nota.webm", b"\x00\x01\x02", content_type="audio/webm")
+        logged_client.post("/api/assistant/chat/", data={"audio": audio})
+        assert captured["model"] == settings.LLM_TIER_ADVANCED
+        assert "notice" in captured
+
+    def test_the_image_path_threads_the_decision(
+        self, logged_client, user, household, monkeypatch, settings
+    ):
+        from django.http import JsonResponse
+
+        from assistant.agents.extraction import ReceiptExtraction
+
+        captured = {}
+
+        async def fake_extract(images, categories=None, payment_methods=None, model=None):
+            return ReceiptExtraction()
+
+        def fake_sse(scope, agent, prompt, **kwargs):
+            captured.update(kwargs)
+            return JsonResponse({})
+
+        monkeypatch.setattr("assistant.views.extract_receipt", fake_extract)
+        monkeypatch.setattr("assistant.views._sse_response", fake_sse)
+
+        image = SimpleUploadedFile("recibo.png", self._PNG, content_type="image/png")
+        logged_client.post("/api/assistant/chat/", data={"image": image})
+        assert captured["model"] == settings.LLM_TIER_ADVANCED
+        assert "notice" in captured
+
+    _PNG = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00"
+        b"\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9c"
+        b"c\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+
+
+class _FakeStream:
+    """The subset of PydanticAI's streamed-run handle `_sse_response` touches."""
+
+    def __init__(self, chunks, fail_after=None):
+        self._chunks = chunks
+        self._fail_after = fail_after
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def stream_text(self, delta=True):
+        for i, chunk in enumerate(self._chunks):
+            if self._fail_after is not None and i >= self._fail_after:
+                raise RuntimeError("provider died mid-stream")
+            yield chunk
+
+    def all_messages(self):
+        return []
+
+
+class _FakeAgent:
+    """An agent whose per-attempt behaviour is scripted by model name.
+
+    `agent.override(model=...)` cannot be used to test the fallback retry: the
+    override wins over the per-run `model=` argument, so both attempts would
+    run the same model and the retry would be invisible.
+    """
+
+    def __init__(self, behaviour):
+        self.behaviour = behaviour
+        self.calls = []
+
+    def run_stream(self, prompt, *, deps, message_history, model=None):
+        self.calls.append(model)
+        return self.behaviour[model]
+
+
+@pytest.mark.django_db
+class TestEssentialFallbackRetry:
+    def _run(self, scope, agent, **kwargs):
+        from assistant.views import _sse_response
+
+        return consume_streaming(_sse_response(scope, agent, "oi", message_history=None, **kwargs))
+
+    def test_a_first_attempt_that_dies_before_any_token_retries_the_fallback(self, scope):
+        agent = _FakeAgent(
+            {
+                "primary": _FakeStream(["nope"], fail_after=0),
+                "fallback": _FakeStream(["ok"]),
+            }
+        )
+        body = self._run(scope, agent, model="primary", fallback_model="fallback")
+        assert agent.calls == ["primary", "fallback"]
+        assert "ok" in body
+        assert '"type": "error"' not in body
+
+    def test_a_failure_after_the_first_token_is_not_retried(self, scope):
+        """The client already rendered those tokens; a replay would duplicate
+        them, and there is no way to unsay them."""
+        agent = _FakeAgent(
+            {
+                "primary": _FakeStream(["meio ", "caminho"], fail_after=1),
+                "fallback": _FakeStream(["ok"]),
+            }
+        )
+        body = self._run(scope, agent, model="primary", fallback_model="fallback")
+        assert agent.calls == ["primary"]
+        assert '"type": "error"' in body
+
+    def test_without_a_fallback_a_failure_stays_a_failure(self, scope):
+        agent = _FakeAgent({"primary": _FakeStream(["nope"], fail_after=0)})
+        body = self._run(scope, agent, model="primary")
+        assert agent.calls == ["primary"]
+        assert '"type": "error"' in body
+
+    def test_a_fallback_that_also_dies_reports_the_error_once(self, scope):
+        agent = _FakeAgent(
+            {
+                "primary": _FakeStream(["nope"], fail_after=0),
+                "fallback": _FakeStream(["nope"], fail_after=0),
+            }
+        )
+        body = self._run(scope, agent, model="primary", fallback_model="fallback")
+        assert agent.calls == ["primary", "fallback"]
+        assert body.count('"type": "error"') == 1
+
+
+@pytest.mark.django_db
 class TestHistoryEndpoint:
     def test_returns_messages(self, logged_client, user, household):
 

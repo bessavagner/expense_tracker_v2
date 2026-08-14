@@ -20,7 +20,7 @@ from assistant.models import (
     MessageRole,
     ReceiptDraft,
 )
-from assistant.quota import decide, open_interaction
+from assistant.quota import decide, fallback_model_for, model_for, open_interaction
 from assistant.services.image_prep import prepare_receipt_image
 from assistant.services.transcription import transcribe_audio
 
@@ -53,6 +53,21 @@ def _run_mutated_data(messages) -> bool:
             ):
                 return True
     return False
+
+
+def _tier_kwargs(decision):
+    """The arguments every `_sse_response` inherits from the chokepoint.
+
+    A helper rather than three literals repeated at eight call sites: a branch
+    that silently forgot `notice=` would degrade a household without telling
+    it, which is the one thing E07 S07-4 forbids, and nothing in the response
+    would look wrong.
+    """
+    return {
+        "model": model_for(decision.tier),
+        "fallback_model": fallback_model_for(decision.tier),
+        "notice": decision.message,
+    }
 
 
 def _check_auth(request):
@@ -88,48 +103,84 @@ async def _load_history(scope):
     return pydantic_messages
 
 
-def _sse_response(scope, agent, prompt, *, message_history, user_text=None, model=None):
+def _sse_response(
+    scope,
+    agent,
+    prompt,
+    *,
+    message_history,
+    user_text=None,
+    model=None,
+    notice=None,
+    fallback_model=None,
+):
     """Monta a StreamingHttpResponse SSE para qualquer agente/prompt.
 
     Se ``user_text`` for dado, emite um evento ``user_text`` antes dos tokens
     (para o widget substituir o balão placeholder pela transcrição/legenda).
 
+    ``notice`` emite um evento ``notice`` ANTES dos tokens — usado para avisar
+    que os créditos acabaram e a resposta veio de um modo mais barato (E07
+    S07-4: a degradação é visível, nunca silenciosa). Depois da resposta o
+    aviso vira rodapé que ninguém lê, por isso vem primeiro.
+
     ``model`` faz override por execução do modelo do agente (usado no fluxo de
-    foto para ler o recibo com ``LLM_VISION_MODEL``). Em testes,
-    ``agent.override(model=...)`` tem precedência sobre este argumento.
+    foto para ler o recibo com ``LLM_VISION_MODEL``, e pelo tier que o
+    chokepoint escolheu). Em testes, ``agent.override(model=...)`` tem
+    precedência sobre este argumento.
+
+    ``fallback_model`` é a segunda tentativa — só o tier Essencial tem uma,
+    porque seu modelo primário é gratuito e endpoints gratuitos são limitados
+    e descontinuados sem aviso (E07 spec D3).
     """
 
     async def stream_response():
+        if notice:
+            yield json.dumps({"type": "notice", "content": notice}, ensure_ascii=False) + "\n"
         if user_text:
             yield json.dumps({"type": "user_text", "content": user_text}, ensure_ascii=False) + "\n"
 
         full_response = ""
         data_changed = False
-        try:
-            async with agent.run_stream(
-                prompt, deps=scope, message_history=message_history, model=model
-            ) as stream:
-                async for text in stream.stream_text(delta=True):
-                    full_response += text
-                    yield json.dumps({"type": "token", "content": text}, ensure_ascii=False) + "\n"
-                try:
-                    data_changed = _run_mutated_data(stream.all_messages())
-                except Exception:
-                    # Reported rather than swallowed: this failing means the
-                    # "your data changed" signal is wrong, which shows up to the
-                    # user as a stale screen with no error — the hardest class of
-                    # bug to hear about from a user.
-                    sentry_sdk.capture_exception()
-                    data_changed = False
-        except Exception:
-            # The single most important report in E06: every unhandled agent
-            # failure in production used to land here and vanish. The message
-            # the user sees is deliberately unchanged — S06-4 improves
-            # observability, not UX.
-            sentry_sdk.capture_exception()
-            error_msg = "Erro ao processar mensagem. Tente novamente."
-            yield json.dumps({"type": "error", "content": error_msg}, ensure_ascii=False) + "\n"
-            full_response = error_msg
+        attempts = [model] + ([fallback_model] if fallback_model else [])
+        for attempt, attempt_model in enumerate(attempts):
+            try:
+                async with agent.run_stream(
+                    prompt, deps=scope, message_history=message_history, model=attempt_model
+                ) as stream:
+                    async for text in stream.stream_text(delta=True):
+                        full_response += text
+                        yield (
+                            json.dumps({"type": "token", "content": text}, ensure_ascii=False)
+                            + "\n"
+                        )
+                    try:
+                        data_changed = _run_mutated_data(stream.all_messages())
+                    except Exception:
+                        # Reported rather than swallowed: this failing means the
+                        # "your data changed" signal is wrong, which shows up to
+                        # the user as a stale screen with no error — the hardest
+                        # class of bug to hear about from a user.
+                        sentry_sdk.capture_exception()
+                        data_changed = False
+                break
+            except Exception:
+                # The single most important report in E06: every unhandled agent
+                # failure in production used to land here and vanish. The message
+                # the user sees is deliberately unchanged — S06-4 improves
+                # observability, not UX.
+                sentry_sdk.capture_exception()
+                # Retry ONLY when there is somewhere to retry to AND nothing has
+                # reached the user yet: a free endpoint that dies after ten
+                # tokens cannot be replayed — the client already rendered them,
+                # and a second attempt would append a whole new answer to half
+                # of the first one.
+                if attempt + 1 < len(attempts) and not full_response:
+                    continue
+                error_msg = "Erro ao processar mensagem. Tente novamente."
+                yield json.dumps({"type": "error", "content": error_msg}, ensure_ascii=False) + "\n"
+                full_response = error_msg
+                break
 
         assistant_msg = await ChatMessage.objects.acreate(
             household=scope.household,
@@ -211,8 +262,8 @@ async def chat_view(request):
     scope = AgentScope(household=scope.household, user=user, interaction=interaction)
 
     if is_multipart:
-        return await _handle_multipart(request, scope)
-    return await _handle_json(request, scope)
+        return await _handle_multipart(request, scope, decision)
+    return await _handle_json(request, scope, decision)
 
 
 async def _pending_receipt(scope):
@@ -226,7 +277,7 @@ async def _pending_receipt(scope):
     )
 
 
-async def _handle_json(request, scope):
+async def _handle_json(request, scope, decision):
     try:
         body = json.loads(request.body)
         message = body.get("message", "").strip()
@@ -243,12 +294,16 @@ async def _handle_json(request, scope):
         content=message,
     )
     if await _pending_receipt(scope):
-        return _sse_response(scope, assistant_agent, message, message_history=None)
+        return _sse_response(
+            scope, assistant_agent, message, message_history=None, **_tier_kwargs(decision)
+        )
     history = await _load_history(scope)
-    return _sse_response(scope, assistant_agent, message, message_history=history)
+    return _sse_response(
+        scope, assistant_agent, message, message_history=history, **_tier_kwargs(decision)
+    )
 
 
-async def _handle_multipart(request, scope):
+async def _handle_multipart(request, scope, decision):
     caption = (request.POST.get("message") or "").strip()
     images = request.FILES.getlist("image")
     audio = request.FILES.get("audio")
@@ -259,9 +314,9 @@ async def _handle_multipart(request, scope):
         return JsonResponse({"error": "Nada para processar."}, status=400)
 
     if images:
-        return await _handle_images(request, scope, images, caption)
+        return await _handle_images(request, scope, decision, images, caption)
     if audio:
-        return await _handle_audio(request, scope, audio, caption)
+        return await _handle_audio(request, scope, decision, audio, caption)
 
     # multipart só com texto: trata como mensagem normal
     await ChatMessage.objects.acreate(
@@ -271,12 +326,16 @@ async def _handle_multipart(request, scope):
         content=caption,
     )
     if await _pending_receipt(scope):
-        return _sse_response(scope, assistant_agent, caption, message_history=None)
+        return _sse_response(
+            scope, assistant_agent, caption, message_history=None, **_tier_kwargs(decision)
+        )
     history = await _load_history(scope)
-    return _sse_response(scope, assistant_agent, caption, message_history=history)
+    return _sse_response(
+        scope, assistant_agent, caption, message_history=history, **_tier_kwargs(decision)
+    )
 
 
-async def _handle_audio(request, scope, audio, caption):
+async def _handle_audio(request, scope, decision, audio, caption):
     max_bytes = settings.ASSISTANT_MAX_AUDIO_MB * 1024 * 1024
     if audio.size > max_bytes:
         return JsonResponse({"error": "Áudio muito grande."}, status=400)
@@ -309,15 +368,25 @@ async def _handle_audio(request, scope, audio, caption):
     )
     if await _pending_receipt(scope):
         return _sse_response(
-            scope, assistant_agent, message, message_history=None, user_text=message
+            scope,
+            assistant_agent,
+            message,
+            message_history=None,
+            user_text=message,
+            **_tier_kwargs(decision),
         )
     history = await _load_history(scope)
     return _sse_response(
-        scope, assistant_agent, message, message_history=history, user_text=message
+        scope,
+        assistant_agent,
+        message,
+        message_history=history,
+        user_text=message,
+        **_tier_kwargs(decision),
     )
 
 
-async def _dispatch_extraction(scope, chat_msg, extraction, caption, user_label):
+async def _dispatch_extraction(scope, decision, chat_msg, extraction, caption, user_label):
     """Rota comum após uma extração bem-sucedida.
 
     Se a foto parece um recibo JÁ REGISTRADO (reenvio para corrigir/identificar),
@@ -344,6 +413,7 @@ async def _dispatch_extraction(scope, chat_msg, extraction, caption, user_label)
             directive,
             message_history=history,
             user_text=user_label,
+            **_tier_kwargs(decision),
         )
 
     await ReceiptDraft.objects.acreate(
@@ -354,10 +424,17 @@ async def _dispatch_extraction(scope, chat_msg, extraction, caption, user_label)
     )
     needs_review = receipt_needs_review(extraction, settings.ASSISTANT_RECEIPT_MIN_CONFIDENCE)
     prompt = extraction_to_prompt(extraction, caption, needs_review=needs_review)
-    return _sse_response(scope, assistant_agent, prompt, message_history=None, user_text=user_label)
+    return _sse_response(
+        scope,
+        assistant_agent,
+        prompt,
+        message_history=None,
+        user_text=user_label,
+        **_tier_kwargs(decision),
+    )
 
 
-async def _handle_images(request, scope, images, caption):
+async def _handle_images(request, scope, decision, images, caption):
     if len(images) > settings.ASSISTANT_MAX_IMAGES:
         return JsonResponse(
             {"error": f"Envie no máximo {settings.ASSISTANT_MAX_IMAGES} imagens."},
@@ -412,7 +489,9 @@ async def _handle_images(request, scope, images, caption):
         logger.exception("Falha na extração estruturada do recibo; tentando com modelo de visão.")
 
     if extraction is not None:
-        return await _dispatch_extraction(scope, chat_msg, extraction, caption, user_label)
+        return await _dispatch_extraction(
+            scope, decision, chat_msg, extraction, caption, user_label
+        )
 
     # Fallback: tenta UMA vez a extração com o modelo de visão; sem sucesso,
     # pede reenvio (nunca grava direto).
@@ -457,7 +536,7 @@ async def _handle_images(request, scope, images, caption):
         resp["X-Accel-Buffering"] = "no"
         return resp
 
-    return await _dispatch_extraction(scope, chat_msg, extraction, caption, user_label)
+    return await _dispatch_extraction(scope, decision, chat_msg, extraction, caption, user_label)
 
 
 @require_GET
