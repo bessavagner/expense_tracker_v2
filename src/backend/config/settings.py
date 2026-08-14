@@ -60,6 +60,9 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Second on purpose: the ID must exist before anything can fail, so even a
+    # 413 from the body-size guard immediately below carries one.
+    "core.middleware.request_id_middleware",
     # Before anything reads the body: an oversized upload must not reach the
     # parser, the session store, or Cloud Run's RAM-backed filesystem.
     "core.middleware.max_request_body_middleware",
@@ -75,6 +78,9 @@ MIDDLEWARE = [
     # never have cost us a membership query.
     "allauth.account.middleware.AccountMiddleware",
     "accounts.middleware.active_household_middleware",
+    # After the household resolver: the user and the household do not exist
+    # until AuthenticationMiddleware and the resolver above have both run.
+    "core.middleware.log_context_middleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     # Last on purpose, which is a security requirement and not a preference.
@@ -150,10 +156,24 @@ if not DEBUG:
 # Logging: por padrão o Django só manda erros 500 (django.request) para
 # mail_admins quando DEBUG=False — sem backend de e-mail, o traceback some.
 # Em Cloud Run, stdout/stderr é coletado, então enviamos para o console.
+#
+# Structured JSON on stdout: Cloud Run collects it and Cloud Logging parses each
+# line into fields, which is what makes "every ERROR for this household" a query
+# instead of a grep. Plain text in DEBUG, because JSON is unreadable in a
+# terminal you are actively working in.
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "formatters": {
+        "json": {"()": "core.log_formatting.JsonFormatter"},
+        "plain": {"format": "%(levelname)s %(name)s %(message)s"},
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "plain" if DEBUG else "json",
+        }
+    },
     "root": {"handlers": ["console"], "level": "INFO"},
     "loggers": {
         "django.request": {

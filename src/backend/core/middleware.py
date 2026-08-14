@@ -30,7 +30,10 @@ from django.conf import settings
 from django.http import HttpResponse
 from django.utils.decorators import sync_and_async_middleware
 
+from core.request_id import sanitise_inbound, set_log_context, set_request_id
+
 IMPORT_PATH_PREFIX = "/import/"
+REQUEST_ID_HEADER = "X-Request-ID"
 
 
 def limit_for_path(path: str) -> int:
@@ -117,5 +120,96 @@ def max_request_body_middleware(get_response):
         def middleware(request):
             blocked = _too_large(request)
             return blocked if blocked is not None else get_response(request)
+
+    return middleware
+
+
+def _begin_request(request) -> str:
+    request_id = sanitise_inbound(request.headers.get(REQUEST_ID_HEADER))
+    set_request_id(request_id)
+    # Cleared per request: contextvars persist for the life of the task, and a
+    # reused worker task would otherwise attribute an anonymous request to
+    # whoever it served last.
+    set_log_context(user_id=None, household_id=None)
+    return request_id
+
+
+def _tag_sentry(request_id: str) -> None:
+    """Attach the ID to the Sentry scope, if Sentry is configured at all.
+
+    Guarded rather than assumed: with no DSN there is no client, and importing
+    the SDK is not the same as having initialised it.
+    """
+    try:
+        import sentry_sdk
+    except ImportError:  # pragma: no cover - the dependency is declared
+        return
+    sentry_sdk.set_tag("request_id", request_id)
+
+
+@sync_and_async_middleware
+def request_id_middleware(get_response):
+    """Mint (or adopt) a request ID, expose it, and return it in the header.
+
+    Registered second, immediately after SecurityMiddleware, so that even a 413
+    from ``max_request_body_middleware`` below it carries an ID.
+
+    Dual-mode for the same reason as ``max_request_body_middleware``: the chat
+    endpoint streams through here under ASGI.
+    """
+    if iscoroutinefunction(get_response):
+
+        async def middleware(request):
+            request_id = _begin_request(request)
+            _tag_sentry(request_id)
+            response = await get_response(request)
+            response[REQUEST_ID_HEADER] = request_id
+            return response
+
+    else:
+
+        def middleware(request):
+            request_id = _begin_request(request)
+            _tag_sentry(request_id)
+            response = get_response(request)
+            response[REQUEST_ID_HEADER] = request_id
+            return response
+
+    return middleware
+
+
+def _capture_identity(request) -> None:
+    """Record who is asking, for the log line.
+
+    Runs after the household resolver, so both are settled. Reads defensively:
+    an unauthenticated request has an AnonymousUser with no pk, and
+    ``request.household`` is absent on paths the resolver skips.
+    """
+    user = getattr(request, "user", None)
+    user_id = getattr(user, "pk", None) if getattr(user, "is_authenticated", False) else None
+    household = getattr(request, "household", None)
+    set_log_context(user_id=user_id, household_id=getattr(household, "pk", None))
+
+
+@sync_and_async_middleware
+def log_context_middleware(get_response):
+    """Add the acting user and household to the logging context.
+
+    Separate from ``request_id_middleware`` because it needs a different
+    position: the ID must exist before anything can fail, but the user and the
+    household do not exist until AuthenticationMiddleware and the household
+    resolver have run.
+    """
+    if iscoroutinefunction(get_response):
+
+        async def middleware(request):
+            _capture_identity(request)
+            return await get_response(request)
+
+    else:
+
+        def middleware(request):
+            _capture_identity(request)
+            return get_response(request)
 
     return middleware
