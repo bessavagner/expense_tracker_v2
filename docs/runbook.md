@@ -516,20 +516,25 @@ breaks.
 pays a cold start (measured: **~15s**). A Cloud Scheduler job pings `/healthz/`
 every 5 minutes during waking hours to keep one instance alive.
 
-> **E06 replaces this job with a Cloud Monitoring uptime check.** The uptime
-> check pings `/healthz/` on the same 5-minute interval, so it *is* the
-> keepalive — running both would be two pingers doing one job. Once Task 7 has
-> created the uptime check, delete the Scheduler job:
+> **DONE 2026-08-14 — the Scheduler job is gone.** A Cloud Monitoring uptime
+> check replaced it: `expense-tracker-healthz--qVSHox7iq8`, `/healthz/`, every
+> 5 minutes, expecting 2xx. It *is* the keepalive now, and it covers more than
+> the old job did — 24/7 from several regions, where `*/5 6-23 * * *` skipped
+> midnight to 06:00.
+>
+> **The rest of this section is history, kept for the recreate command** in case
+> the uptime check is ever removed without a replacement. `gcloud scheduler jobs
+> list` returns nothing today, so `describe`/`pause` below will fail with
+> `NOT_FOUND` — that is expected, not a fault.
+>
+> **"Pause the keepalive" now means pause the uptime check.** See the note in
+> *Measuring cold start*.
 >
 > ```bash
-> gcloud scheduler jobs delete expense-tracker-keepalive \
->   --location southamerica-east1 --project expense-tracker-482807
+> # What exists instead:
+> gcloud monitoring uptime list-configs --project expense-tracker-482807 \
+>   --format="table(displayName,httpCheck.path,period)"
 > ```
->
-> **Until that has happened, the Scheduler job below is still the live one** and
-> everything in this section applies as written. After it happens, "pause the
-> keepalive" below means **pause the uptime check** instead — see the note in
-> *Measuring cold start*.
 
 Cloud Run only bills CPU/memory while a request is being served, so the pings
 cost roughly **$0.07/month** — versus ~$18.40/month for `min-instances=1` in
@@ -601,17 +606,21 @@ matters.
 The keepalive must be paused first, then the service needs ~15 minutes of zero
 traffic to scale to zero:
 
-> **Pause the right pinger.** Once E06's uptime check exists and the Scheduler
-> job is gone, pausing the job below silently succeeds at nothing and the uptime
-> check keeps the instance warm — so the "cold" number you measure is a warm
-> one. Disable the uptime check instead: *Monitoring → Uptime checks →
-> expense-tracker-healthz → Edit → uncheck Enabled*, or
-> `gcloud monitoring uptime delete <CHECK_ID>` and recreate it afterwards.
-> **Re-enable it when you are done**, because it is also the keepalive.
+> **Pause the right pinger — the command below no longer exists.** As of
+> 2026-08-14 the Scheduler job is deleted and a Cloud Monitoring uptime check
+> is the keepalive, so `gcloud scheduler jobs pause` fails with `NOT_FOUND`.
+> Worse, if you skip that step and measure anyway, the uptime check keeps an
+> instance warm and the "cold" number you get is a warm one.
+>
+> Disable the uptime check instead: *Monitoring → Uptime checks →
+> `expense-tracker-healthz` → Edit → uncheck Enabled*. **Re-enable it when you
+> are done** — it is also the keepalive, and it is what the two alert policies
+> watch, so leaving it off means nothing is monitoring the service.
 
 ```bash
-gcloud scheduler jobs pause expense-tracker-keepalive \
-  --project expense-tracker-482807 --location southamerica-east1
+# Historic — the job is gone; disable the uptime check in the console instead.
+# gcloud scheduler jobs pause expense-tracker-keepalive \
+#   --project expense-tracker-482807 --location southamerica-east1
 sleep 1020
 curl -s -o /dev/null -w "COLD: %{time_total}s\n" -m 120 \
   https://expense-tracker-654941182076.southamerica-east1.run.app/healthz/
