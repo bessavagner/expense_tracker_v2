@@ -3,7 +3,7 @@ id: E13
 title: LGPD compliance
 release: R3
 status: blocked
-depends_on: [E12]
+depends_on: [E12, E18]
 blocks: [E15]
 wedge_critical: false
 ---

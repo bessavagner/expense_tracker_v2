@@ -3,7 +3,7 @@ id: E15
 title: Billing & subscription
 release: R4
 status: blocked
-depends_on: [E07, E13]
+depends_on: [E07, E13, E18]
 blocks: []
 wedge_critical: false
 ---

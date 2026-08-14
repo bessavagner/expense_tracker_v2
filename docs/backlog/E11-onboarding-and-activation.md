@@ -2,7 +2,7 @@
 id: E11
 title: Onboarding & activation
 release: R3
-status: blocked
+status: ready
 depends_on: [E05]
 blocks: [E14, E17]
 wedge_critical: true

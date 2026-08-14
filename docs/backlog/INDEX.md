@@ -62,19 +62,20 @@ graph LR
 | [E02](E02-suite-integrity-and-ci-gates.md) | Suite integrity & CI gates | R0 | | — | **done** (2026-08-11) |
 | [E03](E03-query-performance-floor.md) | Query performance floor | R0 | | — | review |
 | [E04](E04-household-tenancy.md) | Household tenancy | R1 | | E02 | **done** (2026-08-13) |
-| [E05](E05-identity-invitations-admin-isolation.md) | Identity, invitations & admin isolation | R1 | | E04 | ready |
+| [E05](E05-identity-invitations-admin-isolation.md) | Identity, invitations & admin isolation | R1 | | E04 | **done** (2026-08-14) |
 | [E06](E06-observability-and-agent-tracing.md) | Observability & agent tracing | R1 | | E01 | blocked |
 | [E07](E07-usage-metering-and-quota.md) | Usage metering & quota | R1 | W | E04, E06 | blocked |
 | [E08](E08-ai-evaluation-harness.md) | AI evaluation harness | R2 | W | E02 | ready |
 | [E09](E09-model-tiering-and-routing.md) | Model tiering & routing | R2 | W | E07, E08 | blocked |
 | [E10](E10-async-work-pipeline.md) | Async work pipeline | R2 | W | E06 | blocked |
-| [E11](E11-onboarding-and-activation.md) | Onboarding & activation | R3 | W | E05 | blocked |
+| [E11](E11-onboarding-and-activation.md) | Onboarding & activation | R3 | W | E05 | ready |
 | [E12](E12-durable-import-export-jobs.md) | Durable import/export jobs | R3 | | E10 | blocked |
-| [E13](E13-lgpd-compliance.md) | LGPD compliance | R3 | | E12 | blocked |
+| [E13](E13-lgpd-compliance.md) | LGPD compliance | R3 | | E12, E18 | blocked |
 | [E14](E14-product-analytics.md) | Product analytics | R3 | | E06, E11 | blocked |
-| [E15](E15-billing-and-subscription.md) | Billing & subscription | R4 | | E07, E13 | blocked |
+| [E15](E15-billing-and-subscription.md) | Billing & subscription | R4 | | E07, E13, E18 | blocked |
 | [E16](E16-operations-staging-deploy-recovery.md) | Operations: staging, deploy, recovery | R4 | | E06 | blocked |
 | [E17](E17-trust-surface.md) | Trust surface: audit, error UX, landing | R4 | | E11 | blocked |
+| [E18](E18-account-surface.md) | Account surface (Conta) | R3 | | E05 | ready |
 
 ### Dependency graph
 
@@ -97,6 +98,7 @@ graph TD
     E15["E15 Billing &<br/>subscription"]
     E16["E16 Operations<br/>& recovery"]
     E17["E17 Trust<br/>surface"]
+    E18["E18 Account<br/>surface"]
 
     E02 --> E04 --> E05 --> E11
     E01 --> E06 --> E07
@@ -109,12 +111,17 @@ graph TD
     E13 --> E15
     E06 --> E16
     E11 --> E17
+    E05 --> E18
+    E18 --> E13
+    E18 --> E15
 
     classDef wedge fill:#7c3aed,stroke:#5b21b6,color:#fff
     class E07,E08,E09,E10,E11 wedge
 ```
 
 **Critical path to beta:** `E02 → E04 → E05 → E11`. Everything else can proceed alongside it. **E03 and E01 are independent of everything** — start there for immediate risk reduction with no coordination cost.
+
+**E05 is done, so E11 and E18 are both open.** E18 is small and off the critical path — it can run alongside E11 rather than ahead of it. Its `blocks` edges into E13 and E15 are *UI-surface* dependencies, not data ones: both later epics add a tab to E18's page instead of inventing an account surface of their own.
 
 ---
 

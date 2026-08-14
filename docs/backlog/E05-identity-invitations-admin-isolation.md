@@ -2,9 +2,9 @@
 id: E05
 title: Identity, invitations & admin isolation
 release: R1
-status: blocked
+status: done
 depends_on: [E04]
-blocks: [E11]
+blocks: [E11, E18]
 wedge_critical: false
 ---
 
