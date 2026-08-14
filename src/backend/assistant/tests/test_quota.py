@@ -12,7 +12,7 @@ from asgiref.sync import async_to_sync
 from django.utils import timezone
 
 from accounts.resolution import household_for_user
-from assistant.models import AssistantUsageEvent, AssistantUsageKind
+from assistant.models import InteractionKind, UsageInteraction
 from assistant.throttling import exceeded_rule, rules_for
 
 # Frozen so "N hours ago" is computed from a fixed instant rather than the real
@@ -39,23 +39,23 @@ def _burn(user, kind, count, *, age=timedelta(0)):
     stamp = timezone.now() - age
     household = household_for_user(user)
     for _ in range(count):
-        event = AssistantUsageEvent.objects.create(user=user, household=household, kind=kind)
-        AssistantUsageEvent.objects.filter(pk=event.pk).update(created_at=stamp)
+        event = UsageInteraction.objects.create(user=user, household=household, kind=kind)
+        UsageInteraction.objects.filter(pk=event.pk).update(created_at=stamp)
 
 
 @pytest.mark.django_db
 class TestRulesFor:
     def test_image_rules_are_tighter_than_text_rules(self, settings):
-        text_hourly = rules_for(AssistantUsageKind.TEXT)[0]
-        image_hourly = rules_for(AssistantUsageKind.IMAGE)[0]
+        text_hourly = rules_for(InteractionKind.TEXT)[0]
+        image_hourly = rules_for(InteractionKind.IMAGE)[0]
         assert image_hourly.limit < text_hourly.limit
 
     def test_rules_read_current_settings(self, settings):
         settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 7
-        assert rules_for(AssistantUsageKind.TEXT)[0].limit == 7
+        assert rules_for(InteractionKind.TEXT)[0].limit == 7
 
     def test_each_kind_has_an_hourly_and_a_daily_rule(self):
-        for kind in (AssistantUsageKind.TEXT, AssistantUsageKind.IMAGE):
+        for kind in (InteractionKind.TEXT, InteractionKind.IMAGE):
             windows = {rule.window for rule in rules_for(kind)}
             assert windows == {timedelta(hours=1), timedelta(days=1)}
 
@@ -63,19 +63,19 @@ class TestRulesFor:
 @pytest.mark.django_db
 class TestExceededRule:
     def test_no_usage_is_never_throttled(self, user):
-        assert async_to_sync(exceeded_rule)(user, AssistantUsageKind.TEXT) is None
+        assert async_to_sync(exceeded_rule)(user, InteractionKind.TEXT) is None
 
     def test_under_the_hourly_limit_is_allowed(self, user, settings):
         settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 5
         settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, AssistantUsageKind.TEXT, 4)
-        assert async_to_sync(exceeded_rule)(user, AssistantUsageKind.TEXT) is None
+        _burn(user, InteractionKind.TEXT, 4)
+        assert async_to_sync(exceeded_rule)(user, InteractionKind.TEXT) is None
 
     def test_at_the_hourly_limit_is_blocked(self, user, settings):
         settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 5
         settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, AssistantUsageKind.TEXT, 5)
-        rule = async_to_sync(exceeded_rule)(user, AssistantUsageKind.TEXT)
+        _burn(user, InteractionKind.TEXT, 5)
+        rule = async_to_sync(exceeded_rule)(user, InteractionKind.TEXT)
         assert rule is not None
         assert rule.limit == 5
         assert rule.label == "hora"
@@ -83,14 +83,14 @@ class TestExceededRule:
     def test_events_outside_the_window_do_not_count(self, user, settings):
         settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 5
         settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, AssistantUsageKind.TEXT, 5, age=timedelta(hours=2))
-        assert async_to_sync(exceeded_rule)(user, AssistantUsageKind.TEXT) is None
+        _burn(user, InteractionKind.TEXT, 5, age=timedelta(hours=2))
+        assert async_to_sync(exceeded_rule)(user, InteractionKind.TEXT) is None
 
     def test_daily_limit_blocks_even_when_hourly_is_clear(self, user, settings):
         settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 100
         settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 6
-        _burn(user, AssistantUsageKind.TEXT, 6, age=timedelta(hours=5))
-        rule = async_to_sync(exceeded_rule)(user, AssistantUsageKind.TEXT)
+        _burn(user, InteractionKind.TEXT, 6, age=timedelta(hours=5))
+        rule = async_to_sync(exceeded_rule)(user, InteractionKind.TEXT)
         assert rule is not None
         assert rule.label == "dia"
 
@@ -99,9 +99,9 @@ class TestExceededRule:
         settings.ASSISTANT_THROTTLE_IMAGE_PER_DAY = 100
         settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 100
         settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, AssistantUsageKind.IMAGE, 2)
-        assert async_to_sync(exceeded_rule)(user, AssistantUsageKind.IMAGE) is not None
-        assert async_to_sync(exceeded_rule)(user, AssistantUsageKind.TEXT) is None
+        _burn(user, InteractionKind.IMAGE, 2)
+        assert async_to_sync(exceeded_rule)(user, InteractionKind.IMAGE) is not None
+        assert async_to_sync(exceeded_rule)(user, InteractionKind.TEXT) is None
 
     def test_other_users_usage_does_not_count(self, user, settings):
         from model_bakery import baker
@@ -109,8 +109,8 @@ class TestExceededRule:
         settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 2
         settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
         stranger = baker.make("core.CustomUser", username="stranger")
-        _burn(stranger, AssistantUsageKind.TEXT, 5)
-        assert async_to_sync(exceeded_rule)(user, AssistantUsageKind.TEXT) is None
+        _burn(stranger, InteractionKind.TEXT, 5)
+        assert async_to_sync(exceeded_rule)(user, InteractionKind.TEXT) is None
 
     def test_event_exactly_at_the_window_edge_still_counts(self, user, settings):
         """The window boundary is inclusive: an event exactly one hour old is
@@ -119,16 +119,16 @@ class TestExceededRule:
         """
         settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 1
         settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, AssistantUsageKind.TEXT, 1, age=timedelta(hours=1))
-        rule = async_to_sync(exceeded_rule)(user, AssistantUsageKind.TEXT)
+        _burn(user, InteractionKind.TEXT, 1, age=timedelta(hours=1))
+        rule = async_to_sync(exceeded_rule)(user, InteractionKind.TEXT)
         assert rule is not None
         assert rule.label == "hora"
 
     def test_event_one_second_past_the_window_edge_does_not_count(self, user, settings):
         settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 1
         settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, AssistantUsageKind.TEXT, 1, age=timedelta(hours=1, seconds=1))
-        assert async_to_sync(exceeded_rule)(user, AssistantUsageKind.TEXT) is None
+        _burn(user, InteractionKind.TEXT, 1, age=timedelta(hours=1, seconds=1))
+        assert async_to_sync(exceeded_rule)(user, InteractionKind.TEXT) is None
 
 
 @pytest.mark.django_db
@@ -167,7 +167,7 @@ class TestChatEndpointThrottle:
     def test_under_the_limit_reaches_the_model(self, logged_client, user, monkeypatch, settings):
         settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 3
         settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, AssistantUsageKind.TEXT, 2)
+        _burn(user, InteractionKind.TEXT, 2)
         response, calls = self._post_text(logged_client, monkeypatch)
         assert response.status_code == 200
         assert len(calls) == 1
@@ -177,7 +177,7 @@ class TestChatEndpointThrottle:
     ):
         settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 3
         settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, AssistantUsageKind.TEXT, 3)
+        _burn(user, InteractionKind.TEXT, 3)
         response, calls = self._post_text(logged_client, monkeypatch)
         assert response.status_code == 429
         assert calls == []
@@ -189,7 +189,7 @@ class TestChatEndpointThrottle:
 
         settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 3
         settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, AssistantUsageKind.TEXT, 3)
+        _burn(user, InteractionKind.TEXT, 3)
         response, _ = self._post_text(logged_client, monkeypatch)
         body = _json.loads(response.content)
         assert "Limite" in body["error"]
@@ -202,7 +202,7 @@ class TestChatEndpointThrottle:
 
         settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 3
         settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, AssistantUsageKind.TEXT, 3)
+        _burn(user, InteractionKind.TEXT, 3)
         self._post_text(logged_client, monkeypatch)
         assert not ChatMessage.objects.for_household(household).exists()
 
@@ -212,18 +212,14 @@ class TestChatEndpointThrottle:
         settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 10
         settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
         self._post_text(logged_client, monkeypatch)
-        assert (
-            AssistantUsageEvent.objects.filter(user=user, kind=AssistantUsageKind.TEXT).count() == 1
-        )
+        assert UsageInteraction.objects.filter(user=user, kind=InteractionKind.TEXT).count() == 1
 
     def test_rejected_turn_records_no_usage_event(self, logged_client, user, monkeypatch, settings):
         settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 3
         settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, AssistantUsageKind.TEXT, 3)
+        _burn(user, InteractionKind.TEXT, 3)
         self._post_text(logged_client, monkeypatch)
-        assert (
-            AssistantUsageEvent.objects.filter(user=user, kind=AssistantUsageKind.TEXT).count() == 3
-        )
+        assert UsageInteraction.objects.filter(user=user, kind=InteractionKind.TEXT).count() == 3
 
     def test_image_turn_spends_the_image_budget_not_the_text_one(
         self, logged_client, user, monkeypatch, settings
@@ -234,7 +230,7 @@ class TestChatEndpointThrottle:
         settings.ASSISTANT_THROTTLE_IMAGE_PER_DAY = 100
         settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 100
         settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, AssistantUsageKind.IMAGE, 1)
+        _burn(user, InteractionKind.IMAGE, 1)
 
         calls = []
 
@@ -265,7 +261,7 @@ class TestChatEndpointThrottle:
         settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
         settings.ASSISTANT_THROTTLE_IMAGE_PER_HOUR = 100
         settings.ASSISTANT_THROTTLE_IMAGE_PER_DAY = 100
-        _burn(user, AssistantUsageKind.TEXT, 1)
+        _burn(user, InteractionKind.TEXT, 1)
 
         calls = []
 
@@ -299,7 +295,7 @@ def test_an_admitted_turn_records_its_household(user, household):
 
     scope = AgentScope(household=household, user=user)
 
-    assert async_to_sync(throttle_denial)(scope, AssistantUsageKind.TEXT) is None
+    assert async_to_sync(throttle_denial)(scope, InteractionKind.TEXT) is None
 
-    event = AssistantUsageEvent.objects.get(user=user)
+    event = UsageInteraction.objects.get(user=user)
     assert event.household == household

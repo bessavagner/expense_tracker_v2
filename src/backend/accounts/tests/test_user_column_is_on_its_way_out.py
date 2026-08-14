@@ -1,6 +1,6 @@
 """`user` is gone from the twelve models that only ever used it as a tenant.
 
-`AssistantUsageEvent` keeps it: that column is the acting member, and the
+`UsageInteraction` keeps it: that column is the acting member, and the
 throttle counts per person so that two people in one household each get their
 own budget (E04 decision 1).
 """
@@ -43,9 +43,7 @@ def test_provenance_survived_it(label):
 
 
 def test_the_actor_column_survives():
-    field_names = {
-        f.name for f in apps.get_model("assistant.AssistantUsageEvent")._meta.get_fields()
-    }
+    field_names = {f.name for f in apps.get_model("assistant.UsageInteraction")._meta.get_fields()}
 
     assert "user" in field_names
     assert "household" in field_names

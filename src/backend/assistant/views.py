@@ -15,11 +15,11 @@ from assistant.agents.extraction import (
 )
 from assistant.agents.scope import AgentScope
 from assistant.models import (
-    AssistantUsageEvent,
-    AssistantUsageKind,
     ChatMessage,
+    InteractionKind,
     MessageRole,
     ReceiptDraft,
+    UsageInteraction,
 )
 from assistant.services.image_prep import prepare_receipt_image
 from assistant.services.transcription import transcribe_audio
@@ -172,11 +172,11 @@ async def throttle_denial(scope, kind: str):
     """
     rule = await exceeded_rule(scope.user, kind)
     if rule is None:
-        await AssistantUsageEvent.objects.acreate(
+        await UsageInteraction.objects.acreate(
             user=scope.user, household=scope.household, kind=kind
         )
         return None
-    noun = "fotos" if kind == AssistantUsageKind.IMAGE else "mensagens"
+    noun = "fotos" if kind == InteractionKind.IMAGE else "mensagens"
     return JsonResponse(
         {
             "error": (
@@ -221,9 +221,9 @@ async def chat_view(request):
     # Either way, an over-limit caller no longer forces the server to ingest
     # the whole multipart body before getting its 429.
     kind = (
-        AssistantUsageKind.IMAGE
+        InteractionKind.IMAGE
         if is_multipart and request.FILES.getlist("image")
-        else AssistantUsageKind.TEXT
+        else InteractionKind.TEXT
     )
     denial = await throttle_denial(scope, kind)
     if denial is not None:

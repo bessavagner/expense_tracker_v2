@@ -35,7 +35,7 @@ HOUSEHOLD_OWNED = {
     "MemoryRule",
     "ReceiptDraft",
     "MemoryEmbedding",
-    "AssistantUsageEvent",
+    "UsageInteraction",
 }
 
 # Empty as of phase 4: every test names the household it writes into. The

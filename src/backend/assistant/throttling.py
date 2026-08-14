@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 from django.conf import settings
 from django.utils import timezone
 
-from assistant.models import AssistantUsageEvent, AssistantUsageKind
+from assistant.models import InteractionKind, UsageInteraction
 
 HOUR = timedelta(hours=1)
 DAY = timedelta(days=1)
@@ -37,7 +37,7 @@ def rules_for(kind: str) -> list[ThrottleRule]:
     ``settings`` fixture can override them in tests and an env change takes
     effect on the next deploy without a code change.
     """
-    if kind == AssistantUsageKind.IMAGE:
+    if kind == InteractionKind.IMAGE:
         return [
             ThrottleRule(settings.ASSISTANT_THROTTLE_IMAGE_PER_HOUR, HOUR, "hora"),
             ThrottleRule(settings.ASSISTANT_THROTTLE_IMAGE_PER_DAY, DAY, "dia"),
@@ -56,7 +56,7 @@ async def exceeded_rule(user, kind: str, *, now: datetime | None = None) -> Thro
     """
     now = now or timezone.now()
     for rule in rules_for(kind):
-        used = await AssistantUsageEvent.objects.filter(
+        used = await UsageInteraction.objects.filter(
             user=user, kind=kind, created_at__gte=now - rule.window
         ).acount()
         if used >= rule.limit:

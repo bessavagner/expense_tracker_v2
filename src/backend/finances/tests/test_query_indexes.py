@@ -29,7 +29,7 @@ EXPECTED_INDEXES = {
     # The only table keeping a user-leading index past Task 13. The throttle
     # asks "how many turns has this *person* spent" — decision 1 — while E07
     # will ask the household-leading question, so both earn their keep.
-    "assistant_assistantusageevent": {"usage_hh_kind_recent_idx", "usage_user_kind_recent_idx"},
+    "assistant_usageinteraction": {"usage_hh_kind_recent_idx", "usage_user_kind_recent_idx"},
 }
 
 

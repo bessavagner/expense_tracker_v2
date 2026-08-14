@@ -1,7 +1,7 @@
 """E03's indexes, re-created with household as the leading column.
 
 Phase 4 dropped the user-leading originals with the column they led on. The
-one survivor is `usage_user_kind_recent_idx`: `AssistantUsageEvent.user` is the
+one survivor is `usage_user_kind_recent_idx`: `UsageInteraction.user` is the
 acting member, and the throttle counts per person (E04 decision 1).
 """
 

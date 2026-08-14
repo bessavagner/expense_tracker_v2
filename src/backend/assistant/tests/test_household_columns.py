@@ -1,7 +1,7 @@
 """E04 phase 2: the assistant domain models carry a household.
 
 Two of the five take household without created_by — see the base-class table
-in the plan. MemoryEmbedding is machine-derived, and AssistantUsageEvent's
+in the plan. MemoryEmbedding is machine-derived, and UsageInteraction's
 `user` column is already the actor rather than the tenant.
 """
 
@@ -20,7 +20,7 @@ AUTHORED = [
 ]
 OWNED_ONLY = [
     "assistant.MemoryEmbedding",
-    "assistant.AssistantUsageEvent",
+    "assistant.UsageInteraction",
 ]
 
 
@@ -30,13 +30,13 @@ def user(db):
 
 
 def _actor(label, user):
-    """Only AssistantUsageEvent still names a user.
+    """Only UsageInteraction still names a user.
 
     Its `user` is the acting member, not the tenant — throttling is per person
     — so it stays NOT NULL and survives Task 13 (epic decision 1). The other
     four lose the column, so nothing here may name it.
     """
-    return {"user": user} if label == "assistant.AssistantUsageEvent" else {}
+    return {"user": user} if label == "assistant.UsageInteraction" else {}
 
 
 def _required_extras(label):
@@ -75,7 +75,7 @@ def test_authored_model_records_who_wrote_it(label, user):
 @pytest.mark.parametrize("label", OWNED_ONLY)
 def test_machine_written_model_has_no_created_by(label):
     """Not an oversight — asserted, so nobody 'fixes' it later. An embedding
-    has no human author, and a usage event's `user` IS its author."""
+    has no human author, and an interaction's `user` IS its author."""
     from django.apps import apps
 
     model = apps.get_model(label)

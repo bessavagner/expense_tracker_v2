@@ -12,7 +12,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[4]
 
 # Files where `user` is the ACTOR, not the tenant — permanently exempt.
-# `AssistantUsageEvent.user` is who spent the turn: rate limiting is
+# `UsageInteraction.user` is who spent the turn: rate limiting is
 # per-person, so two people in one household each get their own budget.
 # Phase 2 decided this and phase 4 did not drop `user` from that model.
 ACTOR_SCOPED = {

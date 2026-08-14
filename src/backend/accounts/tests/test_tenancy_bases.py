@@ -96,7 +96,7 @@ def test_registry_holds_exactly_the_fourteen_household_owned_models():
         "assistant.MemoryRule",
         "assistant.ReceiptDraft",
         "assistant.MemoryEmbedding",
-        "assistant.AssistantUsageEvent",
+        "assistant.UsageInteraction",
     }
     actual = {m._meta.label for m in household_owned_models()}
 

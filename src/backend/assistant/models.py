@@ -161,23 +161,28 @@ class MemoryEmbedding(HouseholdOwnedModel):
         return self.text[:50]
 
 
-class AssistantUsageKind(models.TextChoices):
+class InteractionKind(models.TextChoices):
     TEXT = "text", "Texto"
     IMAGE = "image", "Imagem"
 
 
-class AssistantUsageEvent(HouseholdOwnedModel):
-    """One admitted assistant turn.
+class UsageInteraction(HouseholdOwnedModel):
+    """One admitted user action — the unit credits are charged against.
 
     Written *before* the model call, so the counter records intent to spend
-    rather than successful spend — a run that fails halfway still consumed the
-    tokens. Audio turns count as ``TEXT``: transcription is roughly two orders of
-    magnitude cheaper per turn than a vision call, so only the image path earns a
-    budget of its own.
+    rather than successful spend: a run that fails halfway still consumed the
+    tokens. Audio turns count as ``TEXT``: transcription is roughly two orders
+    of magnitude cheaper per turn than a vision call, so only the image path
+    earns a budget of its own.
 
-    E07 will extend this row with token counts. The household FK it wanted
-    landed in E04 phase 2; `user` stays as the acting member, since a quota is
-    charged to a household but attributed to a person. Keep it append-only and
+    This is deliberately NOT the cost ledger. One interaction fans out into
+    several ``UsageRecord`` rows — a receipt photo costs an extraction, maybe a
+    vision retry, and an agent run. The grains are different, which is why E07
+    kept two tables (spec D1): a quota decision must happen *before* any call,
+    and token counts do not exist until *after* it.
+
+    ``household`` owns the credits; ``user`` is the acting member, which is
+    what the per-user abuse ceiling counts (E04 decision 1). Append-only and
     cheap to write.
     """
 
@@ -187,12 +192,12 @@ class AssistantUsageEvent(HouseholdOwnedModel):
         on_delete=models.CASCADE,
         related_name="assistant_usage_events",
     )
-    kind = models.CharField(max_length=20, choices=AssistantUsageKind.choices)
+    kind = models.CharField(max_length=20, choices=InteractionKind.choices)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        verbose_name = "evento de uso do assistente"
-        verbose_name_plural = "eventos de uso do assistente"
+        verbose_name = "interação com o assistente"
+        verbose_name_plural = "interações com o assistente"
         indexes = [
             models.Index(
                 fields=["user", "kind", "-created_at"],

@@ -256,7 +256,7 @@ so on its own face rather than quietly omitting them. *Assistant turns per day*
 and *LLM spend per day* are absent because there is nothing to build a
 log-based metric from: a successful request logs no application line, so there
 is no `jsonPayload` to count, and assistant turns are recorded as
-`AssistantUsageEvent` rows in Postgres, which Cloud Monitoring cannot read.
+`UsageInteraction` rows in Postgres, which Cloud Monitoring cannot read.
 Turning those rows into a metric is **E07**'s job.
 
 Until then LLM spend is *capped rather than graphed* — the OpenAI org limit
@@ -414,8 +414,8 @@ DATABASE_URL="<supabase session URL, port 5432>" \
   uv run python src/backend/manage.py shell -c "
 from django.db.models import Count
 from django.db.models.functions import TruncDate
-from assistant.models import AssistantUsageEvent
-print(list(AssistantUsageEvent.objects.annotate(d=TruncDate('created_at'))
+from assistant.models import UsageInteraction
+print(list(UsageInteraction.objects.annotate(d=TruncDate('created_at'))
       .values('d','kind','user__username').annotate(n=Count('id')).order_by('-n')[:20]))
 "
 ```
