@@ -6,12 +6,32 @@ that fails on a plane.
 """
 
 import json
+import logging
 
 import pytest
 
-from core.observability import scrub_event, sentry_settings
+from core.observability import init_sentry, scrub_event, sentry_settings
 
 CHAT_CONTENT = "gastei 45 no mercado no crédito"
+VALID_DSN = "https://" + "k" * 32 + "@o1234567.ingest.us.sentry.io/4509"
+# The shape a half-copied DSN has: the key and part of the host, but no scheme,
+# no `.ingest…sentry.io`, and no project id. It reached production configuration
+# once, which is why it is pinned here.
+TRUNCATED_DSN = "a" * 32 + "@o123456789012345"
+
+
+@pytest.fixture(autouse=True)
+def _teardown_sentry_client():
+    """Tear the global client down after any test that initialises one.
+
+    ``sentry_sdk.init`` sets process-wide state. A test that leaves a client
+    behind changes what every later test observes, and the failure surfaces
+    somewhere else entirely.
+    """
+    yield
+    import sentry_sdk
+
+    sentry_sdk.init(dsn=None)
 
 
 def test_no_dsn_means_no_sentry():
@@ -55,6 +75,36 @@ def test_environment_defaults_to_development():
     assert (
         sentry_settings({**base, "SENTRY_ENVIRONMENT": "production"})["environment"] == "production"
     )
+
+
+def test_no_dsn_does_not_initialise():
+    assert init_sentry({}) is False
+
+
+def test_a_valid_dsn_initialises():
+    assert init_sentry({"SENTRY_DSN": VALID_DSN}) is True
+
+
+def test_a_malformed_dsn_disables_sentry_instead_of_raising(caplog):
+    """A bad DSN must not stop the application from booting.
+
+    ``sentry_sdk.init`` raises ``BadDsn`` on an unparseable DSN, and settings
+    calls this at import time — so without the guard, one mistyped secret takes
+    the whole service down on startup rather than merely losing error tracking.
+    Tracing already follows this rule; error tracking now does too.
+    """
+    with caplog.at_level(logging.WARNING):
+        assert init_sentry({"SENTRY_DSN": TRUNCATED_DSN}) is False
+    assert "Sentry" in caplog.text
+
+
+def test_a_failed_init_never_logs_the_dsn(caplog):
+    """The DSN is a write key from Secret Manager; a warning is not the place
+    to spill it, and Cloud Logging keeps whatever gets written for 30 days."""
+    with caplog.at_level(logging.WARNING):
+        init_sentry({"SENTRY_DSN": TRUNCATED_DSN})
+    assert TRUNCATED_DSN not in caplog.text
+    assert "a" * 32 not in caplog.text
 
 
 def test_request_body_is_removed():

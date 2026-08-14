@@ -10,7 +10,10 @@ bodies, and shipping those to a third party would itself be a privacy incident
 (ADR-005).
 """
 
+import logging
 from collections.abc import Mapping
+
+logger = logging.getLogger(__name__)
 
 
 def sentry_settings(environ: Mapping[str, str]) -> dict | None:
@@ -39,6 +42,42 @@ def sentry_settings(environ: Mapping[str, str]) -> dict | None:
         "traces_sample_rate": float(environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
         "before_send": scrub_event,
     }
+
+
+def init_sentry(environ: Mapping[str, str]) -> bool:
+    """Initialise Sentry if a DSN is configured. Returns whether it happened.
+
+    Never raises. Settings calls this at import time, so an exception here does
+    not merely lose error tracking — it stops Django from starting, and one
+    mistyped secret takes the whole service down. ``sentry_sdk.init`` raises
+    ``BadDsn`` on an unparseable DSN, which is exactly the mistake a
+    half-copied value from a vendor console produces.
+
+    Error tracking is diagnostic infrastructure, and the same rule applies to
+    it as to tracing (``assistant.tracing.configure_tracing``): a misconfigured
+    observability vendor must not be able to prevent the application from
+    running.
+    """
+    config = sentry_settings(environ)
+    if config is None:
+        return False
+
+    try:
+        import sentry_sdk
+
+        sentry_sdk.init(**config)
+    except Exception as exc:
+        # The exception *type* only. A DSN is a write key out of Secret
+        # Manager, and BadDsn's message can quote the value it rejected —
+        # which would then sit in Cloud Logging for thirty days.
+        logger.warning(
+            "Sentry disabled: the DSN was rejected (%s). Error tracking is off; "
+            "the application continues.",
+            type(exc).__name__,
+        )
+        return False
+
+    return True
 
 
 # Request sub-keys that carry user content or credentials wholesale. `url`,

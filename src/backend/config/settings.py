@@ -4,7 +4,7 @@ from pathlib import Path
 import dj_database_url
 from dotenv import load_dotenv
 
-from core.observability import sentry_settings
+from core.observability import init_sentry
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -186,11 +186,11 @@ LOGGING = {
 
 # Error tracking (E06, ADR-005). No DSN -> no Sentry, which is the local and CI
 # path: neither should transmit. The DSN comes from Secret Manager in production.
-_sentry_config = sentry_settings(os.environ)
-if _sentry_config is not None:
-    import sentry_sdk
-
-    sentry_sdk.init(**_sentry_config)
+#
+# init_sentry never raises. This runs at import time, so a DSN the SDK cannot
+# parse would otherwise stop Django from starting -- one mistyped secret taking
+# the service down is a far worse outcome than losing error tracking.
+init_sentry(os.environ)
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
