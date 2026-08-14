@@ -2,7 +2,7 @@
 id: E06
 title: Observability & agent tracing
 release: R1
-status: ready
+status: review
 depends_on: [E01]
 blocks: [E07, E10, E14, E16]
 wedge_critical: false
@@ -94,15 +94,20 @@ POSTGRES_PORT=5433 uv run coverage run -m pytest src/backend/ && uv run coverage
 uv run ruff check src/backend/ && uv run ruff format --check src/backend/
 ```
 
+Evidence at `4228bec` (branch `e06-observability`), 2026-08-14:
+**1353 passed, 3 skipped, 90% coverage**; `ruff check` and `ruff format --check`
+clean; `manage.py check` and `check --deploy` report no issues;
+`makemigrations --check` reports no changes.
+
 Observable assertions:
 
-- [ ] A deliberately raised exception appears in Sentry, tagged with the release
-- [ ] A test proves chat content and entry descriptions are scrubbed from error payloads
-- [ ] A request ID appears in the response header, the structured log line, and the Sentry event for the same request
-- [ ] An agent run appears in Logfire with tool calls, latency, model name, and token counts
-- [ ] The uptime check has alerted at least once in a deliberate test
-- [ ] The dashboard shows all five golden signals with real data
-- [ ] `docs/runbook.md` documents where to look when something breaks, and who gets alerted
+- [ ] A deliberately raised exception appears in Sentry, tagged with the release — **blocked on Task 7**: needs a real DSN in Secret Manager and a deployed revision. The release tag is unit-proven (`test_release_comes_from_the_cloud_run_revision`), the production sighting is not.
+- [x] A test proves chat content and entry descriptions are scrubbed from error payloads — `core/tests/test_observability.py`: `test_chat_content_never_reaches_the_transport` drives a real `sentry_sdk` client and asserts on what `before_send` actually produced, plus six unit tests for the individual carriers (body, cookies, headers, frame locals, `extra`, breadcrumbs).
+- [ ] A request ID appears in the response header, the structured log line, and the Sentry event for the same request — **two of three proven** in `core/tests/test_request_id.py` (`X-Request-ID` on the response; `request_id`/`user_id`/`household_id` in the rendered JSON line). The Sentry tag is written by `core.middleware._tag_sentry` but cannot be observed end-to-end without a DSN — **blocked on Task 7**.
+- [ ] An agent run appears in Logfire with tool calls, latency, model name, and token counts — **blocked on Task 7**: needs a write token. The capture *policy* is proven in `assistant/tests/test_tracing.py`; the trace itself is not.
+- [ ] The uptime check has alerted at least once in a deliberate test — **blocked on Task 7**.
+- [ ] The dashboard shows all five golden signals with real data — **blocked on Task 7**.
+- [x] `docs/runbook.md` documents where to look when something breaks, and who gets alerted — §"When something breaks": the request-ID join key across all three vendors, the Cloud Logging and Sentry queries, what a Logfire span holds, what is deliberately *not* reported, and the alert channels. The alert subsection is marked pending until Task 7 provisions the channels.
 
 ## Out of scope
 
@@ -110,13 +115,18 @@ Observable assertions:
 - Product analytics events (activation, retention) → **E14**; this epic covers *operational* telemetry
 - Distributed tracing across services — there is one service (ADR-002)
 - Self-hosted observability — rejected in ADR-005
+- **Handed to E13:** the operator's decision to capture full prompts and
+  completions (2026-08-14) makes Logfire a **data sub-processor** holding chat
+  content and receipt descriptions. E13's privacy notice must name Pydantic as a
+  sub-processor, and E13's deletion story must state what happens to trace data.
+  Recorded here because it is not discoverable from E13's own file.
 
-## Open questions
+## Open questions — all resolved 2026-08-14
 
-1. **What is the alert destination?** Email, phone push, Telegram. An alert that does not wake you is not an alert.
-2. **How much prompt content should traces capture?** Full prompts make debugging vastly easier and are a privacy liability. Recommendation: capture structure, tool calls, and token counts by default; put full content behind an environment flag used only in development.
-3. **Sentry's free tier event quota** — confirm it is adequate, and decide the sampling rate for performance traces.
-4. **Does the existing Scheduler keepalive ping conflict** with a new uptime check, or can one serve both roles?
+1. ~~**What is the alert destination?**~~ **Resolved:** two Cloud Monitoring notification channels — GCP mobile-app push (wakes the operator) plus email to `bessavagner@gmail.com` (durable record).
+2. ~~**How much prompt content should traces capture?**~~ **Resolved, against this epic's own recommendation:** full prompts and completions ARE captured (`LOGFIRE_CAPTURE_CONTENT=1`). Operator's explicit decision — debugging agent misbehaviour without the actual text means reproducing every incident from scratch. Binary content is a *separate* flag and stays off (`LOGFIRE_CAPTURE_BINARY=0`): that decision was about text, and shipping every receipt JPEG to a third party is a materially larger exposure. See the Out-of-scope handoff to E13 above.
+3. ~~**Sentry's free tier event quota**~~ **Resolved by ADR-005:** both vendors' free tiers are adequate for launch scale. Performance traces sample at `SENTRY_TRACES_SAMPLE_RATE=0.1`.
+4. ~~**Does the existing Scheduler keepalive conflict with a new uptime check?**~~ **Resolved:** one pinger, not two. The uptime check replaces `expense-tracker-keepalive`; the Scheduler job is deleted in Task 7 and `docs/runbook.md` is amended so the cold-start procedure pauses the uptime check instead.
 
 ## Skill pipeline
 

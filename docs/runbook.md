@@ -51,6 +51,134 @@ starts showing a Chrome address bar.
 
 ---
 
+## When something breaks
+
+Three vendors, each doing one job (ADR-005): **Sentry** has the exception,
+**Cloud Logging** has the request that produced it, **Logfire** has the agent run
+inside it. They are joined by one value — the **request ID**.
+
+> **Status (2026-08-14):** the application side of E06 is merged. The vendor
+> accounts, the uptime check and the alert policies are E06 Task 7 and have
+> **not** been provisioned yet. Until they are, `SENTRY_DSN` and `LOGFIRE_TOKEN`
+> are unset on Cloud Run, which means Sentry and Logfire transmit nothing — the
+> Cloud Logging half below works today, the other two do not. Delete this note
+> once Task 7 has run.
+
+### Start from the request ID
+
+Every response carries it, including error responses:
+
+```bash
+curl -sI https://expense-tracker-654941182076.southamerica-east1.run.app/healthz/ \
+  | grep -i x-request-id
+```
+
+```
+x-request-id: 4f2c9a1e6b7d40f8a3c25e91d7b0c846
+```
+
+Ask the reporting user for that header (the browser devtools Network tab shows
+it), or read it off the failing response. Then:
+
+```bash
+gcloud logging read \
+  'resource.type="cloud_run_revision"
+   jsonPayload.request_id="4f2c9a1e6b7d40f8a3c25e91d7b0c846"' \
+  --project expense-tracker-482807 --limit 50 --freshness 1d \
+  --format="value(timestamp,jsonPayload.severity,jsonPayload.message)"
+```
+
+Every log line from that one request, in order. `jsonPayload.user_id` and
+`jsonPayload.household_id` are on each line too, so
+`jsonPayload.household_id="<uuid>"` widens the same query to "everything that
+happened to this tenant".
+
+**Common failure:** the query returns nothing and you assume the request never
+arrived. Check `textPayload` instead — structured JSON only applies when
+`DEBUG=False`; a local run logs plain text, and so does anything that logs
+before Django's `LOGGING` config is installed.
+
+**An inbound `X-Request-ID` is adopted, not overwritten** — but only if it is 32
+hex characters. Anything else is replaced with a fresh ID, because the value
+lands in a log field and a caller does not get to write 500 arbitrary bytes
+there.
+
+### The Sentry issue for the same request
+
+Sentry's issue search, with the tag the middleware attaches:
+
+```
+request_id:4f2c9a1e6b7d40f8a3c25e91d7b0c846
+```
+
+Each event's `release` is the **Cloud Run revision name** (`expense-tracker-000NN-xxx`),
+taken from the `K_REVISION` env var Cloud Run injects. To see what that revision
+actually contains:
+
+```bash
+gcloud run revisions describe expense-tracker-000NN-xxx \
+  --project expense-tracker-482807 --region southamerica-east1 \
+  --format="value(metadata.annotations['client.knative.dev/user-image'])"
+```
+
+**What a Sentry event deliberately does NOT contain.** `core.observability.scrub_event`
+strips the request body, cookies, headers, stack-frame locals, `extra`, and
+breadcrumb data before anything is transmitted. `url` and `method` survive on
+purpose — an event nobody can locate is as useless as no event. So if you are
+looking for "what did the user actually type", it is not in Sentry by design;
+it is in Logfire.
+
+### The Logfire trace for an agent failure
+
+A run span holds the tool calls in order, the latency of each, the model name,
+and the token counts — plus **the full prompt and completion text**, which is
+captured by explicit operator decision (2026-08-14, E06 open question 2). That
+decision is what makes "read the bad extraction" possible instead of
+"reproduce it from scratch".
+
+Turn text capture off without a deploy:
+
+```bash
+gcloud run services update expense-tracker \
+  --project expense-tracker-482807 --region southamerica-east1 \
+  --update-env-vars LOGFIRE_CAPTURE_CONTENT=0
+```
+
+**Receipt photographs are not captured** (`LOGFIRE_CAPTURE_BINARY=0`). That is a
+separate flag from the text decision, and turning it on uploads every receipt
+image the product has ever seen to a third party.
+
+> **Privacy consequence, for E13:** because prompts and completions are
+> captured, Logfire holds chat content and receipt descriptions. That makes
+> Pydantic a **data sub-processor** of personal financial data. E13's privacy
+> notice must name it, and E13's deletion story must say what happens to trace
+> data.
+
+### What is deliberately not reported, so nobody re-adds it
+
+Three sites in `assistant/views.py` call `logger.exception(...)` and have **no**
+`sentry_sdk.capture_exception()` next to them — audio transcription failure, and
+the two receipt-extraction failures. Sentry's logging integration already turns
+an ERROR-level record into an event; adding an explicit capture would
+double-report the same failure. Each site carries a comment saying so.
+
+The sites that *do* capture explicitly are the ones that were silent: the
+generic chat-stream failure, the `data_changed` computation, and CSV import row
+failures (reported **once** per import with a count and the distinct exception
+types — never the exception strings, which are built from the offending cell
+and would leak user content by a route the scrubber cannot see).
+
+### Who gets alerted, and how
+
+**Pending Task 7.** Two Cloud Monitoring notification channels are planned:
+GCP mobile-app **push** (wakes the operator) and **email** to
+`bessavagner@gmail.com` (durable record). To test the path without waiting for a
+real outage, point the uptime check at a path that 404s until it fires, confirm
+the push arrives on the phone, then restore it. An alert that has never fired is
+a hypothesis, not an alert.
+
+---
+
 ## Spend ceilings
 
 Three independent caps. Each is set to hold if the other two fail, and the app
@@ -302,6 +430,21 @@ breaks.
 pays a cold start (measured: **~15s**). A Cloud Scheduler job pings `/healthz/`
 every 5 minutes during waking hours to keep one instance alive.
 
+> **E06 replaces this job with a Cloud Monitoring uptime check.** The uptime
+> check pings `/healthz/` on the same 5-minute interval, so it *is* the
+> keepalive — running both would be two pingers doing one job. Once Task 7 has
+> created the uptime check, delete the Scheduler job:
+>
+> ```bash
+> gcloud scheduler jobs delete expense-tracker-keepalive \
+>   --location southamerica-east1 --project expense-tracker-482807
+> ```
+>
+> **Until that has happened, the Scheduler job below is still the live one** and
+> everything in this section applies as written. After it happens, "pause the
+> keepalive" below means **pause the uptime check** instead — see the note in
+> *Measuring cold start*.
+
 Cloud Run only bills CPU/memory while a request is being served, so the pings
 cost roughly **$0.07/month** — versus ~$18.40/month for `min-instances=1` in
 this region.
@@ -371,6 +514,14 @@ matters.
 
 The keepalive must be paused first, then the service needs ~15 minutes of zero
 traffic to scale to zero:
+
+> **Pause the right pinger.** Once E06's uptime check exists and the Scheduler
+> job is gone, pausing the job below silently succeeds at nothing and the uptime
+> check keeps the instance warm — so the "cold" number you measure is a warm
+> one. Disable the uptime check instead: *Monitoring → Uptime checks →
+> expense-tracker-healthz → Edit → uncheck Enabled*, or
+> `gcloud monitoring uptime delete <CHECK_ID>` and recreate it afterwards.
+> **Re-enable it when you are done**, because it is also the keepalive.
 
 ```bash
 gcloud scheduler jobs pause expense-tracker-keepalive \
