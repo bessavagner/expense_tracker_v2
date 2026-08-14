@@ -92,20 +92,57 @@ Depends on E04 because invitations are invitations *to a household*. Building an
 POSTGRES_PORT=5433 uv run coverage run -m pytest src/backend/ && uv run coverage report --fail-under=80
 uv run ruff check src/backend/ && uv run ruff format --check src/backend/
 DEBUG=False SECRET_KEY=$(python -c "from django.core.management.utils import get_random_secret_key as g; print(g())") \
-  ALLOWED_HOSTS=example.com uv run python src/backend/manage.py check --deploy
+  ALLOWED_HOSTS=example.com ADMIN_URL_PATH=gestao-test/ uv run python src/backend/manage.py check --deploy
 ```
+
+The third command needed `ADMIN_URL_PATH` adding: from S05-5 the admin mount
+reads it, and the deploy check builds the URLconf.
+
+Run on branch `e05-identity`: **1322 passed, 3 skipped**, coverage **91%**
+(floor 80), ruff clean, `check --deploy` reports "System check identified no
+issues". The suite is also time-stable — identical results under
+`TEST_CLOCK_SHIFT=+1m` and `+1y`, which matters because this epic added
+expiry logic.
 
 Observable assertions:
 
-- [ ] End-to-end test: sign up → verify → log in → reset password → log in with the new password
-- [ ] End-to-end test: owner invites → invitee signs up → both see the same ledger
-- [ ] Test: removed member loses data access immediately
-- [ ] Test: invitation token is single-use and expires
-- [ ] Test: login throttling still applies at the new login URL
-- [ ] Test: non-staff user cannot reach admin
-- [ ] Manually verified: a real verification email arrives in a Gmail inbox, not spam
-- [ ] Manually verified: the Android TWA login flow works against the deployed revision
-- [ ] `/security-review` passed with no authentication finding
+- [x] End-to-end test: sign up → verify → log in → reset password → log in with the new password — `core/tests/test_account_lifecycle.py`
+- [x] End-to-end test: owner invites → invitee signs up → both see the same ledger — `accounts/tests/test_invite_flow.py::TestBothSeeOneLedger`
+- [x] Test: removed member loses data access immediately — `accounts/tests/test_membership_removal.py::test_a_removed_member_loses_data_access_on_the_very_next_request`
+- [x] Test: invitation token is single-use and expires — `accounts/tests/test_invitations.py::TestRedeem`
+- [x] Test: login throttling still applies at the new login URL — `core/tests/test_lockout_at_allauth_login.py`
+- [x] Test: non-staff user cannot reach admin — `core/tests/test_admin_isolation.py`
+- [ ] **Manually verified: a real verification email arrives in a Gmail inbox, not spam** — **NOT DONE, and cannot be done from the repo.** It needs the Resend account and the SPF/DKIM records at the registrar, which is operator work. The code path and the runbook procedure are ready (`docs/runbook.md`, "Transactional email"), including the checklist and the empty block where the `Authentication-Results` header gets pasted as evidence.
+- [ ] **Manually verified: the Android TWA login flow works against the deployed revision** — **NOT DONE.** Requires a deploy. `/login/` is now a 301 to `/accounts/login/`; the redirect and `SESSION_COOKIE_SAMESITE = "Lax"` are same-origin so it should survive the TWA's navigation, but that is a prediction, not a verification.
+- [x] `/security-review` passed with no authentication finding — but **only on the third pass**, and the first two passes each found real defects in this branch's own work. See "What the security review actually found" below.
+
+### What the security review actually found
+
+Recorded because "passed" alone would misrepresent it. Every finding was in
+code this epic added, and each defeated a control this epic claims:
+
+1. **`sw.js` published `ADMIN_URL_PATH`.** The service worker is served to
+   anyone who asks, so templating the secret admin path into its cache-bypass
+   list handed it to every anonymous visitor — `curl /sw.js`. It also bought
+   nothing: `networkFirstNav` never writes to the cache.
+2. **The admin path was enumerable anyway.** `CommonMiddleware`'s APPEND_SLASH
+   rewrites a 404 into a 301 when the unslashed URL does not resolve and the
+   slashed one does, so `/gestao-xxxx` answered 301 while every wrong guess
+   answered 404.
+3. **Case bought a fresh lockout budget.** allauth resolves an address
+   case-insensitively, but the lockout counted the string as submitted — 2^n
+   budgets for an n-letter address.
+4. **The refusal was distinguishable by its headers.** After fixing 2, the
+   gate's 404 still lacked `X-Frame-Options: DENY` (a middleware's response
+   only travels out through the middleware above it, and the gate sat above
+   `XFrameOptionsMiddleware`), so one `curl -sI` still separated the real path
+   from a wrong guess.
+
+Findings 1, 2 and 4 were about the *same* control — an unguessable path — and
+none of them granted access, which is why the second control (staff + TOTP)
+matters. Each has a regression test; the header one compares the whole header
+set rather than one header, so the next middleware added cannot reopen it
+quietly.
 
 ## Out of scope
 
@@ -115,12 +152,55 @@ Observable assertions:
 - Account deletion → **E13** (LGPD owns the deletion semantics)
 - Subscription and paywall → **E15**
 
-## Open questions
+## Open questions — all four decided
 
-1. **Which email provider?** Needs a decision: Resend, Postmark, SendGrid, and Amazon SES differ mainly on price and Brazilian deliverability. Whichever is chosen, SPF/DKIM setup is required.
-2. **How is `/admin/` restricted?** Cloud Run IAM is strongest but complicates access from a laptop on a dynamic IP. An authenticated proxy or IP allowlist may be more practical. Decide and document in `docs/runbook.md`.
-3. **Is email verification mandatory before use, or may a user try the product first?** Mandatory is safer and simpler; deferred verification converts better. This interacts with E11's activation target — decide the two together.
-4. **What happens when the last owner leaves a household** that still has members? Related to E04 open question 3.
+1. **Which email provider?** → **Resend, over plain SMTP.** No SDK: Django
+   already speaks SMTP, so changing provider is an environment change rather
+   than a deploy. SPF/DKIM at the registrar is still required and is still
+   the operator's to do — see the unticked box above.
+2. **How is `/admin/` restricted?** → **A secret path (`ADMIN_URL_PATH`) plus a
+   staff-and-TOTP middleware that 404s everyone else and logs every answered
+   request.** Cloud Run stays `--allow-unauthenticated` because the product
+   needs it to be. Rejected: an IP allowlist (the home IP is dynamic) and a
+   second IAM-gated service (doubles the deploy surface). Documented in
+   `docs/runbook.md`, "Reaching the admin".
+3. **Is verification mandatory?** → **Mandatory.**
+   `ACCOUNT_EMAIL_VERIFICATION = "mandatory"`. One code path, and no
+   half-trusted account state for E11 to inherit. The one exemption is narrow
+   and reasoned: an address that received an invitation link has already
+   proven itself, so an invitee is not asked for the same proof twice
+   (`accounts/signals.py::verify_invited_email`).
+4. **What happens when the last owner leaves?** → **Refused, not solved.**
+   `MemberRemoveView` returns 400 rather than orphaning a household. The real
+   semantics stay with **E13**, together with account deletion.
+
+## What this epic deliberately did not solve
+
+- **Last-owner-leaves** → E13. Refusing is the only answer that cannot corrupt
+  a household, and it is enforced in the view and named in the test.
+- **Support impersonation** → E17. This epic went the other way and
+  *unregistered* `ChatMessage` from admin entirely: raw conversations with the
+  assistant are not an admin list column. E17 owns the deliberate, consented,
+  logged way to look at a customer's account, and `AdminAccessLog` is the
+  first half of it.
+
+## Two things the plan got wrong, found by executing it
+
+Recorded so the next reader does not re-derive them:
+
+1. **Mandatory verification would have locked out every existing account.**
+   allauth checks its own `EmailAddress` table, which is empty for accounts
+   created before this epic — so the deploy would have answered a correct
+   password with "confirme seu e-mail" for a signup that never happened.
+   `core/0004_seed_email_addresses` back-fills a verified address for each,
+   and skips the `.invalid` placeholders, which prove nothing. Rehearsed
+   against a copy of production: 2 of 3 accounts back-filled.
+2. **The "invited address is proven" exemption cannot live in an
+   `ACCOUNT_ADAPTER`.** Both adapter hooks sit on the wrong side of the moment
+   that matters — `save_user` runs before the `EmailAddress` row exists,
+   `should_send_confirmation_mail` runs after `perform_login` has already
+   decided the account is unverified. It lives on `user_signed_up`, which
+   fires between them.
 
 ## Skill pipeline
 
