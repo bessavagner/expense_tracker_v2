@@ -4,6 +4,7 @@ import tempfile
 from datetime import date
 from decimal import Decimal
 
+import sentry_sdk
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
 from django.shortcuts import redirect, render
@@ -20,6 +21,26 @@ from finances.models import (
 )
 from finances.services.billing import compute_billing_month, resolve_closing_day
 from finances.services.csv_parser import detect_columns, parse_csv_rows
+
+
+def report_import_failures(error_count: int, samples: list) -> None:
+    """Report row failures as ONE event carrying a count and a few examples.
+
+    Per-row reporting would turn a single 1000-row bad file into 1000 events and
+    exhaust the free-tier quota ADR-005 assumed was adequate. The count is the
+    signal; three exception types are enough to diagnose.
+    """
+    if not error_count:
+        return
+    # Types only, never the exception strings. A parse failure's message is
+    # built from the offending cell -- "invalid literal for int(): 'Farmácia
+    # Pague Menos'" -- so shipping it would be the leak the Sentry scrubber
+    # exists to prevent, arriving by a route the scrubber cannot see.
+    kinds = ", ".join(sorted({type(exc).__name__ for exc in samples})) or "unknown"
+    sentry_sdk.capture_message(
+        f"CSV import finished with {error_count} failed row(s) ({kinds})",
+        level="warning",
+    )
 
 
 class ImportUploadView(LoginRequiredMixin, View):
@@ -369,6 +390,7 @@ class ImportExecuteView(LoginRequiredMixin, View):
         created_count = 0
         skipped_count = 0
         error_count = 0
+        failure_samples = []
 
         for i, row in enumerate(rows):
             if i in skip_indices:
@@ -437,8 +459,14 @@ class ImportExecuteView(LoginRequiredMixin, View):
                         billing_month_override=False,
                     )
                 created_count += 1
-            except Exception:
+            except Exception as exc:
                 error_count += 1
+                # Bounded on purpose: the count is the signal, and holding every
+                # exception from a large bad file is a memory leak in disguise.
+                if len(failure_samples) < 3:
+                    failure_samples.append(exc)
+
+        report_import_failures(error_count, failure_samples)
 
         # Mark the batch spent inside the same transaction as the rows it
         # created, so no second POST can observe the rows without the record.

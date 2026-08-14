@@ -1,6 +1,7 @@
 import json
 import logging
 
+import sentry_sdk
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.http import JsonResponse, StreamingHttpResponse
@@ -115,8 +116,18 @@ def _sse_response(scope, agent, prompt, *, message_history, user_text=None, mode
                 try:
                     data_changed = _run_mutated_data(stream.all_messages())
                 except Exception:
+                    # Reported rather than swallowed: this failing means the
+                    # "your data changed" signal is wrong, which shows up to the
+                    # user as a stale screen with no error — the hardest class of
+                    # bug to hear about from a user.
+                    sentry_sdk.capture_exception()
                     data_changed = False
         except Exception:
+            # The single most important report in E06: every unhandled agent
+            # failure in production used to land here and vanish. The message
+            # the user sees is deliberately unchanged — S06-4 improves
+            # observability, not UX.
+            sentry_sdk.capture_exception()
             error_msg = "Erro ao processar mensagem. Tente novamente."
             yield json.dumps({"type": "error", "content": error_msg}, ensure_ascii=False) + "\n"
             full_response = error_msg
@@ -295,6 +306,9 @@ async def _handle_audio(request, scope, audio, caption):
     try:
         text = await transcribe_audio(data, audio.name, audio.content_type)
     except Exception:
+        # No explicit capture_exception: Sentry's logging integration turns an
+        # ERROR-level record into an event, and logger.exception is ERROR. Adding
+        # one here would double-report.
         logger.exception(
             "Falha ao transcrever áudio (content_type=%s, %d bytes)",
             audio.content_type,
@@ -411,6 +425,9 @@ async def _handle_images(request, scope, images, caption):
     try:
         extraction = await extract_receipt(prepared, categories=cats, payment_methods=pms)
     except Exception:
+        # No explicit capture_exception: Sentry's logging integration turns an
+        # ERROR-level record into an event, and logger.exception is ERROR. Adding
+        # one here would double-report.
         logger.exception("Falha na extração estruturada do recibo; tentando com modelo de visão.")
 
     if extraction is not None:
@@ -423,6 +440,9 @@ async def _handle_images(request, scope, images, caption):
             prepared, categories=cats, payment_methods=pms, model=settings.LLM_VISION_MODEL
         )
     except Exception:
+        # No explicit capture_exception: Sentry's logging integration turns an
+        # ERROR-level record into an event, and logger.exception is ERROR. Adding
+        # one here would double-report.
         logger.exception("Extração do recibo falhou mesmo com o modelo de visão.")
         extraction = None
 
