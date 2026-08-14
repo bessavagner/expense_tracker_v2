@@ -990,37 +990,89 @@ That branch exists because Django's own default is an SMTP backend pointed at
 `localhost:25`, where mail is swallowed with no exception — you would see
 "e-mail enviado" and an empty inbox forever.
 
-### 1. Create the Resend account and verify the sending domain
+### 1. The sending domain — `cactarus.com`, verified 2026-08-14
 
 **This step is yours; nothing in the repo can do it, and nothing below works
 until it is done.** In the Resend dashboard, add the sending domain and publish
-the DNS records it issues at the registrar:
+the DNS records it issues at the registrar. The live values, in the
+**`cactarus.com`** zone at Hostinger (region `sa-east-1`, São Paulo):
 
-| Type | Host | Value |
-|---|---|---|
-| `TXT` | `send.SEU-DOMINIO` | `v=spf1 include:amazonses.com ~all` |
-| `TXT` | `resend._domainkey.SEU-DOMINIO` | the DKIM public key Resend shows |
-| `MX` | `send.SEU-DOMINIO` | `feedback-smtp.<region>.amazonses.com` (priority 10) |
+| Type | Name | Value | Priority |
+|---|---|---|---|
+| `TXT` | `resend._domainkey` | the DKIM public key Resend shows (218 chars, starts `p=MIGf…`) | — |
+| `TXT` | `send` | `v=spf1 include:amazonses.com ~all` | — |
+| `MX` | `send` | `feedback-smtp.sa-east-1.amazonses.com` | 10 |
 
-Resend prints the exact values — copy them, do not retype the DKIM key. It
-takes minutes to hours to verify.
+Resend prints the exact values — copy them, never retype the DKIM key.
 
 **This is not optional and it is not cosmetic.** Unauthenticated mail from a
 financial app is exactly the profile Gmail files under Spam. An unverified
 domain does not get "slightly worse delivery"; it gets a signup funnel where
 nobody ever confirms their address, and you will read it as a bug in the code.
 
-### 2. Store the key and point the service at it
+#### The two traps this actually hit
+
+**Wrong zone.** The first attempt failed with all three records correct and the
+DKIM key byte-identical — published on **`cactarus.com.br`** while Resend was
+verifying **`cactarus.com`**. They are separate Hostinger zones on different
+nameservers (`hermes`/`artemis` vs `helios`/`aster`), so editing one never
+touches the other. Nothing in the Resend UI can tell you this; the records
+simply never appear. Check which domain the DNS editor has selected, then
+confirm from outside:
 
 ```bash
-printf '%s' 're_xxxxxxxxxxxxxxxxxxxxx' | gcloud secrets create resend-api-key \
-  --project=expense-tracker-482807 --data-file=-
+for r in hermes.dns-parking.com 8.8.8.8 1.1.1.1; do
+  dig +short @$r TXT resend._domainkey.cactarus.com
+  dig +short @$r TXT send.cactarus.com
+  dig +short @$r MX  send.cactarus.com
+done
+```
+
+All three resolvers must agree. An empty answer means the record is in another
+zone, or the name was typed as an FQDN — Hostinger's *Name* field is relative,
+so `send.cactarus.com` becomes `send.cactarus.com.cactarus.com`.
+
+**Re-adding the domain rotates the key.** Resend generates the DKIM keypair per
+domain, so deleting and re-adding a domain issues a *new* `resend._domainkey`
+value and silently invalidates the one already published.
+
+**No conflict with the Hostinger mailboxes.** `cactarus.com` keeps its apex SPF
+(`v=spf1 include:_spf.mail.hostinger.com ~all`) and apex MX (`mx1`/`mx2`).
+Resend's records live on the `send` subdomain — a different name, so the two
+SPF records coexist rather than compete. Do not merge them.
+
+### 2. Store the key and point the service at it
+
+The key must never reach a shell history, a process listing, or a chat
+transcript. `read -rs` keeps it off the command line and `printf` keeps the
+trailing newline out of the secret:
+
+```bash
+read -rs RESEND_KEY && printf '%s' "$RESEND_KEY" | \
+  gcloud secrets create resend-api-key \
+    --project=expense-tracker-482807 \
+    --replication-policy=automatic \
+    --data-file=- ; unset RESEND_KEY
+
+gcloud secrets add-iam-policy-binding resend-api-key \
+  --project=expense-tracker-482807 \
+  --member=serviceAccount:654941182076-compute@developer.gserviceaccount.com \
+  --role=roles/secretmanager.secretAccessor
 
 gcloud run services update expense-tracker --region=southamerica-east1 \
   --project=expense-tracker-482807 \
-  --set-env-vars=EMAIL_HOST=smtp.resend.com,DEFAULT_FROM_EMAIL='Ledger <nao-responda@SEU-DOMINIO>' \
-  --set-secrets=RESEND_API_KEY=resend-api-key:latest
+  --update-env-vars=EMAIL_HOST=smtp.resend.com,DEFAULT_FROM_EMAIL='Ledger <nao-responda@cactarus.com>' \
+  --update-secrets=RESEND_API_KEY=resend-api-key:latest
 ```
+
+**`--update-env-vars`, never `--set-env-vars`** — the latter replaces the whole
+list and would wipe `DATABASE_URL`, `ALLOWED_HOSTS` and the rest. Same for
+`--update-secrets`. This is the trap already recorded at the top of this file.
+
+The IAM binding is separate because the runtime service account is *not*
+granted access by creating the secret; without it the revision starts and then
+fails to mount, which surfaces as a container startup error rather than an
+email error.
 
 `gcloud secrets create` prints `Created version [1] of the secret
 [resend-api-key].`; the `run services update` prints the new revision name and
