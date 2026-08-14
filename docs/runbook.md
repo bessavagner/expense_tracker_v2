@@ -222,6 +222,47 @@ the uptime check at a path that 404s until it fires, confirm the notification
 arrives, then restore it. An alert that has never fired is a hypothesis, not an
 alert.
 
+### The alert policies
+
+Both notify `Operator email` and auto-close after 30 minutes.
+
+| Policy | Fires when | Id |
+|---|---|---|
+| `expense-tracker is down (/healthz/ uptime check failing)` | the uptime check fails more than once in a 5-minute window | `17994738960177318338` |
+| `expense-tracker 5xx error rate elevated` | more than 5 `5xx` responses in 5 minutes | `4509450462948742746` |
+
+```bash
+gcloud alpha monitoring policies list --project=expense-tracker-482807 \
+  --format="table(displayName,enabled,conditions[0].displayName)"
+```
+
+Each policy carries its own triage steps in `documentation.content`, so the
+alert email points you at the right place without needing this file open.
+
+**Neither has ever fired.** They are hypotheses until one does — see the
+paragraph above on testing the path.
+
+### The dashboard
+
+**expense-tracker — golden signals**, id `450cfbfa-635f-487b-9893-83947ab91b9b`:
+
+<https://console.cloud.google.com/monitoring/dashboards/builder/450cfbfa-635f-487b-9893-83947ab91b9b?project=expense-tracker-482807>
+
+Four tiles, all from Cloud Run's built-in metrics: request rate by response
+class, 5xx rate, p95 latency, and container instance count.
+
+**Four of the five signals E06 asked for, not five** — and the dashboard says
+so on its own face rather than quietly omitting them. *Assistant turns per day*
+and *LLM spend per day* are absent because there is nothing to build a
+log-based metric from: a successful request logs no application line, so there
+is no `jsonPayload` to count, and assistant turns are recorded as
+`AssistantUsageEvent` rows in Postgres, which Cloud Monitoring cannot read.
+Turning those rows into a metric is **E07**'s job.
+
+Until then LLM spend is *capped rather than graphed* — the OpenAI org limit
+plus the BRL 50/mo budget alert, see §"Spend ceilings" — and the instance-count
+tile is a proxy for infrastructure spend only, not for model spend.
+
 ---
 
 ## Spend ceilings
