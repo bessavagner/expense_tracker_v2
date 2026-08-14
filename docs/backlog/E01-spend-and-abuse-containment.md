@@ -2,7 +2,7 @@
 id: E01
 title: Spend & abuse containment
 release: R0
-status: review
+status: done
 depends_on: []
 blocks: [E06]
 wedge_critical: false

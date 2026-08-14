@@ -2,7 +2,7 @@
 id: E06
 title: Observability & agent tracing
 release: R1
-status: blocked
+status: ready
 depends_on: [E01]
 blocks: [E07, E10, E14, E16]
 wedge_critical: false
