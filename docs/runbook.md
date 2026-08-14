@@ -1552,7 +1552,7 @@ that is E09.
 
 ```bash
 RUN_LLM_TESTS=1 POSTGRES_PORT=5433 uv run python src/backend/manage.py eval_models \
-  --models "openai:gpt-5.4,openrouter:qwen/qwen3.7-flash" \
+  --models "openai:gpt-5.6-terra,openrouter:qwen/qwen3.7-flash" \
   --suite both \
   --out docs/superpowers/evidence/eval/2026-08-14.md
 ```

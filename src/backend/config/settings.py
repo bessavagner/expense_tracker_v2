@@ -328,11 +328,19 @@ DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "Ledger <nao-responda@
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
 # AI Assistant
-LLM_MODEL = os.environ.get("LLM_MODEL", "openai:gpt-5.4")
+#
+# Model defaults were checked against https://developers.openai.com/api/docs/pricing
+# on 2026-08-14. `gpt-5.6-terra` replaced `gpt-5.4` as the default: it is a newer
+# generation AND cheaper on both axes ($2.00/$12.00 per Mtok vs $2.50/$15.00), so
+# staying on 5.4 was paying 20% more for an older model. Never edit these strings
+# from memory — re-check the provider's live pricing page and update the
+# `ModelPrice` rows in the same change, or every cost figure the product reports
+# silently becomes fiction.
+LLM_MODEL = os.environ.get("LLM_MODEL", "openai:gpt-5.6-terra")
 # Agente único (prompt 009): um assistente forte com todas as ferramentas.
 # Provider-agnóstico — por padrão herda LLM_MODEL; defina LLM_ASSISTANT_MODEL no
 # ambiente (ex.: Cloud Run) para trocar o modelo sem mexer no código.
-LLM_ASSISTANT_MODEL = os.environ.get("LLM_ASSISTANT_MODEL", "openai:gpt-5.4")
+LLM_ASSISTANT_MODEL = os.environ.get("LLM_ASSISTANT_MODEL", "openai:gpt-5.6-terra")
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
 ASSISTANT_MAX_HISTORY = int(os.environ.get("ASSISTANT_MAX_HISTORY", "20"))
 
@@ -344,7 +352,7 @@ LLM_TRANSCRIBE_FALLBACK_MODEL = os.environ.get("LLM_TRANSCRIBE_FALLBACK_MODEL", 
 # Modelo usado para LER imagem (recibo). Default = modelo de visão capaz (recibo
 # térmico/girado/baixo contraste vai mal no modelo leve). Herda a mesma
 # LLM_API_KEY OpenAI; override por env para trocar de provider/modelo.
-LLM_VISION_MODEL = os.environ.get("LLM_VISION_MODEL", "openai:gpt-5.4")
+LLM_VISION_MODEL = os.environ.get("LLM_VISION_MODEL", "openai:gpt-5.6-terra")
 
 # Model tiers (E07 spec D2). ADVANCED and STANDARD deliberately ship pointing
 # at the SAME model as today: PD-4 forbids a model swap without an E08

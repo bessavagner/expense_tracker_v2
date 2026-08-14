@@ -1,7 +1,8 @@
 """Score one or more models against the golden dataset. E08 S08-4.
 
     RUN_LLM_TESTS=1 uv run python src/backend/manage.py eval_models \\
-        --models "openai:gpt-5.4" --suite both --out docs/superpowers/evidence/eval/baseline.md
+        --models "openai:gpt-5.6-terra" --suite both \\
+        --out docs/superpowers/evidence/eval/baseline.md
 
 This command SPENDS MONEY. It is gated on ``RUN_LLM_TESTS=1`` for the same reason
 the real-LLM tests are, and it never runs in normal CI.
