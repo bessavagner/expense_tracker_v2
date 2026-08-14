@@ -1117,6 +1117,15 @@ Authentication-Results: mx.google.com;
 An empty block above means this check has not been done, whatever the test
 suite says.
 
+**Status 2026-08-14: arrived, header not captured.** A real signup completed in
+production against revision `00044-2kq` — the verification email reached
+`bessavagner.dev@gmail.com`, was opened, and the link was clicked
+(`EmailAddress.verified = True`). So delivery works and the message was
+findable. Nobody read "Show original", so the block above is still empty and
+`spf=pass`/`dkim=pass` remains **unverified** rather than passed. Fill it in on
+the next send; it is a thirty-second job and it is the difference between
+evidence and inference.
+
 ## Import batches
 
 Each confirmed column mapping creates one `finances_importbatch` row, and the
