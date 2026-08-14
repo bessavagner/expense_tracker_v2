@@ -345,6 +345,41 @@ LLM_TRANSCRIBE_FALLBACK_MODEL = os.environ.get("LLM_TRANSCRIBE_FALLBACK_MODEL", 
 # térmico/girado/baixo contraste vai mal no modelo leve). Herda a mesma
 # LLM_API_KEY OpenAI; override por env para trocar de provider/modelo.
 LLM_VISION_MODEL = os.environ.get("LLM_VISION_MODEL", "openai:gpt-5.4")
+
+# Model tiers (E07 spec D2). ADVANCED and STANDARD deliberately ship pointing
+# at the SAME model as today: PD-4 forbids a model swap without an E08
+# evaluation score, and E09 owns making them different. Shipping them equal
+# means the tier machinery is live and provably changes nothing yet.
+LLM_TIER_ADVANCED = os.environ.get("LLM_TIER_ADVANCED", LLM_ASSISTANT_MODEL)
+LLM_TIER_STANDARD = os.environ.get("LLM_TIER_STANDARD", LLM_ASSISTANT_MODEL)
+# ESSENTIAL is where a household lands when its credits run out. Its baseline
+# is a 429 and no answer at all, not gpt-5.4 — which is why naming a model here
+# is not the unscored swap PD-4 forbids (E07 spec D2).
+#
+# Free OpenRouter model first, cheapest paid model as the fallback. Both were
+# read off openrouter.ai's live catalogue on 2026-08-14 and priced in
+# assistant/migrations/0019_seed_model_prices.py — never fill these from
+# memory (E07 spec D3), and re-check the catalogue when you change them,
+# because free endpoints are retired without notice.
+#
+# Both are chosen for TOOL support: the assistant is tool-heavy, and a free
+# model that cannot call tools is broken rather than cheap.
+#
+# Named by default rather than left empty, so the "every configured model is
+# priced" ratchet in test_pricing.py actually binds. Running without an
+# OPENROUTER_API_KEY is handled at resolution time instead — see
+# assistant.quota.model_for, which degrades to STANDARD rather than crashing.
+LLM_TIER_ESSENTIAL = os.environ.get(
+    "LLM_TIER_ESSENTIAL", "openrouter:nvidia/nemotron-3-super-120b-a12b:free"
+)
+LLM_TIER_ESSENTIAL_FALLBACK = os.environ.get(
+    "LLM_TIER_ESSENTIAL_FALLBACK", "openrouter:qwen/qwen3.7-flash"
+)
+# Read once here rather than at each call so that a test can override it via
+# the `settings` fixture. PydanticAI reads the variable from the environment
+# itself; this copy exists only so `model_for` can tell whether the degrade
+# path is actually usable.
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 # Abaixo deste nível de confiança (ou se a soma do recibo não fecha), o bot
 # confirma campo a campo antes de gravar, em vez de auto-registrar.
 ASSISTANT_RECEIPT_MIN_CONFIDENCE = float(os.environ.get("ASSISTANT_RECEIPT_MIN_CONFIDENCE", "0.6"))
