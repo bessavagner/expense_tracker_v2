@@ -349,6 +349,24 @@ LLM_VISION_MODEL = os.environ.get("LLM_VISION_MODEL", "openai:gpt-5.4")
 # confirma campo a campo antes de gravar, em vez de auto-registrar.
 ASSISTANT_RECEIPT_MIN_CONFIDENCE = float(os.environ.get("ASSISTANT_RECEIPT_MIN_CONFIDENCE", "0.6"))
 
+# Agent tracing (E06, ADR-005). No token -> no Logfire, which is the local and
+# CI path. The token comes from Secret Manager in production.
+LOGFIRE_TOKEN = os.environ.get("LOGFIRE_TOKEN", "")
+LOGFIRE_ENVIRONMENT = os.environ.get("LOGFIRE_ENVIRONMENT", "development")
+# Full prompts and completions ARE captured — an explicit operator decision
+# (2026-08-14, E06 open question 2), taken so that debugging a bad extraction
+# does not require reproducing it from scratch. The flag exists so it can be
+# turned off without a deploy; it defaults to on because that is the decision.
+#
+# CONSEQUENCE: Logfire then holds chat content and receipt descriptions, which
+# makes Pydantic a data sub-processor of personal financial data. E13's privacy
+# notice must name it.
+LOGFIRE_CAPTURE_CONTENT = os.environ.get("LOGFIRE_CAPTURE_CONTENT", "1") == "1"
+# Binary content is a SEPARATE decision and defaults OFF. The decision above was
+# about text; this flag governs whether every receipt PHOTO is uploaded to a
+# third party, which is a materially larger exposure and a large trace cost.
+LOGFIRE_CAPTURE_BINARY = os.environ.get("LOGFIRE_CAPTURE_BINARY", "0") == "1"
+
 # Projeção: mês de origem (YYYY-MM). Nada antes disso entra no acumulado — dados
 # anteriores são migração/seed e não contam na conta. Default: nov/2025.
 PROJECTION_ORIGIN_MONTH = os.environ.get("PROJECTION_ORIGIN_MONTH", "2025-11")
