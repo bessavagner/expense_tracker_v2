@@ -57,12 +57,14 @@ Three vendors, each doing one job (ADR-005): **Sentry** has the exception,
 **Cloud Logging** has the request that produced it, **Logfire** has the agent run
 inside it. They are joined by one value — the **request ID**.
 
-> **Status (2026-08-14):** the application side of E06 is merged. The vendor
-> accounts, the uptime check and the alert policies are E06 Task 7 and have
-> **not** been provisioned yet. Until they are, `SENTRY_DSN` and `LOGFIRE_TOKEN`
-> are unset on Cloud Run, which means Sentry and Logfire transmit nothing — the
-> Cloud Logging half below works today, the other two do not. Delete this note
-> once Task 7 has run.
+> **Status (2026-08-14):** Sentry and Logfire are **live** on revision
+> `expense-tracker-00045-zjs` — secrets `sentry-dsn` and `logfire-token` in
+> Secret Manager, mounted as `SENTRY_DSN` / `LOGFIRE_TOKEN`. Logfire confirmed
+> the connection at startup by printing its project URL,
+> <https://logfire-us.pydantic.dev/cactarus/expense-tracker>. Still **not**
+> provisioned: the uptime check, the two notification channels, the alert
+> policies and the dashboard — so **nothing pages you yet**. Delete this note
+> once those exist.
 
 ### Start from the request ID
 
@@ -93,10 +95,23 @@ Every log line from that one request, in order. `jsonPayload.user_id` and
 `jsonPayload.household_id="<uuid>"` widens the same query to "everything that
 happened to this tenant".
 
-**Common failure:** the query returns nothing and you assume the request never
-arrived. Check `textPayload` instead — structured JSON only applies when
-`DEBUG=False`; a local run logs plain text, and so does anything that logs
-before Django's `LOGGING` config is installed.
+**Common failure — read this before concluding the request never arrived.**
+`jsonPayload` exists only for lines **the application itself logged**. A
+request that succeeds logs nothing at application level, so a healthy request
+has **no** `jsonPayload.request_id` entry at all; verified empty on
+`00045-zjs` after a clean smoke test. What you will see for such a request is
+gunicorn's plain-text access line (`"GET /healthz/ HTTP/1.1" 200`) under
+`textPayload`, which carries no request ID. The structured line appears when
+something logs a WARNING or above — which is exactly the case you are
+debugging.
+
+So: an empty result means "nothing went wrong on that request", not "that
+request never happened". To see the request regardless, drop the
+`jsonPayload` filter and search `textPayload` by path and timestamp.
+
+Two further reasons a line can be plain text: `DEBUG=True` selects the `plain`
+formatter (a local run), and anything logging before Django installs `LOGGING`
+misses the formatter entirely.
 
 **An inbound `X-Request-ID` is adopted, not overwritten** — but only if it is 32
 hex characters. Anything else is replaced with a fresh ID, because the value

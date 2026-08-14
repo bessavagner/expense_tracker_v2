@@ -94,17 +94,21 @@ POSTGRES_PORT=5433 uv run coverage run -m pytest src/backend/ && uv run coverage
 uv run ruff check src/backend/ && uv run ruff format --check src/backend/
 ```
 
-Evidence at `4228bec` (branch `e06-observability`), 2026-08-14:
-**1353 passed, 3 skipped, 90% coverage**; `ruff check` and `ruff format --check`
-clean; `manage.py check` and `check --deploy` report no issues;
-`makemigrations --check` reports no changes.
+Evidence at `f3faa6f` on `main`, 2026-08-14: **1357 passed, 3 skipped, 90%
+coverage**; `ruff check` and `ruff format --check` clean; `manage.py check` and
+`check --deploy` report no issues; `makemigrations --check` reports no changes.
+
+Deployed as **`expense-tracker-00045-zjs`** with `SENTRY_DSN` and
+`LOGFIRE_TOKEN` mounted from Secret Manager (`sentry-dsn`, `logfire-token`).
+Smoke test green: `/healthz/` 200, `/` 302, assetlinks 200, `/accounts/login/`
+200. Startup logs carry no `Sentry disabled` warning, so the DSN parsed.
 
 Observable assertions:
 
-- [ ] A deliberately raised exception appears in Sentry, tagged with the release — **blocked on Task 7**: needs a real DSN in Secret Manager and a deployed revision. The release tag is unit-proven (`test_release_comes_from_the_cloud_run_revision`), the production sighting is not.
+- [ ] A deliberately raised exception appears in Sentry, tagged with the release — **partial.** A real event was transmitted through the production DSN on 2026-08-14, `release=expense-tracker-00045-zjs`, `request_id` tag set, and the scrubber demonstrably stripped frame locals (`vars` absent from the transmitted payload). What is **not** yet proven is an exception raised *inside the deployed container*: Cloud Run routes on `Host`, so the usual `DisallowedHost` trick 404s before reaching Django, and the app has no deliberate-error endpoint. Container→vendor egress is separately evidenced by Logfire printing its project URL at startup. Closes on the first real production error, or by adding a temporary debug route.
 - [x] A test proves chat content and entry descriptions are scrubbed from error payloads — `core/tests/test_observability.py`: `test_chat_content_never_reaches_the_transport` drives a real `sentry_sdk` client and asserts on what `before_send` actually produced, plus six unit tests for the individual carriers (body, cookies, headers, frame locals, `extra`, breadcrumbs).
-- [ ] A request ID appears in the response header, the structured log line, and the Sentry event for the same request — **two of three proven** in `core/tests/test_request_id.py` (`X-Request-ID` on the response; `request_id`/`user_id`/`household_id` in the rendered JSON line). The Sentry tag is written by `core.middleware._tag_sentry` but cannot be observed end-to-end without a DSN — **blocked on Task 7**.
-- [ ] An agent run appears in Logfire with tool calls, latency, model name, and token counts — **blocked on Task 7**: needs a write token. The capture *policy* is proven in `assistant/tests/test_tracing.py`; the trace itself is not.
+- [ ] A request ID appears in the response header, the structured log line, and the Sentry event for the same request — **header proven in production**: `curl -sI …/healthz/` on `00045-zjs` returned `x-request-id: 6608b6f3fbfd40788732aa4d59d94837`. Log line and Sentry tag are proven by test (`core/tests/test_request_id.py`) but **not yet observed in production for one shared request**, because a successful request emits no application log line — `jsonPayload.request_id!=""` returns empty on a healthy service, by design. Closes with the same real error as the box above.
+- [ ] An agent run appears in Logfire with tool calls, latency, model name, and token counts — **transport proven, trace not yet.** Logfire configured successfully on `00045-zjs`, printing its project URL at startup (<https://logfire-us.pydantic.dev/cactarus/expense-tracker>). The capture *policy* is proven in `assistant/tests/test_tracing.py`. Closes on the first authenticated chat turn against the deployed revision.
 - [ ] The uptime check has alerted at least once in a deliberate test — **blocked on Task 7**.
 - [ ] The dashboard shows all five golden signals with real data — **blocked on Task 7**.
 - [x] `docs/runbook.md` documents where to look when something breaks, and who gets alerted — §"When something breaks": the request-ID join key across all three vendors, the Cloud Logging and Sentry queries, what a Logfire span holds, what is deliberately *not* reported, and the alert channels. The alert subsection is marked pending until Task 7 provisions the channels.
