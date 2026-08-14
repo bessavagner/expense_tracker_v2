@@ -390,6 +390,13 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 # confirma campo a campo antes de gravar, em vez de auto-registrar.
 ASSISTANT_RECEIPT_MIN_CONFIDENCE = float(os.environ.get("ASSISTANT_RECEIPT_MIN_CONFIDENCE", "0.6"))
 
+# E08 evaluation fixtures. The golden dataset's ground truth is committed; the
+# receipt PHOTOS are not — this repository is public and they are real household
+# receipts carrying CNPJ, card last-4 digits and a purchase history. Point this
+# at a private directory holding the images named in `assistant/eval/cases/*.json`.
+# Unset is fine: those cases are skipped with a warning, never a failure.
+EVAL_FIXTURES_DIR = os.environ.get("EVAL_FIXTURES_DIR", "")
+
 # Agent tracing (E06, ADR-005). No token -> no Logfire, which is the local and
 # CI path. The token comes from Secret Manager in production.
 LOGFIRE_TOKEN = os.environ.get("LOGFIRE_TOKEN", "")
