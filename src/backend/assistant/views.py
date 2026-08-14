@@ -19,11 +19,10 @@ from assistant.models import (
     InteractionKind,
     MessageRole,
     ReceiptDraft,
-    UsageInteraction,
 )
+from assistant.quota import decide, open_interaction
 from assistant.services.image_prep import prepare_receipt_image
 from assistant.services.transcription import transcribe_audio
-from assistant.throttling import exceeded_rule
 
 logger = logging.getLogger(__name__)
 
@@ -159,35 +158,6 @@ def _sse_response(scope, agent, prompt, *, message_history, user_text=None, mode
     return response
 
 
-async def throttle_denial(scope, kind: str):
-    """Refuse an over-budget turn, or admit it and record the spend.
-
-    Returns a 429 ``JsonResponse`` when blocked and ``None`` when admitted. The
-    usage event is written on admission — before any model call — so a request
-    that dies mid-stream still counts against the budget it was going to spend.
-
-    The event is charged to the household and attributed to the person: the
-    quota is the household's to fill, but two members each get their own
-    budget, which is why `user` stays on this model (E04 decision 1).
-    """
-    rule = await exceeded_rule(scope.user, kind)
-    if rule is None:
-        await UsageInteraction.objects.acreate(
-            user=scope.user, household=scope.household, kind=kind
-        )
-        return None
-    noun = "fotos" if kind == InteractionKind.IMAGE else "mensagens"
-    return JsonResponse(
-        {
-            "error": (
-                f"Limite de {noun} do assistente atingido "
-                f"({rule.limit} por {rule.label}). Tente de novo mais tarde."
-            )
-        },
-        status=429,
-    )
-
-
 # CSRF is enforced. The React widget sends the token as the X-CSRFToken header
 # (read from the cookie, with credentials: same-origin), which is exactly what
 # CsrfViewMiddleware checks — the exemption bought nothing. The middleware runs
@@ -225,9 +195,20 @@ async def chat_view(request):
         if is_multipart and request.FILES.getlist("image")
         else InteractionKind.TEXT
     )
-    denial = await throttle_denial(scope, kind)
-    if denial is not None:
-        return denial
+    # THE chokepoint (E07 S07-3). One function decides, and it decides before
+    # any model call. Two different outcomes live in it: out of credits
+    # degrades to a cheaper tier and still answers; over the abuse ceiling
+    # refuses outright, on every tier including the free one.
+    decision = await decide(scope.household, user, kind)
+    if not decision.allowed:
+        return JsonResponse({"error": decision.message}, status=429)
+
+    # Opened BEFORE any model call, so a request that dies mid-stream still
+    # counts against the budget it was going to spend. Re-bind the scope so
+    # every downstream tool can attribute its own provider calls to this
+    # interaction (see AgentScope.interaction).
+    interaction = await open_interaction(decision, scope.household, user, kind)
+    scope = AgentScope(household=scope.household, user=user, interaction=interaction)
 
     if is_multipart:
         return await _handle_multipart(request, scope)

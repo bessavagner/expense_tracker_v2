@@ -394,15 +394,15 @@ nothing. Limits are env vars — change them without a code change:
 ```bash
 gcloud run services update expense-tracker \
   --project expense-tracker-482807 --region southamerica-east1 \
-  --update-env-vars ASSISTANT_THROTTLE_IMAGE_PER_HOUR=25
+  --update-env-vars ASSISTANT_ABUSE_IMAGE_PER_HOUR=25
 ```
 
 | Var | Default | Bucket |
 |---|---|---|
-| `ASSISTANT_THROTTLE_TEXT_PER_HOUR` | 60 | text + audio turns |
-| `ASSISTANT_THROTTLE_TEXT_PER_DAY` | 300 | text + audio turns |
-| `ASSISTANT_THROTTLE_IMAGE_PER_HOUR` | 15 | receipt photo turns |
-| `ASSISTANT_THROTTLE_IMAGE_PER_DAY` | 50 | receipt photo turns |
+| `ASSISTANT_ABUSE_TEXT_PER_HOUR` | 60 | text + audio turns |
+| `ASSISTANT_ABUSE_TEXT_PER_DAY` | 300 | text + audio turns |
+| `ASSISTANT_ABUSE_IMAGE_PER_HOUR` | 15 | receipt photo turns |
+| `ASSISTANT_ABUSE_IMAGE_PER_DAY` | 50 | receipt photo turns |
 
 Use `--update-env-vars` (merge), never `--set-env-vars` — the latter replaces the
 whole env list and wipes `DATABASE_URL`.

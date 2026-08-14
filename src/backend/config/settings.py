@@ -437,17 +437,27 @@ MAX_CSV_UPLOAD_BYTES = int(os.environ.get("MAX_CSV_UPLOAD_BYTES", str(10 * 1024 
 # assistant's five images plus slack.
 DATA_UPLOAD_MAX_NUMBER_FILES = 10
 
-# Assistant throttling — a crude per-account ceiling, deliberately blunt (E01).
-# Sized from measured usage: the single production account peaked at 5 turns/day
-# and 3 turns/hour, of which 3 were image turns. These defaults sit ~20x above
+# The abuse ceiling (E07 S07-3). These were E01's ASSISTANT_THROTTLE_* limits;
+# they are renamed, not weakened, because their JOB changed. E01 used them as
+# the quota. E07's quota is credits, and these are now purely the anti-abuse
+# rail: the thing that keeps R0's release gate true — "an authenticated
+# stranger cannot generate unbounded LLM spend" — now that the ESSENTIAL tier
+# has no plan quota at all.
+#
+# Sizing is unchanged from E01: the single production account peaked at 5
+# turns/day and 3 turns/hour, of which 3 were image turns. These sit ~20x above
 # that peak, so ordinary daily use never meets them, while a runaway client loop
 # or a stolen session is capped within the hour.
 # Audio counts against the TEXT budget: transcription is ~100x cheaper per turn
 # than a vision call, so only the image path needs its own ceiling.
-ASSISTANT_THROTTLE_TEXT_PER_HOUR = int(os.environ.get("ASSISTANT_THROTTLE_TEXT_PER_HOUR", "60"))
-ASSISTANT_THROTTLE_TEXT_PER_DAY = int(os.environ.get("ASSISTANT_THROTTLE_TEXT_PER_DAY", "300"))
-ASSISTANT_THROTTLE_IMAGE_PER_HOUR = int(os.environ.get("ASSISTANT_THROTTLE_IMAGE_PER_HOUR", "15"))
-ASSISTANT_THROTTLE_IMAGE_PER_DAY = int(os.environ.get("ASSISTANT_THROTTLE_IMAGE_PER_DAY", "50"))
+#
+# Read from settings on every call, so the `settings` fixture can override them
+# in tests and an env change takes effect on the next deploy without a code
+# change.
+ASSISTANT_ABUSE_TEXT_PER_HOUR = int(os.environ.get("ASSISTANT_ABUSE_TEXT_PER_HOUR", "60"))
+ASSISTANT_ABUSE_TEXT_PER_DAY = int(os.environ.get("ASSISTANT_ABUSE_TEXT_PER_DAY", "300"))
+ASSISTANT_ABUSE_IMAGE_PER_HOUR = int(os.environ.get("ASSISTANT_ABUSE_IMAGE_PER_HOUR", "15"))
+ASSISTANT_ABUSE_IMAGE_PER_DAY = int(os.environ.get("ASSISTANT_ABUSE_IMAGE_PER_DAY", "50"))
 
 # Ensure OpenAI client can be instantiated (uses dummy key in dev/test; real key in prod)
 if LLM_API_KEY and not os.environ.get("OPENAI_API_KEY"):

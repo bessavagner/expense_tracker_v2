@@ -15,8 +15,14 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 # `UsageInteraction.user` is who spent the turn: rate limiting is
 # per-person, so two people in one household each get their own budget.
 # Phase 2 decided this and phase 4 did not drop `user` from that model.
+#
+# E07 replaced `throttling.py` with `quota.py`. The exemption moves with the
+# rule, unchanged in kind: `quota._ceiling_breach_sync` counts the ACTOR's
+# turns, while the credit balance in the same module is scoped by household —
+# both facts in one file, pointing opposite ways, which is exactly the
+# distinction this list exists to protect.
 ACTOR_SCOPED = {
-    "src/backend/assistant/throttling.py",
+    "src/backend/assistant/quota.py",
 }
 
 # `get_or_create` and `update_or_create` were invisible to the first version of

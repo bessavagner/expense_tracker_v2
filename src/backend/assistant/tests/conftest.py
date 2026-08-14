@@ -67,3 +67,28 @@ def interaction(db, household, user):
     return UsageInteraction.objects.create(
         household=household, user=user, kind=InteractionKind.TEXT
     )
+
+
+@pytest.fixture
+def plan(db):
+    """The seeded beta plan every household falls back to."""
+    from accounts.models import Plan
+
+    return Plan.objects.get(is_default=True)
+
+
+@pytest.fixture
+def household_mate(db, household):
+    """A second member of the SAME household.
+
+    Distinct from the root `other_user` fixture, which is a second *tenant*.
+    Two facts need proving at once and they point opposite ways: credits are
+    the household's shared pool, while the abuse ceiling counts the person.
+    """
+    from model_bakery import baker
+
+    from accounts.models import Membership
+
+    u = baker.make("core.CustomUser", username="colega", email="colega@example.com")
+    Membership.objects.create(user=u, household=household)
+    return u

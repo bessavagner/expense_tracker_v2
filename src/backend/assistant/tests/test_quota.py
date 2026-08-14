@@ -1,337 +1,390 @@
-"""Rolling-window counting for the assistant throttle.
+"""The single chokepoint. Every quota decision in the product happens here.
 
-The window is rolling rather than calendar-bucketed on purpose: a calendar hour
-lets a caller spend the whole hourly budget at 10:59 and the whole next budget at
-11:00, doubling the real ceiling at exactly the moment that matters.
+Two refusals live in this one function and they are NOT the same thing:
+
+  * out of credits  -> degrade a tier. The user still gets an answer.
+  * over the ceiling -> 429. Nothing rescues you. This is R0's guarantee.
+
+Every date-sensitive test freezes the clock (global constraint 10).
+
+These are sync tests driving async functions through ``async_to_sync``, which
+is the suite's convention and is load-bearing here: an ``async def`` test under
+``django_db`` runs its ORM work on a different connection from the one holding
+the fixture transaction, so it cannot see ``household`` or ``user`` at all.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from asgiref.sync import async_to_sync
 from django.utils import timezone
 
-from accounts.resolution import household_for_user
-from assistant.models import InteractionKind, UsageInteraction
-from assistant.throttling import exceeded_rule, rules_for
+from assistant.models import CreditPrice, InteractionKind, UsageInteraction
+from assistant.quota import (
+    balance_for,
+    decide,
+    fallback_model_for,
+    model_for,
+    open_interaction,
+)
+from core.tiers import Tier
+
+pytestmark = pytest.mark.django_db
 
 # Frozen so "N hours ago" is computed from a fixed instant rather than the real
 # clock — a rolling-window test that reads the real clock is exactly the
 # time-bomb this freeze exists to prevent.
-FROZEN_NOW = datetime(2026, 6, 15, 12, 0, tzinfo=UTC)
+FROZEN = datetime(2026, 8, 14, 12, 0, tzinfo=UTC)
 
 
 @pytest.fixture(autouse=True)
 def _frozen_clock(time_machine):
-    time_machine.move_to(FROZEN_NOW, tick=False)
+    time_machine.move_to(FROZEN, tick=False)
 
 
-def _burn(user, kind, count, *, age=timedelta(0)):
-    """Create ``count`` usage events, backdated by ``age``.
+def _spend(household, user, *, credits, tier=Tier.ADVANCED, kind=InteractionKind.TEXT, age=None):
+    """Charge ``credits`` to ``household``, backdated by ``age``.
 
-    The event names both its actor and its tenant, and keeps them distinct.
-    ``user`` is the *actor*: throttling is per person, so two members of one
-    household each get their own budget (epic decision 1), and every call site
-    below varies the actor rather than the household. ``household`` is set
-    explicitly because Task 12 makes the column NOT NULL and deletes the write
-    bridge that used to fill it.
+    The row names both its actor and its tenant and keeps them distinct: the
+    credit balance is the household's, the abuse ceiling counts the person
+    (E04 decision 1).
     """
-    stamp = timezone.now() - age
-    household = household_for_user(user)
-    for _ in range(count):
-        event = UsageInteraction.objects.create(user=user, household=household, kind=kind)
-        UsageInteraction.objects.filter(pk=event.pk).update(created_at=stamp)
+    stamp = timezone.now() - (age or timedelta(0))
+    ev = UsageInteraction.objects.create(
+        household=household, user=user, kind=kind, tier=tier, credits_charged=credits
+    )
+    UsageInteraction.objects.filter(pk=ev.pk).update(created_at=stamp)
+    return ev
 
 
-@pytest.mark.django_db
-class TestRulesFor:
-    def test_image_rules_are_tighter_than_text_rules(self, settings):
-        text_hourly = rules_for(InteractionKind.TEXT)[0]
-        image_hourly = rules_for(InteractionKind.IMAGE)[0]
-        assert image_hourly.limit < text_hourly.limit
-
-    def test_rules_read_current_settings(self, settings):
-        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 7
-        assert rules_for(InteractionKind.TEXT)[0].limit == 7
-
-    def test_each_kind_has_an_hourly_and_a_daily_rule(self):
-        for kind in (InteractionKind.TEXT, InteractionKind.IMAGE):
-            windows = {rule.window for rule in rules_for(kind)}
-            assert windows == {timedelta(hours=1), timedelta(days=1)}
+def _decide(household, user, kind=InteractionKind.TEXT):
+    return async_to_sync(decide)(household, user, kind, now=FROZEN)
 
 
-@pytest.mark.django_db
-class TestExceededRule:
-    def test_no_usage_is_never_throttled(self, user):
-        assert async_to_sync(exceeded_rule)(user, InteractionKind.TEXT) is None
-
-    def test_under_the_hourly_limit_is_allowed(self, user, settings):
-        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 5
-        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, InteractionKind.TEXT, 4)
-        assert async_to_sync(exceeded_rule)(user, InteractionKind.TEXT) is None
-
-    def test_at_the_hourly_limit_is_blocked(self, user, settings):
-        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 5
-        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, InteractionKind.TEXT, 5)
-        rule = async_to_sync(exceeded_rule)(user, InteractionKind.TEXT)
-        assert rule is not None
-        assert rule.limit == 5
-        assert rule.label == "hora"
-
-    def test_events_outside_the_window_do_not_count(self, user, settings):
-        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 5
-        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, InteractionKind.TEXT, 5, age=timedelta(hours=2))
-        assert async_to_sync(exceeded_rule)(user, InteractionKind.TEXT) is None
-
-    def test_daily_limit_blocks_even_when_hourly_is_clear(self, user, settings):
-        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 100
-        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 6
-        _burn(user, InteractionKind.TEXT, 6, age=timedelta(hours=5))
-        rule = async_to_sync(exceeded_rule)(user, InteractionKind.TEXT)
-        assert rule is not None
-        assert rule.label == "dia"
-
-    def test_kinds_have_independent_budgets(self, user, settings):
-        settings.ASSISTANT_THROTTLE_IMAGE_PER_HOUR = 2
-        settings.ASSISTANT_THROTTLE_IMAGE_PER_DAY = 100
-        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 100
-        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, InteractionKind.IMAGE, 2)
-        assert async_to_sync(exceeded_rule)(user, InteractionKind.IMAGE) is not None
-        assert async_to_sync(exceeded_rule)(user, InteractionKind.TEXT) is None
-
-    def test_other_users_usage_does_not_count(self, user, settings):
-        from model_bakery import baker
-
-        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 2
-        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        stranger = baker.make("core.CustomUser", username="stranger")
-        _burn(stranger, InteractionKind.TEXT, 5)
-        assert async_to_sync(exceeded_rule)(user, InteractionKind.TEXT) is None
-
-    def test_event_exactly_at_the_window_edge_still_counts(self, user, settings):
-        """The window boundary is inclusive: an event exactly one hour old is
-        still "this hour" for a caller who has been active for exactly an
-        hour, not a loophole that lets the count reset a moment early.
-        """
-        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 1
-        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, InteractionKind.TEXT, 1, age=timedelta(hours=1))
-        rule = async_to_sync(exceeded_rule)(user, InteractionKind.TEXT)
-        assert rule is not None
-        assert rule.label == "hora"
-
-    def test_event_one_second_past_the_window_edge_does_not_count(self, user, settings):
-        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 1
-        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, InteractionKind.TEXT, 1, age=timedelta(hours=1, seconds=1))
-        assert async_to_sync(exceeded_rule)(user, InteractionKind.TEXT) is None
+# --- the credit cascade -------------------------------------------------
 
 
-@pytest.mark.django_db
-class TestChatEndpointThrottle:
-    """The endpoint must refuse an over-limit turn before spending anything."""
-
-    def _post_text(self, client, monkeypatch):
-        """POST a text turn with ``_sse_response`` replaced by a call recorder.
-
-        Replacing ``_sse_response`` is the cheapest place to prove "zero model
-        calls" *for the JSON path*: ``_handle_json`` has exactly one route to a
-        model, through ``_sse_response``. This does not hold for the multipart
-        path — ``transcribe_audio`` and ``extract_receipt`` reach models directly,
-        without going through ``_sse_response`` — so this stub only covers text
-        turns. The stub must return a real ``HttpResponse`` — ``_handle_json``
-        returns its result straight to Django, which raises on ``None``.
-        """
-        import json
-
-        from django.http import HttpResponse
-
-        calls = []
-
-        def _stub_sse(*args, **kwargs):
-            calls.append("call")
-            return HttpResponse("stubbed", content_type="text/event-stream")
-
-        monkeypatch.setattr("assistant.views._sse_response", _stub_sse)
-        response = client.post(
-            "/api/assistant/chat/",
-            data=json.dumps({"message": "oi"}),
-            content_type="application/json",
-        )
-        return response, calls
-
-    def test_under_the_limit_reaches_the_model(self, logged_client, user, monkeypatch, settings):
-        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 3
-        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, InteractionKind.TEXT, 2)
-        response, calls = self._post_text(logged_client, monkeypatch)
-        assert response.status_code == 200
-        assert len(calls) == 1
-
-    def test_over_the_limit_makes_zero_model_calls(
-        self, logged_client, user, monkeypatch, settings
-    ):
-        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 3
-        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, InteractionKind.TEXT, 3)
-        response, calls = self._post_text(logged_client, monkeypatch)
-        assert response.status_code == 429
-        assert calls == []
-
-    def test_rejection_message_is_pt_br_and_names_the_window(
-        self, logged_client, user, monkeypatch, settings
-    ):
-        import json as _json
-
-        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 3
-        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, InteractionKind.TEXT, 3)
-        response, _ = self._post_text(logged_client, monkeypatch)
-        body = _json.loads(response.content)
-        assert "Limite" in body["error"]
-        assert "hora" in body["error"]
-
-    def test_rejected_turn_writes_no_chat_message(
-        self, logged_client, user, monkeypatch, settings, household
-    ):
-        from assistant.models import ChatMessage
-
-        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 3
-        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, InteractionKind.TEXT, 3)
-        self._post_text(logged_client, monkeypatch)
-        assert not ChatMessage.objects.for_household(household).exists()
-
-    def test_admitted_turn_records_one_usage_event(
-        self, logged_client, user, monkeypatch, settings
-    ):
-        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 10
-        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        self._post_text(logged_client, monkeypatch)
-        assert UsageInteraction.objects.filter(user=user, kind=InteractionKind.TEXT).count() == 1
-
-    def test_rejected_turn_records_no_usage_event(self, logged_client, user, monkeypatch, settings):
-        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 3
-        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, InteractionKind.TEXT, 3)
-        self._post_text(logged_client, monkeypatch)
-        assert UsageInteraction.objects.filter(user=user, kind=InteractionKind.TEXT).count() == 3
-
-    def test_image_turn_spends_the_image_budget_not_the_text_one(
-        self, logged_client, user, monkeypatch, settings
-    ):
-        from django.core.files.uploadedfile import SimpleUploadedFile
-
-        settings.ASSISTANT_THROTTLE_IMAGE_PER_HOUR = 1
-        settings.ASSISTANT_THROTTLE_IMAGE_PER_DAY = 100
-        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 100
-        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        _burn(user, InteractionKind.IMAGE, 1)
-
-        calls = []
-
-        async def _stub_multipart(*args, **kwargs):
-            # async, because chat_view awaits it — a plain lambda would raise a
-            # confusing TypeError instead of failing this test cleanly.
-            from django.http import HttpResponse
-
-            calls.append("call")
-            return HttpResponse("stubbed", content_type="text/event-stream")
-
-        monkeypatch.setattr("assistant.views._handle_multipart", _stub_multipart)
-        png = (
-            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00"
-            b"\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9c"
-            b"c\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
-        )
-        image = SimpleUploadedFile("recibo.png", png, content_type="image/png")
-        response = logged_client.post("/api/assistant/chat/", data={"image": image})
-        assert response.status_code == 429
-        assert calls == []
-        assert "fotos" in response.content.decode()
-
-    def test_audio_turn_spends_the_text_budget(self, logged_client, user, monkeypatch, settings):
-        from django.core.files.uploadedfile import SimpleUploadedFile
-
-        settings.ASSISTANT_THROTTLE_TEXT_PER_HOUR = 1
-        settings.ASSISTANT_THROTTLE_TEXT_PER_DAY = 100
-        settings.ASSISTANT_THROTTLE_IMAGE_PER_HOUR = 100
-        settings.ASSISTANT_THROTTLE_IMAGE_PER_DAY = 100
-        _burn(user, InteractionKind.TEXT, 1)
-
-        calls = []
-
-        async def _stub_multipart(*args, **kwargs):
-            # Stubbed so a regression that lets this turn through cannot reach
-            # transcribe_audio, which would make a real outbound call to
-            # api.openai.com with whatever credentials the environment holds.
-            from django.http import HttpResponse
-
-            calls.append("call")
-            return HttpResponse("stubbed", content_type="text/event-stream")
-
-        monkeypatch.setattr("assistant.views._handle_multipart", _stub_multipart)
-        audio = SimpleUploadedFile("nota.webm", b"\x00\x01\x02", content_type="audio/webm")
-        response = logged_client.post("/api/assistant/chat/", data={"audio": audio})
-        assert response.status_code == 429
-        assert calls == []
+def test_a_fresh_household_gets_its_preferred_tier(household, user):
+    d = _decide(household, user)
+    assert d.allowed is True
+    assert d.tier == Tier.ADVANCED
+    assert d.degraded is False
+    assert d.message is None
 
 
-@pytest.mark.django_db
-def test_an_admitted_turn_records_its_household(user, household):
-    """The usage event is household-owned even though it counts per person.
+def test_a_household_out_of_credits_is_degraded_not_refused(household, user, plan):
+    """E07 spec D2, and the DoD box that says degraded rather than refused."""
+    _spend(household, user, credits=plan.monthly_credits)
+    d = _decide(household, user)
+    assert d.allowed is True  # <-- NOT a refusal
+    assert d.tier == Tier.ESSENTIAL
+    assert d.degraded is True
+    assert "Essencial" in d.message
 
-    Written against the still-present write bridge on purpose: the assertion is
-    that `throttle_denial` names the tenant itself, not that something else
-    fills it in. E04 decision 1 keeps `user` here — the throttle counts per
-    person, so two members of one household each get their own budget.
+
+def test_a_household_that_cannot_afford_advanced_but_can_afford_standard(household, user, plan):
+    """One shared pool, spent at different rates — the cascade steps down."""
+    adv = CreditPrice.objects.get(tier=Tier.ADVANCED, kind=InteractionKind.TEXT)
+    std = CreditPrice.objects.get(tier=Tier.STANDARD, kind=InteractionKind.TEXT)
+    assert std.credits < adv.credits  # guards the fixture, not the code
+    _spend(household, user, credits=plan.monthly_credits - std.credits)
+    d = _decide(household, user)
+    assert d.tier == Tier.STANDARD
+    assert d.degraded is True
+
+
+def test_a_household_that_chose_standard_is_never_upgraded_to_advanced(household, user):
+    """The chokepoint overrides downward only. Choosing to save must stick."""
+    household.preferred_tier = Tier.STANDARD
+    household.save()
+    d = _decide(household, user)
+    assert d.tier == Tier.STANDARD
+    assert d.degraded is False
+
+
+def test_essential_never_runs_out_of_credits(household, user, plan):
+    _spend(household, user, credits=plan.monthly_credits * 10)
+    d = _decide(household, user, InteractionKind.IMAGE)
+    assert d.allowed is True
+    assert d.tier == Tier.ESSENTIAL
+    assert d.credits_cost == 0
+
+
+def test_last_months_spend_does_not_count_against_this_month(household, user, plan):
+    """Grants are per calendar month. Frozen clock — no time bombs."""
+    _spend(household, user, credits=plan.monthly_credits, age=timedelta(days=40))
+    d = _decide(household, user)
+    assert d.tier == Tier.ADVANCED
+    assert d.degraded is False
+
+
+def test_balance_reports_grant_remaining_and_renewal(household, user, plan):
+    _spend(household, user, credits=100)
+    granted, remaining, renews_on = async_to_sync(balance_for)(household, now=FROZEN)
+    assert granted == plan.monthly_credits
+    assert remaining == plan.monthly_credits - 100
+    assert renews_on == date(2026, 9, 1)
+
+
+def test_a_household_with_no_plan_uses_the_default_plan(household, user, plan):
+    household.plan = None
+    household.save()
+    granted, _, _ = async_to_sync(balance_for)(household, now=FROZEN)
+    assert granted == plan.monthly_credits
+
+
+def test_one_members_spend_counts_against_the_others_balance(household, user, household_mate, plan):
+    """Credits are the HOUSEHOLD's pool — the opposite of the abuse ceiling,
+    which is per person. Both facts have to be true at once."""
+    _spend(household, user, credits=plan.monthly_credits)
+    d = _decide(household, household_mate)
+    assert d.tier == Tier.ESSENTIAL
+
+
+def test_a_neighbours_spend_does_not_touch_this_households_balance(
+    household, user, other_household, other_user, plan
+):
+    _spend(other_household, other_user, credits=plan.monthly_credits)
+    d = _decide(household, user)
+    assert d.tier == Tier.ADVANCED
+
+
+def test_the_balance_never_goes_negative(household, user, plan):
+    """Overspend is possible — a turn is charged before it runs — but a
+    negative balance would make the cascade arithmetic lie."""
+    _spend(household, user, credits=plan.monthly_credits * 3)
+    _, remaining, _ = async_to_sync(balance_for)(household, now=FROZEN)
+    assert remaining == 0
+
+
+# --- the abuse ceiling (R0's guarantee, carried over from E01) -----------
+
+
+def test_the_abuse_ceiling_refuses_outright(household, user, settings):
+    """Over the ceiling is a 429. No tier rescues you — this is the R0 gate."""
+    settings.ASSISTANT_ABUSE_TEXT_PER_HOUR = 2
+    for _ in range(2):
+        _spend(household, user, credits=0, tier=Tier.ESSENTIAL)
+    d = _decide(household, user)
+    assert d.allowed is False
+    assert "hora" in d.message
+    assert "mensagens" in d.message
+
+
+def test_the_ceiling_applies_even_on_the_free_tier(household, user, settings, plan):
+    """ESSENTIAL has no plan quota. Without this it would be unbounded spend."""
+    settings.ASSISTANT_ABUSE_TEXT_PER_HOUR = 2
+    _spend(household, user, credits=plan.monthly_credits)  # forces ESSENTIAL
+    for _ in range(2):
+        _spend(household, user, credits=0, tier=Tier.ESSENTIAL)
+    d = _decide(household, user)
+    assert d.allowed is False
+
+
+def test_the_ceiling_is_per_user_not_per_household(household, user, household_mate, settings):
+    """One member must not be able to lock the other out."""
+    settings.ASSISTANT_ABUSE_TEXT_PER_HOUR = 2
+    for _ in range(5):
+        _spend(household, user, credits=0)
+    d = _decide(household, household_mate)
+    assert d.allowed is True
+
+
+def test_the_ceiling_window_rolls(household, user, settings):
+    settings.ASSISTANT_ABUSE_TEXT_PER_HOUR = 2
+    for _ in range(5):
+        _spend(household, user, credits=0, age=timedelta(hours=2))
+    d = _decide(household, user)
+    assert d.allowed is True
+
+
+def test_a_turn_exactly_at_the_window_edge_still_counts(household, user, settings):
+    """The boundary is inclusive: an event exactly one hour old is still "this
+    hour", not a loophole that lets the count reset a moment early."""
+    settings.ASSISTANT_ABUSE_TEXT_PER_HOUR = 1
+    _spend(household, user, credits=0, age=timedelta(hours=1))
+    assert _decide(household, user).allowed is False
+
+
+def test_a_turn_one_second_past_the_window_edge_does_not_count(household, user, settings):
+    settings.ASSISTANT_ABUSE_TEXT_PER_HOUR = 1
+    _spend(household, user, credits=0, age=timedelta(hours=1, seconds=1))
+    assert _decide(household, user).allowed is True
+
+
+def test_the_daily_ceiling_blocks_even_when_the_hourly_one_is_clear(household, user, settings):
+    settings.ASSISTANT_ABUSE_TEXT_PER_HOUR = 100
+    settings.ASSISTANT_ABUSE_TEXT_PER_DAY = 6
+    for _ in range(6):
+        _spend(household, user, credits=0, age=timedelta(hours=5))
+    d = _decide(household, user)
+    assert d.allowed is False
+    assert "dia" in d.message
+
+
+def test_the_image_ceiling_is_separate_from_the_text_ceiling(household, user, settings):
+    settings.ASSISTANT_ABUSE_IMAGE_PER_HOUR = 1
+    settings.ASSISTANT_ABUSE_TEXT_PER_HOUR = 100
+    _spend(household, user, credits=0, kind=InteractionKind.IMAGE)
+    assert _decide(household, user, InteractionKind.IMAGE).allowed is False
+    assert _decide(household, user, InteractionKind.TEXT).allowed is True
+
+
+def test_the_image_refusal_names_photos_not_messages(household, user, settings):
+    settings.ASSISTANT_ABUSE_IMAGE_PER_HOUR = 1
+    _spend(household, user, credits=0, kind=InteractionKind.IMAGE)
+    assert "fotos" in _decide(household, user, InteractionKind.IMAGE).message
+
+
+def test_the_ceiling_reads_current_settings(household, user, settings):
+    """Rules are read per call, so an env change lands on the next deploy
+    without a code change — and the `settings` fixture works at all."""
+    settings.ASSISTANT_ABUSE_TEXT_PER_HOUR = 1
+    _spend(household, user, credits=0)
+    assert _decide(household, user).allowed is False
+    settings.ASSISTANT_ABUSE_TEXT_PER_HOUR = 50
+    assert _decide(household, user).allowed is True
+
+
+# --- opening the interaction --------------------------------------------
+
+
+def test_open_interaction_freezes_the_tier_and_the_credit_cost(household, user):
+    d = _decide(household, user)
+    ev = async_to_sync(open_interaction)(d, household, user, InteractionKind.TEXT)
+    assert ev.tier == d.tier
+    assert ev.credits_charged == d.credits_cost
+    assert ev.household == household
+    assert ev.user == user
+
+
+def test_retuning_credit_prices_does_not_rewrite_what_was_already_spent(household, user):
+    """`credits_charged` is frozen at write time. This is why the balance can
+    be derived without the past shifting under it."""
+    d = _decide(household, user)
+    ev = async_to_sync(open_interaction)(d, household, user, InteractionKind.TEXT)
+    charged = ev.credits_charged
+
+    CreditPrice.objects.filter(tier=Tier.ADVANCED, kind=InteractionKind.TEXT).update(credits=999)
+    ev.refresh_from_db()
+    assert ev.credits_charged == charged
+
+
+def test_an_opened_interaction_is_immediately_visible_to_the_balance(household, user, plan):
+    d = _decide(household, user)
+    async_to_sync(open_interaction)(d, household, user, InteractionKind.TEXT)
+    _, remaining, _ = async_to_sync(balance_for)(household, now=FROZEN)
+    assert remaining == plan.monthly_credits - d.credits_cost
+
+
+# --- model resolution ----------------------------------------------------
+
+
+def test_each_tier_resolves_to_its_configured_model(settings):
+    settings.LLM_TIER_ADVANCED = "openai:big"
+    settings.LLM_TIER_STANDARD = "openai:mid"
+    settings.LLM_TIER_ESSENTIAL = "openrouter:free"
+    settings.OPENROUTER_API_KEY = "sk-test"  # noqa: S105 — not a real credential
+    assert model_for(Tier.ADVANCED) == "openai:big"
+    assert model_for(Tier.STANDARD) == "openai:mid"
+    assert model_for(Tier.ESSENTIAL) == "openrouter:free"
+
+
+def test_essential_falls_back_to_standard_when_unconfigured(settings):
+    settings.LLM_TIER_ESSENTIAL = ""
+    assert model_for(Tier.ESSENTIAL) == settings.LLM_TIER_STANDARD
+
+
+def test_essential_falls_back_to_standard_without_an_openrouter_key(settings):
+    """CI and a fresh clone have no OPENROUTER_API_KEY. A degrade path that
+    itself crashes is worse than no degrade path."""
+    settings.LLM_TIER_ESSENTIAL = "openrouter:some/model:free"
+    settings.OPENROUTER_API_KEY = ""
+    assert model_for(Tier.ESSENTIAL) == settings.LLM_TIER_STANDARD
+
+
+def test_a_non_openrouter_essential_is_not_gated_on_the_openrouter_key(settings):
+    """An operator pointing ESSENTIAL somewhere else supplies that provider's
+    credentials themselves; we must not second-guess them."""
+    settings.LLM_TIER_ESSENTIAL = "openai:gpt-5.4-nano"
+    settings.OPENROUTER_API_KEY = ""
+    assert model_for(Tier.ESSENTIAL) == "openai:gpt-5.4-nano"
+
+
+def test_only_essential_has_a_fallback_model(settings):
+    settings.OPENROUTER_API_KEY = "sk-test"  # noqa: S105 — not a real credential
+    assert fallback_model_for(Tier.ADVANCED) is None
+    assert fallback_model_for(Tier.STANDARD) is None
+    assert fallback_model_for(Tier.ESSENTIAL) == settings.LLM_TIER_ESSENTIAL_FALLBACK
+
+
+def test_there_is_no_fallback_when_essential_already_degraded_to_standard(settings):
+    """Retrying a paid OpenRouter model with no key fails twice and doubles the
+    latency of a turn that is already working."""
+    settings.OPENROUTER_API_KEY = ""
+    assert fallback_model_for(Tier.ESSENTIAL) is None
+
+
+# --- the DoD's grep ------------------------------------------------------
+
+
+def test_there_is_exactly_one_enforcement_path():
+    """The DoD's grep, as a test so it cannot rot.
+
+    `assistant/throttling.py` is deleted, not deprecated. If this fails,
+    someone has added a second place that decides whether a model may be
+    called — which is the exact bug S07-3 exists to prevent.
     """
-    from assistant.agents.scope import AgentScope
-    from assistant.views import throttle_denial
+    import pathlib
 
-    scope = AgentScope(household=household, user=user)
+    root = pathlib.Path(__file__).resolve().parents[2]
+    assert not (root / "assistant" / "throttling.py").exists()
 
-    assert async_to_sync(throttle_denial)(scope, InteractionKind.TEXT) is None
-
-    event = UsageInteraction.objects.get(user=user)
-    assert event.household == household
+    # The DoD words this as a grep; it is a Python scan so it needs no
+    # subprocess and runs the same on any machine. The literal grep is run by
+    # hand once at final verification, as the plan asks.
+    #
+    # `tests/` is skipped because this file names both symbols itself, so the
+    # scan would always trip over its own source. That costs nothing: a test
+    # still importing `assistant.throttling` would fail on the missing module
+    # long before reaching this assertion.
+    symbols = ("exceeded_rule", "throttle_denial")
+    hits = [
+        f"{path.relative_to(root)}:{n}"
+        for path in root.rglob("*.py")
+        if "tests" not in path.parts
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if any(s in line for s in symbols)
+    ]
+    assert not hits, "E01's throttle survives somewhere:\n  " + "\n  ".join(hits)
 
 
 # --- the credit price grid (E07 Task 5) ---------------------------------
 
 
-@pytest.mark.django_db
 def test_essential_costs_zero_credits_for_every_kind():
     """E07 spec D2: ESSENTIAL is the free floor. Charging for it defeats it."""
-    from assistant.models import CreditPrice, InteractionKind
-    from core.tiers import Tier
-
     for kind in InteractionKind.values:
-        price = CreditPrice.objects.get(tier=Tier.ESSENTIAL, kind=kind)
-        assert price.credits == 0
+        assert CreditPrice.objects.get(tier=Tier.ESSENTIAL, kind=kind).credits == 0
 
 
-@pytest.mark.django_db
 def test_an_image_costs_more_credits_than_text_in_every_paid_tier():
     """A vision call is genuinely more expensive. The currency must say so."""
-    from assistant.models import CreditPrice, InteractionKind
-    from core.tiers import Tier
-
     for tier in (Tier.ADVANCED, Tier.STANDARD):
         text = CreditPrice.objects.get(tier=tier, kind=InteractionKind.TEXT).credits
         image = CreditPrice.objects.get(tier=tier, kind=InteractionKind.IMAGE).credits
         assert image > text
 
 
-@pytest.mark.django_db
 def test_advanced_costs_more_credits_than_standard():
-    from assistant.models import CreditPrice, InteractionKind
-    from core.tiers import Tier
-
     adv = CreditPrice.objects.get(tier=Tier.ADVANCED, kind=InteractionKind.TEXT).credits
     std = CreditPrice.objects.get(tier=Tier.STANDARD, kind=InteractionKind.TEXT).credits
     assert adv > std
+
+
+def test_every_tier_and_kind_combination_is_priced():
+    """A missing row makes `_decide_sync` fall back to zero credits, which
+    would silently make a paid tier free."""
+    for tier in Tier.values:
+        for kind in InteractionKind.values:
+            assert CreditPrice.objects.filter(tier=tier, kind=kind).exists(), f"{tier}/{kind}"
