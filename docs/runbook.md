@@ -185,12 +185,42 @@ and would leak user content by a route the scrubber cannot see).
 
 ### Who gets alerted, and how
 
-**Pending Task 7.** Two Cloud Monitoring notification channels are planned:
-GCP mobile-app **push** (wakes the operator) and **email** to
-`bessavagner@gmail.com` (durable record). To test the path without waiting for a
-real outage, point the uptime check at a path that 404s until it fires, confirm
-the push arrives on the phone, then restore it. An alert that has never fired is
-a hypothesis, not an alert.
+**One channel today: email.** `Operator email` →
+`bessavagner@gmail.com`, channel id `5857707555791637518`, enabled, no
+verification needed (it is the project owner's address).
+
+```bash
+gcloud beta monitoring channels list --project=expense-tracker-482807 \
+  --format="table(displayName,type,labels.email_address,enabled)"
+```
+
+**Nothing wakes you.** That is a known, accepted gap, not an oversight —
+E06 planned a second channel that no longer exists (below). Email is a durable
+record you read when you go looking; it will not reach you at 3am.
+
+**`mobile_push` is gone — do not go looking for it.** Google retired the Cloud
+Console mobile app and its notification channel type along with it. There is no
+"Mobile devices" entry under *Monitoring → Alerting → Notification channels*
+any more, and the API agrees:
+
+```bash
+gcloud beta monitoring channel-descriptors describe mobile_push --project=expense-tracker-482807
+# ERROR: NOT_FOUND: Requested entity was not found.
+```
+
+Checked 2026-08-14. What this project *can* use, from
+`gcloud beta monitoring channel-descriptors list`: `email`, `sms`, `slack`,
+`pubsub`, `webhook_basicauth`, `webhook_tokenauth` (all GA), plus
+`google_chat` and `pagerduty` (beta). **SMS** is the closest replacement for
+waking someone — create it with `gcloud beta monitoring channels create
+--type=sms --channel-labels=number=+55...`, then verify the texted code in the
+console, because `gcloud` has no `channels verify` subcommand. A webhook into
+ntfy.sh or Pushover is the other realistic option.
+
+When a waking channel does exist, test the path rather than trusting it: point
+the uptime check at a path that 404s until it fires, confirm the notification
+arrives, then restore it. An alert that has never fired is a hypothesis, not an
+alert.
 
 ---
 

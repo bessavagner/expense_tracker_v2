@@ -31,7 +31,7 @@ Copied from `docs/backlog/INDEX.md` §7. Every task's requirements implicitly in
 
 | # | Decision | Source |
 |---|---|---|
-| **Alert destination** | Two Cloud Monitoring notification channels: **GCP mobile app push** (wakes the operator) **plus email** to `bessavagner@gmail.com` (durable record). | Operator, 2026-08-14 — E06 open question 1 |
+| **Alert destination** | ~~**GCP mobile app push** plus email~~ — **push is impossible, see below.** Email only: `bessavagner@gmail.com`. | Operator, 2026-08-14 — E06 open question 1, revised the same day |
 | **Trace content** | **Full prompts and completions ARE captured** (`include_content=True`). This is the operator's explicit decision, taken against both this plan's author's recommendation and the epic's. Rationale accepted: debugging agent misbehaviour without the actual text means reproducing every incident from scratch. | Operator, 2026-08-14 — E06 open question 2 |
 | **Binary content** | **NOT captured** (`include_binary_content=False`). The decision above was read as *text*; shipping every receipt JPEG to a third party is a materially larger exposure and a large trace-volume cost. Separate flag — flip `LOGFIRE_CAPTURE_BINARY=1` to change it. | Plan author's reading, surfaced for override |
 | **Uptime check replaces the keepalive** | `expense-tracker-keepalive` (Cloud Scheduler → `/healthz/`, `docs/runbook.md:299`) is deleted; the new uptime check serves both roles. One pinger, not two. | E06 open question 4, resolved from the runbook |
@@ -1506,9 +1506,16 @@ gcloud beta monitoring channels create \
   --project expense-tracker-482807
 ```
 
-The **mobile push** channel cannot be created from `gcloud` — install the Google
-Cloud app, sign in, then add it under *Monitoring → Alerting → Notification
-channels → Mobile devices*. Record both channel IDs.
+> **CORRECTION (2026-08-14, during execution): the mobile push channel does not
+> exist any more.** Google retired the Cloud Console mobile app and its
+> `mobile_push` notification channel type; `gcloud beta monitoring
+> channel-descriptors describe mobile_push` returns `NOT_FOUND` and there is no
+> "Mobile devices" entry in the console. Do not follow the deleted instruction
+> that used to be here. Only the email channel was created —
+> `Operator email`, id `5857707555791637518`. The operator accepted **email
+> only** for now, meaning **nothing pages anyone**. SMS is the replacement if
+> that changes; `gcloud` can create it but has no `channels verify`
+> subcommand, so the texted code must be entered in the console.
 
 - [ ] **Step 6: Create the uptime check, and delete the keepalive it replaces**
 
