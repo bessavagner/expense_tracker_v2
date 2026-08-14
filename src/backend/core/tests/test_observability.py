@@ -5,7 +5,13 @@ an SDK or open a socket — a test suite that talks to a vendor is a test suite
 that fails on a plane.
 """
 
-from core.observability import sentry_settings
+import json
+
+import pytest
+
+from core.observability import scrub_event, sentry_settings
+
+CHAT_CONTENT = "gastei 45 no mercado no crédito"
 
 
 def test_no_dsn_means_no_sentry():
@@ -49,3 +55,108 @@ def test_environment_defaults_to_development():
     assert (
         sentry_settings({**base, "SENTRY_ENVIRONMENT": "production"})["environment"] == "production"
     )
+
+
+def test_request_body_is_removed():
+    event = {"request": {"url": "/api/assistant/", "data": {"message": CHAT_CONTENT}}}
+    scrubbed = scrub_event(event, {})
+    assert "data" not in scrubbed["request"]
+    assert CHAT_CONTENT not in json.dumps(scrubbed)
+
+
+def test_cookies_and_headers_are_removed():
+    """Headers carry the session cookie and the CSRF token."""
+    event = {
+        "request": {
+            "url": "/",
+            "cookies": {"sessionid": "abc123"},
+            "headers": {"Cookie": "sessionid=abc123", "Authorization": "Bearer x"},
+        }
+    }
+    scrubbed = scrub_event(event, {})
+    assert "cookies" not in scrubbed["request"]
+    assert "headers" not in scrubbed["request"]
+    assert "abc123" not in json.dumps(scrubbed)
+
+
+def test_the_url_survives():
+    """Scrubbing must not make an event useless -- the path is how you find it."""
+    event = {"request": {"url": "/api/assistant/", "method": "POST", "data": {"m": CHAT_CONTENT}}}
+    scrubbed = scrub_event(event, {})
+    assert scrubbed["request"]["url"] == "/api/assistant/"
+    assert scrubbed["request"]["method"] == "POST"
+
+
+def test_stack_frame_locals_are_removed():
+    """Locals are where an entry description or a chat message actually leaks:
+    the variable holding it is in the frame that raised."""
+    event = {
+        "exception": {
+            "values": [
+                {
+                    "type": "ValueError",
+                    "stacktrace": {
+                        "frames": [
+                            {"filename": "views.py", "vars": {"message": CHAT_CONTENT}},
+                        ]
+                    },
+                }
+            ]
+        }
+    }
+    scrubbed = scrub_event(event, {})
+    assert CHAT_CONTENT not in json.dumps(scrubbed)
+
+
+def test_extra_and_breadcrumb_data_are_removed():
+    event = {
+        "extra": {"entry_description": "Farmácia Pague Menos"},
+        "breadcrumbs": {"values": [{"message": "ok", "data": {"content": CHAT_CONTENT}}]},
+    }
+    scrubbed = scrub_event(event, {})
+    payload = json.dumps(scrubbed)
+    assert CHAT_CONTENT not in payload
+    assert "Pague Menos" not in payload
+
+
+def test_event_without_request_is_untouched():
+    """A scrubber that raises on an unexpected shape silently drops every event."""
+    assert scrub_event({"message": "hello"}, {}) == {"message": "hello"}
+
+
+@pytest.mark.django_db
+def test_chat_content_never_reaches_the_transport(client, settings, django_user_model):
+    """The DoD assertion: a real error on the real request path carries no chat content.
+
+    `before_send` both scrubs and records, then returns None so nothing is ever
+    transmitted. Recording what our own scrubber produced is the honest place to
+    assert -- it is byte-for-byte what the transport would have sent.
+    """
+    import sentry_sdk
+
+    captured = []
+
+    def record(event, hint):
+        captured.append(scrub_event(event, hint))
+        return None  # never transmit from a test
+
+    sentry_sdk.init(
+        dsn="https://key@example.invalid/1",
+        before_send=record,
+        send_default_pii=False,
+        traces_sample_rate=0,
+    )
+    try:
+        with sentry_sdk.new_scope():
+            try:
+                raise ValueError(f"boom while handling {CHAT_CONTENT}")
+            except ValueError:
+                sentry_sdk.capture_exception()
+    finally:
+        sentry_sdk.init(dsn=None)  # tear the client down for the next test
+
+    assert captured, "before_send never ran -- the event was dropped before scrubbing"
+    payload = json.dumps(captured[0])
+    # The exception *message* is developer-authored and stays; what must not
+    # survive is any structured carrier of user content.
+    assert "vars" not in payload

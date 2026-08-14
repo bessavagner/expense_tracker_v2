@@ -41,5 +41,57 @@ def sentry_settings(environ: Mapping[str, str]) -> dict | None:
     }
 
 
-def scrub_event(event, hint):  # replaced in Task 2
+# Request sub-keys that carry user content or credentials wholesale. `url`,
+# `method` and `query_string` deliberately survive: a scrubbed event still has
+# to be findable, and an event nobody can locate is as useless as no event.
+_REQUEST_KEYS_TO_DROP = ("data", "cookies", "headers", "env")
+
+
+def scrub_event(event: dict, hint: dict) -> dict:
+    """Sentry ``before_send``: remove every structured carrier of user content.
+
+    Runs on every event, so it must never raise — an exception here drops the
+    event silently and the failure it described is lost twice over. Hence the
+    defensive ``isinstance`` checks against event shapes that vary by SDK
+    version and integration.
+    """
+    if not isinstance(event, dict):
+        return event
+
+    request = event.get("request")
+    if isinstance(request, dict):
+        for key in _REQUEST_KEYS_TO_DROP:
+            request.pop(key, None)
+
+    # Stack-frame locals are the real leak path: the variable holding a chat
+    # message or an entry description lives in the frame that raised.
+    for value in _exception_values(event):
+        stacktrace = value.get("stacktrace")
+        if not isinstance(stacktrace, dict):
+            continue
+        for frame in stacktrace.get("frames") or []:
+            if isinstance(frame, dict):
+                frame.pop("vars", None)
+
+    # `extra` is where application code attaches context, and breadcrumb `data`
+    # is where integrations do. Neither is worth auditing call site by call site.
+    event.pop("extra", None)
+    breadcrumbs = event.get("breadcrumbs")
+    crumb_values = breadcrumbs.get("values") if isinstance(breadcrumbs, dict) else breadcrumbs
+    for crumb in crumb_values or []:
+        if isinstance(crumb, dict):
+            crumb.pop("data", None)
+
     return event
+
+
+def _exception_values(event: dict):
+    """The exception entries, tolerating both shapes the SDK emits."""
+    exception = event.get("exception")
+    if isinstance(exception, dict):
+        values = exception.get("values") or []
+    elif isinstance(exception, list):
+        values = exception
+    else:
+        values = []
+    return [v for v in values if isinstance(v, dict)]
