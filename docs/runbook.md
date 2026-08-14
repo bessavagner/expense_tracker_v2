@@ -1396,3 +1396,105 @@ print(ImportBatch.objects.filter(
 Do **not** delete executed batches that a user might still re-POST — a browser
 that replays the execute step against a missing batch is sent back to the upload
 step, which is safe but looks like the import vanished.
+
+## Usage, credits and cost (E07)
+
+### Run the cost report
+
+```bash
+POSTGRES_PORT=5433 uv run python src/backend/manage.py usage_report \
+  --by-kind --since 2026-08-01
+```
+
+Prints cost per household in USD sorted by spend, then `casas ativas` and
+p50/p90/p99 **across households** (not across calls — a p99 is what one
+expensive household pays, which is the number a price has to clear), then a
+per-call-kind breakdown answering "what does receipt OCR cost relative to text
+chat?".
+
+`--since` is inclusive, `--until` exclusive, both `YYYY-MM-DD` in local time.
+Omit both for all time.
+
+Common failure: an empty report means `UsageRecord` has no rows in the window,
+**not** that costs were zero. Widen `--since`. The second thing to check is
+`sem preço` — see the known gap below; those calls are counted and deliberately
+not summed.
+
+### Change a model's price
+
+Prices live in the database (`ModelPrice`), so this needs no deploy: Django
+admin → Preços de modelo → add a row with a new `effective_from`. Never edit an
+existing row — history is what makes an old `UsageRecord` explicable, and each
+record froze its cost at write time anyway, so a correction is never
+retroactive.
+
+**Always re-check the provider's live pricing page first, and put its URL in
+`source_url`.** Never write a price from memory: model catalogues churn faster
+than anyone's recall, and a wrong number here becomes an authoritative-looking
+figure in the report above. Same rule when choosing the Essential tier's free
+and cheapest-paid models at `openrouter.ai/models`.
+
+If a model appears in settings with no price row it meters at `cost_usd = NULL`
+forever and the report quietly under-reports.
+`test_every_configured_chat_model_has_a_seeded_price` is the ratchet that
+catches it — including the case where `.env` overrides `LLM_MODEL` to something
+the seed migration never priced.
+
+### Change the credit grant or the credit prices
+
+- Admin → Planos → `monthly_credits` — the grant per household per **calendar
+  month**. Deliberately not the domain's `billing_month`, which means a credit
+  card's closing cycle in this codebase.
+- Admin → Preços em créditos → the (tier × kind) grid.
+
+Both take effect on the next request; no deploy, no restart. The balance is
+**derived** (`grant − Σ credits_charged this month`), so there is no reset job
+to forget, no counter to drift, and no race between two members of the same
+household spending at once.
+
+Credits are a **product currency, not tokens**. Real token counts and USD live
+in `UsageRecord`. Retuning either table never rewrites what a household has
+already spent — `UsageInteraction.credits_charged` is frozen at write time.
+
+The current grant (3000) was derived from real usage; see
+`accounts/migrations/0007_beta_credit_grant_from_real_usage.py` for the
+measurement and its caveats. Re-derive from `usage_report` once households have
+more than one member.
+
+### The three tiers
+
+| Tier | pt-BR | Model setting | Credits per text / image turn |
+|---|---|---|---|
+| Advanced | Avançado | `LLM_TIER_ADVANCED` | 3 / 12 |
+| Standard | Padrão | `LLM_TIER_STANDARD` | 1 / 4 |
+| Essential | Essencial | `LLM_TIER_ESSENTIAL` (+ `_FALLBACK`) | 0 / 0 |
+
+A household picks its tier (`Household.preferred_tier`). When credits run out
+the chokepoint (`assistant/quota.py::decide`) forces Essential — it **degrades,
+it does not refuse** — and the user is told so by a `notice` event before the
+answer streams.
+
+Essential's primary is a free OpenRouter model with one paid fallback, retried
+only when nothing has reached the client yet. Without `OPENROUTER_API_KEY` both
+resolve back to Standard rather than failing, which is what makes local dev and
+CI work.
+
+The **abuse ceiling** (`ASSISTANT_ABUSE_TEXT_PER_HOUR`, `_TEXT_PER_DAY`,
+`_IMAGE_PER_HOUR`, `_IMAGE_PER_DAY`) is a different thing and *does* refuse,
+with a 429, on every tier including Essential. It is counted per **user** over
+a rolling window, while credits are pooled per **household** — one member must
+not be able to lock the other out. It is what keeps R0's "no unbounded LLM
+spend" guarantee true.
+
+> Cloud Run may still carry the older `ASSISTANT_THROTTLE_*` variable names
+> from E01. The code reads `ASSISTANT_ABUSE_*`; the defaults are identical
+> (60/300/15/50), so behaviour only changes if a value was customised.
+
+### Known gap: transcription cost is null
+
+Providers price transcription per minute of audio; `ModelPrice` models token
+pricing only. Transcription records carry `ok`, `model` and latency but
+`cost_usd = NULL`, and the report counts them under `sem preço`. Bounded on
+purpose: a transcription is roughly two orders of magnitude cheaper than a
+vision call (E01), so it does not move p50/p90/p99. `test_pricing_gaps_are_declared`
+keeps it a decision rather than an oversight. Revisit if audio volume grows.
