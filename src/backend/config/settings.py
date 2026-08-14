@@ -4,6 +4,8 @@ from pathlib import Path
 import dj_database_url
 from dotenv import load_dotenv
 
+from core.observability import sentry_settings
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Load .env from project root (two levels above src/backend/config/)
@@ -161,6 +163,14 @@ LOGGING = {
         },
     },
 }
+
+# Error tracking (E06, ADR-005). No DSN -> no Sentry, which is the local and CI
+# path: neither should transmit. The DSN comes from Secret Manager in production.
+_sentry_config = sentry_settings(os.environ)
+if _sentry_config is not None:
+    import sentry_sdk
+
+    sentry_sdk.init(**_sentry_config)
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

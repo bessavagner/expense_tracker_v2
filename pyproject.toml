@@ -19,6 +19,8 @@ dependencies = [
     "pgvector>=0.4",
     "pillow>=10",
     "django-allauth[mfa]>=65.19.1",
+    "sentry-sdk[django]>=2.20",
+    "logfire>=3.0",
 ]
 
 [tool.pytest.ini_options]

@@ -865,12 +865,14 @@ dependencies = [
     { name = "django-tailwind-cli" },
     { name = "djangorestframework" },
     { name = "gunicorn" },
+    { name = "logfire" },
     { name = "openai" },
     { name = "pgvector" },
     { name = "pillow" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic-ai" },
     { name = "python-dotenv" },
+    { name = "sentry-sdk", extra = ["django"] },
     { name = "uvicorn", extra = ["standard"] },
     { name = "whitenoise", extra = ["brotli"] },
 ]
@@ -898,12 +900,14 @@ requires-dist = [
     { name = "django-tailwind-cli", specifier = ">=4.5.1" },
     { name = "djangorestframework", specifier = ">=3.17.1" },
     { name = "gunicorn", specifier = ">=23.0" },
+    { name = "logfire", specifier = ">=3.0" },
     { name = "openai", specifier = ">=2.30.0" },
     { name = "pgvector", specifier = ">=0.4" },
     { name = "pillow", specifier = ">=10" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "pydantic-ai", specifier = ">=1.73.0" },
     { name = "python-dotenv", specifier = ">=1.0" },
+    { name = "sentry-sdk", extras = ["django"], specifier = ">=2.20" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.42" },
     { name = "whitenoise", extras = ["brotli"], specifier = ">=6.12.0" },
 ]
@@ -3281,6 +3285,24 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/72/d1/d3159231aec234a59dd7d601e9dd9fe96f3afff15efd33c1070019b26132/semver-3.0.4.tar.gz", hash = "sha256:afc7d8c584a5ed0a11033af086e8af226a9c0b206f313e0301f8dd7b6b589602", size = 269730, upload-time = "2025-01-24T13:19:27.617Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a6/24/4d91e05817e92e3a61c8a21e08fd0f390f5301f1c448b137c57c4bc6e543/semver-3.0.4-py3-none-any.whl", hash = "sha256:9c824d87ba7f7ab4a1890799cec8596f15c1241cb473404ea1cb0c55e4b04746", size = 17912, upload-time = "2025-01-24T13:19:24.949Z" },
+]
+
+[[package]]
+name = "sentry-sdk"
+version = "2.68.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5b/94/23b7dd072acb9628907bd3f4fbf61794a7b12a9db8f33c1276f70ae5ac92/sentry_sdk-2.68.0.tar.gz", hash = "sha256:648c58e9887311a03470a41539e24bdbbf64a30ca4f5336f7e3dcc87276400b3", size = 1008854, upload-time = "2026-08-13T09:06:21.268Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7d/9b/e2421d08956d0bc4691d995393d835e563886bff499d8fb10fdefae85a8d/sentry_sdk-2.68.0-py3-none-any.whl", hash = "sha256:538e56c2d03679d42f7c0cb5f1af73a7a510b00abc7e296c13ac49b107b713a4", size = 518670, upload-time = "2026-08-13T09:06:19.735Z" },
+]
+
+[package.optional-dependencies]
+django = [
+    { name = "django" },
 ]
 
 [[package]]
