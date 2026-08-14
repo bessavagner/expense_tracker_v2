@@ -1420,6 +1420,58 @@ Common failure: an empty report means `UsageRecord` has no rows in the window,
 `sem preço` — see the known gap below; those calls are counted and deliberately
 not summed.
 
+### Emit the daily usage metric
+
+```bash
+POSTGRES_PORT=5433 uv run python src/backend/manage.py emit_usage_metrics
+```
+
+Prints exactly one JSON line for **yesterday** — whole and closed, so the
+newest point on the dashboard never dips just because today is still running:
+
+```json
+{"metric": "assistant_usage_daily", "day": "2026-08-13", "turns": 7, "cost_usd": "0.412300"}
+```
+
+`--day 2026-03-14` backfills a specific date. A quiet day still prints the line
+with zeroes: **a missing line is indistinguishable from a broken job**, so a
+gap in the metric means the job did not run, never that nobody used the
+assistant.
+
+This is what closes E06's two missing golden-signal tiles. E06 could not build
+*assistant turns/day* or *LLM spend/day* because a successful request emits no
+application log line and the counts lived only in Postgres, which Cloud
+Monitoring cannot read. A structured line on stdout is already how this service
+talks to Cloud Logging (`core/log_formatting.py`), so this needs no new IAM
+role and no new client library.
+
+**Still to provision (console/gcloud, not code):**
+
+```bash
+gcloud logging metrics create assistant_turns_daily \
+  --project expense-tracker-482807 \
+  --description="Assistant turns per day (E07)" \
+  --log-filter='jsonPayload.metric="assistant_usage_daily"' \
+  --value-extractor='EXTRACT(jsonPayload.turns)'
+
+gcloud logging metrics create assistant_cost_daily \
+  --project expense-tracker-482807 \
+  --description="LLM spend USD per day (E07)" \
+  --log-filter='jsonPayload.metric="assistant_usage_daily"' \
+  --value-extractor='EXTRACT(jsonPayload.cost_usd)'
+```
+
+Then add two tiles to dashboard `450cfbfa-635f-487b-9893-83947ab91b9b`
+(`expense-tracker — golden signals`) and **delete the note on its face saying
+those two tiles are impossible** — true for E06, stale now. Schedule the daily
+run with Cloud Scheduler against a Cloud Run job, or as a step in the existing
+cron path; record whichever you pick here.
+
+Common failure: the metric flatlines at zero after a deploy. Check the value
+extractors first — they read the literal keys `turns` and `cost_usd`, and
+`test_the_line_carries_every_field_the_metric_extracts` is what stops a rename
+from silently breaking them.
+
 ### Change a model's price
 
 Prices live in the database (`ModelPrice`), so this needs no deploy: Django

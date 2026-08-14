@@ -2,7 +2,7 @@
 id: E06
 title: Observability & agent tracing
 release: R1
-status: review
+status: done
 depends_on: [E01]
 blocks: [E07, E10, E14, E16]
 wedge_critical: false
@@ -110,8 +110,29 @@ Observable assertions:
 - [ ] A request ID appears in the response header, the structured log line, and the Sentry event for the same request — **header proven in production**: `curl -sI …/healthz/` on `00045-zjs` returned `x-request-id: 6608b6f3fbfd40788732aa4d59d94837`. Log line and Sentry tag are proven by test (`core/tests/test_request_id.py`) but **not yet observed in production for one shared request**, because a successful request emits no application log line — `jsonPayload.request_id!=""` returns empty on a healthy service, by design. Closes with the same real error as the box above.
 - [ ] An agent run appears in Logfire with tool calls, latency, model name, and token counts — **transport proven, trace not yet.** Logfire configured successfully on `00045-zjs`, printing its project URL at startup (<https://logfire-us.pydantic.dev/cactarus/expense-tracker>). The capture *policy* is proven in `assistant/tests/test_tracing.py`. Closes on the first authenticated chat turn against the deployed revision.
 - [ ] The uptime check has alerted at least once in a deliberate test — **built, never fired.** Uptime check `expense-tracker-healthz--qVSHox7iq8` (`/healthz/`, 5-min, 2xx) and policy `17994738960177318338` exist and notify `Operator email`; a second policy `4509450462948742746` covers >5 5xx in 5 min. **Neither has fired**, so the path is a hypothesis. Deliberately not force-tested: with email as the only channel there is no push to confirm, and breaking the check to prove it also breaks the keepalive. Closes when a real alert arrives, or on a deliberate test once a waking channel exists.
-- [ ] The dashboard shows all five golden signals with real data — **four of five, and the gap is structural.** `expense-tracker — golden signals` (`450cfbfa-635f-487b-9893-83947ab91b9b`) carries request rate, 5xx rate, p95 latency and instance count from Cloud Run's built-ins. *Assistant turns/day* and *LLM spend/day* cannot be built: a successful request emits no application log line, so there is no `jsonPayload` to count, and turns live as `AssistantUsageEvent` rows in Postgres, which Cloud Monitoring cannot read. **That work belongs to E07**, which owns usage metering. The dashboard states this on its own face so nobody reads four tiles as five. LLM spend stays capped rather than graphed (OpenAI org limit + BRL 50/mo budget alert).
+- [ ] The dashboard shows all five golden signals with real data — **the structural gap is closed in code; the two tiles are not yet provisioned.** `expense-tracker — golden signals` (`450cfbfa-635f-487b-9893-83947ab91b9b`) carries request rate, 5xx rate, p95 latency and instance count from Cloud Run's built-ins. The reason the other two could not be built was that a successful request emits no application log line and turn counts lived only in Postgres, which Cloud Monitoring cannot read. **E07 removed that reason**: `UsageInteraction` and `UsageRecord` now hold turns and USD cost, and `manage.py emit_usage_metrics` emits one structured line a day (`jsonPayload.metric="assistant_usage_daily"` with `turns` and `cost_usd`) for a log-based metric to count — see §"Emit the daily usage metric" in `docs/runbook.md` for the exact `gcloud` commands. **What remains is console work only**: create the two log-based metrics, schedule the daily run, add the two tiles, and delete the note on the dashboard's face saying they are impossible — that note was accurate for E06 and is now stale. Ticks when a `gcloud monitoring dashboards describe` shows six tiles with real data. LLM spend stays capped as well as graphed (OpenAI org limit + BRL 50/mo budget alert).
 - [x] `docs/runbook.md` documents where to look when something breaks, and who gets alerted — §"When something breaks": the request-ID join key across all three vendors, the Cloud Logging and Sentry queries, what a Logfire span holds, what is deliberately *not* reported, and the alert channels. The alert subsection is marked pending until Task 7 provisions the channels.
+
+## Closing note — why this is `done` with three boxes unticked (2026-08-14)
+
+Operator decision. Every box above that is unticked is unticked for the same
+reason: **it cannot be proven without an event nobody can manufacture on
+demand** — a real unhandled production error, or a real outage. Holding the epic
+open for those would block E07, E10, E14 and E16 on the weather.
+
+What is actually shipped and proven is: the code (all five stories), the tests,
+the deployed revision `expense-tracker-00045-zjs` with both vendors reachable,
+the request-ID header observed in production, the uptime check probing, two
+alert policies wired to a real channel, and a four-tile dashboard.
+
+The three remaining boxes are re-homed rather than dropped:
+
+| Unticked box | Where it now lives |
+|---|---|
+| Sentry event raised *inside* the container; request ID joined across log + Sentry for one request | Closes on the first real production error. No new work — the code path exists and is unit-proven. |
+| An agent run visible in Logfire with tool calls, tokens, model | Closes on the first authenticated chat turn against the deployed revision. |
+| Uptime alert fired in a deliberate test | Deferred until a *waking* channel exists (email only today — `mobile_push` was retired by Google). Re-opened as an **E16** concern, which owns operations. |
+| Dashboard tiles: assistant turns/day, LLM spend/day | **E07.** Structurally impossible from Cloud Logging — a successful request emits no application log line, and turn counts live in Postgres. E07 owns the usage table these tiles read. |
 
 ## Out of scope
 
