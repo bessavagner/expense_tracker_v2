@@ -1,0 +1,78 @@
+# E08 S08-5. Manual only — this job calls real models and spends real money.
+# There is deliberately no `push`, `pull_request` or `schedule` trigger: the
+# epic's "Out of scope" says automated per-PR evaluation is cost-prohibitive.
+#
+# Only the tracked fixtures are reachable here. The private photos are not in
+# the repository (docs/eval-dataset.md), so this run reports the rest as skipped
+# and its numbers are a SUBSET of a local run. The baseline in
+# docs/superpowers/evidence/eval/ is produced locally, on the full dataset.
+name: Model evaluation
+
+on:
+  workflow_dispatch:
+    inputs:
+      models:
+        description: "Comma-separated model strings, e.g. openai:gpt-5.4,openrouter:qwen/qwen3.7-flash"
+        required: true
+      suite:
+        description: "Which suite to run"
+        required: true
+        default: both
+        type: choice
+        options: [extraction, behaviour, both]
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: expense_tracker_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      POSTGRES_DB: expense_tracker_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      SECRET_KEY: test-secret-key
+      DEBUG: "true"
+      RUN_LLM_TESTS: "1"
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.12
+      - run: uv sync
+
+      # `migrate`, not the test runner: the command needs a real database with
+      # the seeded ModelPrice rows, or every cost cell comes back unpriced.
+      - name: Prepare the database
+        run: uv run python src/backend/manage.py migrate
+
+      - name: Evaluate
+        run: |
+          uv run python src/backend/manage.py eval_models \
+            --models "${{ inputs.models }}" \
+            --suite "${{ inputs.suite }}" \
+            --out eval-report.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: |
+            eval-report.md
+            eval-report.json
