@@ -756,6 +756,125 @@ class TestEssentialFallbackRetry:
 
 
 @pytest.mark.django_db
+class TestUsageEndpoint:
+    """S07-4: the allowance is visible, not silently applied."""
+
+    def test_usage_endpoint_reports_balance_and_tier(self, logged_client, user, household, plan):
+        response = logged_client.get("/api/assistant/usage/")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["granted"] == plan.monthly_credits
+        assert body["remaining"] == plan.monthly_credits
+        assert body["tier"] == "advanced"
+        assert {t["value"] for t in body["tiers"]} == {"advanced", "standard", "essential"}
+        assert {t["label"] for t in body["tiers"]} == {"Avançado", "Padrão", "Essencial"}
+
+    def test_the_remaining_balance_drops_as_credits_are_charged(
+        self, logged_client, user, household, plan
+    ):
+        from assistant.models import InteractionKind, UsageInteraction
+        from core.tiers import Tier
+
+        UsageInteraction.objects.create(
+            household=household,
+            user=user,
+            kind=InteractionKind.TEXT,
+            tier=Tier.ADVANCED,
+            credits_charged=7,
+        )
+        body = logged_client.get("/api/assistant/usage/").json()
+        assert body["remaining"] == plan.monthly_credits - 7
+
+    def test_a_neighbours_spending_does_not_move_our_balance(
+        self, logged_client, user, household, other_household, other_user, plan
+    ):
+        from assistant.models import InteractionKind, UsageInteraction
+        from core.tiers import Tier
+
+        UsageInteraction.objects.create(
+            household=other_household,
+            user=other_user,
+            kind=InteractionKind.TEXT,
+            tier=Tier.ADVANCED,
+            credits_charged=500,
+        )
+        body = logged_client.get("/api/assistant/usage/").json()
+        assert body["remaining"] == plan.monthly_credits
+
+    def test_the_renewal_date_is_the_first_of_next_month(self, logged_client, user, household):
+        from datetime import date
+
+        import time_machine
+
+        with time_machine.travel(date(2026, 8, 14), tick=False):
+            body = logged_client.get("/api/assistant/usage/").json()
+        assert body["renews_on"] == "2026-09-01"
+
+    def test_usage_endpoint_requires_authentication(self):
+        response = Client().get("/api/assistant/usage/")
+        assert response.status_code == 403
+
+
+@pytest.mark.django_db
+class TestTierEndpoint:
+    def test_a_user_can_switch_tier(self, logged_client, user, household):
+        response = logged_client.post(
+            "/api/assistant/tier/",
+            data=json.dumps({"tier": "standard"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+        household.refresh_from_db()
+        assert household.preferred_tier == "standard"
+
+    def test_an_unknown_tier_is_rejected(self, logged_client, user, household):
+        response = logged_client.post(
+            "/api/assistant/tier/",
+            data=json.dumps({"tier": "godmode"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+        household.refresh_from_db()
+        assert household.preferred_tier == "advanced"
+
+    def test_the_chosen_tier_is_what_the_chokepoint_spends(
+        self, logged_client, user, household, plan
+    ):
+        """The switch has to mean something. Standard costs fewer credits per
+        turn than Advanced, so choosing it must change what a turn is billed."""
+        from assistant.models import UsageInteraction
+
+        logged_client.post(
+            "/api/assistant/tier/",
+            data=json.dumps({"tier": "standard"}),
+            content_type="application/json",
+        )
+        with agents_override(TestModel()):
+            consume_streaming(
+                logged_client.post(
+                    "/api/assistant/chat/",
+                    data=json.dumps({"message": "oi"}),
+                    content_type="application/json",
+                )
+            )
+
+        opened = UsageInteraction.objects.get()
+        assert opened.tier == "standard"
+        assert opened.credits_charged == 1  # the seeded standard/text price
+
+    def test_tier_endpoint_requires_authentication(self):
+        response = Client().post(
+            "/api/assistant/tier/",
+            data=json.dumps({"tier": "standard"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 403
+
+    def test_a_get_is_not_a_way_to_change_tier(self, logged_client, user, household):
+        assert logged_client.get("/api/assistant/tier/").status_code == 405
+
+
+@pytest.mark.django_db
 class TestHistoryEndpoint:
     def test_returns_messages(self, logged_client, user, household):
 

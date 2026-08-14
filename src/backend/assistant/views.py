@@ -578,6 +578,76 @@ async def _handle_images(request, scope, decision, images, caption):
 
 
 @require_GET
+async def usage_view(request):
+    """The household's credit balance, renewal date and chosen tier.
+
+    S07-4: the allowance is visible, not silently applied. A user who is being
+    degraded has to be able to see why, and when it stops.
+
+    Async like `chat_view`, and for the same reason — `request.household` is
+    set by the sync middleware Django has already run, so reading it is an
+    attribute access rather than an ORM call in async context.
+    """
+    from django.contrib.auth import aget_user
+
+    from assistant.quota import balance_for
+    from core.tiers import Tier
+
+    user = await aget_user(request)
+    if not user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=403)
+
+    household = getattr(request, "household", None)
+    if household is None:
+        return JsonResponse({"error": "Sem casa ativa."}, status=400)
+
+    granted, remaining, renews_on = await balance_for(household)
+    return JsonResponse(
+        {
+            "granted": granted,
+            "remaining": remaining,
+            "renews_on": renews_on.isoformat(),
+            "tier": household.preferred_tier,
+            "tiers": [{"value": t.value, "label": t.label} for t in Tier],
+        }
+    )
+
+
+@require_http_methods(["POST"])
+async def tier_view(request):
+    """Let the household choose how fast it spends its credits (spec D2).
+
+    Stored on the household, not the user: the credits are a shared pool, so
+    one member picking Avançado spends the same pool the other member's turns
+    come out of. Making this per-user would let two members disagree about a
+    budget they cannot each control.
+    """
+    from django.contrib.auth import aget_user
+
+    from core.tiers import Tier
+
+    user = await aget_user(request)
+    if not user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=403)
+
+    household = getattr(request, "household", None)
+    if household is None:
+        return JsonResponse({"error": "Sem casa ativa."}, status=400)
+
+    try:
+        tier = json.loads(request.body).get("tier")
+    except (json.JSONDecodeError, AttributeError):
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    if tier not in Tier.values:
+        return JsonResponse({"error": "Modo desconhecido."}, status=400)
+
+    household.preferred_tier = tier
+    await household.asave(update_fields=["preferred_tier"])
+    return JsonResponse({"tier": tier})
+
+
+@require_GET
 def history_view(request):
     """Return chat history for the current user."""
     auth_error = _check_auth(request)

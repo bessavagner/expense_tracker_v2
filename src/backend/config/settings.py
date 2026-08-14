@@ -350,8 +350,14 @@ LLM_VISION_MODEL = os.environ.get("LLM_VISION_MODEL", "openai:gpt-5.4")
 # at the SAME model as today: PD-4 forbids a model swap without an E08
 # evaluation score, and E09 owns making them different. Shipping them equal
 # means the tier machinery is live and provably changes nothing yet.
-LLM_TIER_ADVANCED = os.environ.get("LLM_TIER_ADVANCED", LLM_ASSISTANT_MODEL)
-LLM_TIER_STANDARD = os.environ.get("LLM_TIER_STANDARD", LLM_ASSISTANT_MODEL)
+#
+# `or` rather than a get() default: `.env.example` ships these keys present but
+# EMPTY, and `os.environ.get(key, default)` only falls back when the key is
+# ABSENT. Copying the example file therefore pointed both paid tiers at "" —
+# no model at all — which surfaces as a broken chat rather than as a config
+# error. An empty value must mean "unset", not "the empty model".
+LLM_TIER_ADVANCED = os.environ.get("LLM_TIER_ADVANCED") or LLM_ASSISTANT_MODEL
+LLM_TIER_STANDARD = os.environ.get("LLM_TIER_STANDARD") or LLM_ASSISTANT_MODEL
 # ESSENTIAL is where a household lands when its credits run out. Its baseline
 # is a 429 and no answer at all, not gpt-5.4 — which is why naming a model here
 # is not the unscored swap PD-4 forbids (E07 spec D2).
@@ -369,11 +375,11 @@ LLM_TIER_STANDARD = os.environ.get("LLM_TIER_STANDARD", LLM_ASSISTANT_MODEL)
 # priced" ratchet in test_pricing.py actually binds. Running without an
 # OPENROUTER_API_KEY is handled at resolution time instead — see
 # assistant.quota.model_for, which degrades to STANDARD rather than crashing.
-LLM_TIER_ESSENTIAL = os.environ.get(
-    "LLM_TIER_ESSENTIAL", "openrouter:nvidia/nemotron-3-super-120b-a12b:free"
+LLM_TIER_ESSENTIAL = (
+    os.environ.get("LLM_TIER_ESSENTIAL") or "openrouter:nvidia/nemotron-3-super-120b-a12b:free"
 )
-LLM_TIER_ESSENTIAL_FALLBACK = os.environ.get(
-    "LLM_TIER_ESSENTIAL_FALLBACK", "openrouter:qwen/qwen3.7-flash"
+LLM_TIER_ESSENTIAL_FALLBACK = (
+    os.environ.get("LLM_TIER_ESSENTIAL_FALLBACK") or "openrouter:qwen/qwen3.7-flash"
 )
 # Read once here rather than at each call so that a test can override it via
 # the `settings` fixture. PydanticAI reads the variable from the environment

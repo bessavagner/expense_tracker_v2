@@ -2,9 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import CreditBadge from "./CreditBadge";
+import { useCredits } from "./useCredits";
+
 interface Message {
   id: string;
-  role: "user" | "assistant";
+  // "notice" is the assistant telling the user something about the service
+  // rather than answering them — today, that credits ran out and the reply is
+  // coming from a cheaper mode (E07 S07-4). It is deliberately not an
+  // assistant bubble: a degrade dressed up as conversation reads as the bot
+  // apologising, and it must not be mistaken for part of the answer.
+  role: "user" | "assistant" | "notice";
   content: string;
   created_at?: string;
   images?: string[];
@@ -60,6 +68,24 @@ function errorText(err: unknown): string {
 /** Avisa a página que dados financeiros mudaram, para cards/HTMX recarregarem. */
 function notifyDataChanged() {
   window.dispatchEvent(new CustomEvent("data-changed"));
+}
+
+/**
+ * Puts a service notice immediately BEFORE the pending assistant bubble.
+ *
+ * Position is the whole point: the server emits the notice before the first
+ * token precisely so the user reads "your credits ran out" before the answer
+ * it explains, not as a footnote under it.
+ */
+function insertNotice(
+  messages: Message[],
+  assistantId: string,
+  content: string,
+): Message[] {
+  const at = messages.findIndex((m) => m.id === assistantId);
+  const notice: Message = { id: `${assistantId}-notice`, role: "notice", content };
+  if (at < 0) return [...messages, notice];
+  return [...messages.slice(0, at), notice, ...messages.slice(at)];
 }
 
 /** Clipe de papel (anexar). */
@@ -186,6 +212,9 @@ export default function ChatWidget({ apiUrl }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // Refreshed after each completed turn rather than polled: the balance only
+  // moves when this household takes one.
+  const { credits, refresh: refreshCredits, setTier } = useCredits(apiUrl);
 
   const [isRecording, setIsRecording] = useState(false);
   const [recSeconds, setRecSeconds] = useState(0);
@@ -397,7 +426,9 @@ export default function ChatWidget({ apiUrl }: Props) {
           if (!line.trim()) continue;
           try {
             const event = JSON.parse(line);
-            if (event.type === "token") {
+            if (event.type === "notice") {
+              setMessages((prev) => insertNotice(prev, assistantId, event.content));
+            } else if (event.type === "token") {
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === assistantId
@@ -415,6 +446,7 @@ export default function ChatWidget({ apiUrl }: Props) {
               );
             } else if (event.type === "done") {
               if (event.data_changed) notifyDataChanged();
+              void refreshCredits();
             }
           } catch {
             // Skip unparseable lines
@@ -451,7 +483,9 @@ export default function ChatWidget({ apiUrl }: Props) {
         if (!line.trim()) continue;
         try {
           const event = JSON.parse(line);
-          if (event.type === "user_text") {
+          if (event.type === "notice") {
+            setMessages((prev) => insertNotice(prev, assistantId, event.content));
+          } else if (event.type === "user_text") {
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === userPlaceholderId
@@ -477,6 +511,7 @@ export default function ChatWidget({ apiUrl }: Props) {
             );
           } else if (event.type === "done") {
             if (event.data_changed) notifyDataChanged();
+            void refreshCredits();
           }
         } catch {
           // skip
@@ -643,7 +678,8 @@ export default function ChatWidget({ apiUrl }: Props) {
   const chatHeader = (
     <div className="flex items-center justify-between p-3 bg-neutral text-neutral-content shrink-0">
       <span className="font-bold text-sm">🤖 Assistente</span>
-      <div className="flex gap-1">
+      <div className="flex items-center gap-1">
+        <CreditBadge credits={credits} onSelectTier={setTier} />
         {isWide && (
           <button
             onClick={togglePin}
@@ -677,7 +713,12 @@ export default function ChatWidget({ apiUrl }: Props) {
 
   const chatMessages = (
     <div className="flex-1 overflow-y-auto p-3 space-y-2">
-      {messages.map((msg) => (
+      {messages.map((msg) =>
+        msg.role === "notice" ? (
+          <div key={msg.id} role="status" className="alert alert-soft alert-info text-xs">
+            <span>{msg.content}</span>
+          </div>
+        ) : (
         <div
           key={msg.id}
           className={`chat ${msg.role === "user" ? "chat-end" : "chat-start"}`}
@@ -710,7 +751,8 @@ export default function ChatWidget({ apiUrl }: Props) {
             )}
           </div>
         </div>
-      ))}
+        ),
+      )}
       <div ref={messagesEndRef} />
     </div>
   );

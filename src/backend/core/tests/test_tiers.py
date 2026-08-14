@@ -37,6 +37,30 @@ def test_essential_names_a_different_model_than_the_paid_tiers():
     assert settings.LLM_TIER_ESSENTIAL != settings.LLM_TIER_STANDARD
 
 
+def test_an_empty_env_var_falls_back_instead_of_blanking_the_tier():
+    """`.env.example` ships these keys EMPTY, so anyone who copies it has
+    `LLM_TIER_ADVANCED=` set to "". `os.environ.get(key, default)` returns ""
+    in that case — the default only applies when the key is absent — which
+    silently pointed the paid tiers at no model at all.
+
+    Reloading the settings module is the only honest way to assert this: the
+    fallback happens at import, so patching `settings` afterwards would test
+    nothing.
+    """
+    import importlib
+    import os
+    from unittest import mock
+
+    from django.conf import settings as django_settings
+
+    with mock.patch.dict(
+        os.environ, {"LLM_TIER_ADVANCED": "", "LLM_TIER_STANDARD": ""}, clear=False
+    ):
+        module = importlib.reload(importlib.import_module(django_settings.SETTINGS_MODULE))
+        assert module.LLM_TIER_ADVANCED == module.LLM_ASSISTANT_MODEL
+        assert module.LLM_TIER_STANDARD == module.LLM_ASSISTANT_MODEL
+
+
 # `model_for`'s resolution rules — including the fallback to STANDARD when
 # ESSENTIAL is unconfigured or its API key is absent — are tested in
 # `assistant/tests/test_quota.py`, next to the function itself.
