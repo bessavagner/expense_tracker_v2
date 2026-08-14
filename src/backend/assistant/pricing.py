@@ -39,13 +39,20 @@ def price_for(model_name: str, *, on: date | None = None) -> ModelPrice | None:
     """The price row in force for ``model_name`` on ``on`` (default: today)."""
     on = on or timezone.localdate()
     key = (model_name, on)
-    if key not in _cache:
-        _cache[key] = (
-            ModelPrice.objects.filter(model_name=model_name, effective_from__lte=on)
-            .order_by("-effective_from")
-            .first()
-        )
-    return _cache[key]
+    if key in _cache:
+        return _cache[key]
+    # Returned from a local, never re-read out of the dict: `clear_price_cache`
+    # runs from a `post_save` signal in whatever thread saved a `ModelPrice`,
+    # so it can land between the write below and a second read. That read would
+    # raise KeyError into `record_usage`, which reports rather than raises — and
+    # the visible symptom would be a cost row that silently never appeared.
+    result = (
+        ModelPrice.objects.filter(model_name=model_name, effective_from__lte=on)
+        .order_by("-effective_from")
+        .first()
+    )
+    _cache[key] = result
+    return result
 
 
 def cost_usd_for(model_name: str, usage) -> Decimal | None:

@@ -47,6 +47,32 @@ def test_an_unpriced_model_costs_none_rather_than_zero():
     assert cost_usd_for("openai:never-seen", FakeUsage(1000, 1000)) is None
 
 
+def test_a_price_edit_landing_mid_lookup_does_not_lose_the_row(monkeypatch):
+    """`clear_price_cache` runs from a `post_save` signal, in whatever thread
+    saved the `ModelPrice` — so it can land between this function's cache write
+    and a subsequent cache read. Re-reading the dict would raise `KeyError`,
+    and the caller is `record_usage`, which reports rather than raises: the
+    symptom would be a silently missing cost row, which is the exact failure
+    this epic exists to prevent.
+
+    The self-clearing dict makes that interleaving deterministic instead of
+    waiting for an operator to edit a price during a chat turn.
+    """
+    from assistant import pricing
+
+    class ClearsOnWrite(dict):
+        def __setitem__(self, key, value):
+            super().__setitem__(key, value)
+            self.clear()  # the signal, firing at the worst possible moment
+
+    _price(inp="3.00", out="4.00")
+    monkeypatch.setattr(pricing, "_cache", ClearsOnWrite())
+
+    row = price_for("openai:test")
+    assert row is not None
+    assert row.input_per_mtok == Decimal("3.00")
+
+
 def test_the_most_recent_price_not_after_the_cutoff_wins():
     _price(inp="1.00", out="1.00", when=date(2020, 1, 1))
     _price(inp="2.00", out="2.00", when=date(2026, 1, 1))
