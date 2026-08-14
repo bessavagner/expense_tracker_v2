@@ -57,3 +57,13 @@ def seeded_user(user, household):
 def seeded_scope(seeded_user, scope):
     """`scope`, with the catalogue `seeded_user` creates already in place."""
     return scope
+
+
+@pytest.fixture
+def interaction(db, household, user):
+    """One admitted user action, for correlating UsageRecord rows against."""
+    from assistant.models import InteractionKind, UsageInteraction
+
+    return UsageInteraction.objects.create(
+        household=household, user=user, kind=InteractionKind.TEXT
+    )

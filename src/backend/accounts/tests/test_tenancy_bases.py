@@ -72,7 +72,7 @@ def test_created_by_survives_the_author_leaving_the_household():
     assert field.remote_field.on_delete is models.SET_NULL
 
 
-def test_registry_holds_exactly_the_fourteen_household_owned_models():
+def test_registry_holds_exactly_the_fifteen_household_owned_models():
     """A model that grows a household column without a decision, or loses one,
     changes this number. That is the point — it should be a conversation, not
     a silent diff.
@@ -81,6 +81,13 @@ def test_registry_holds_exactly_the_fourteen_household_owned_models():
     `accounts.Invitation`, is E05's and was born household-owned: it inherits
     the base precisely so the cross-household isolation suite covers it without
     anyone adding it to a list. This assertion is that conversation happening.
+
+    The fifteenth is E07's `assistant.UsageRecord`. It is household-owned
+    because the operator report totals spend per household and a member must
+    never see a neighbour's costs — the same reason `UsageInteraction` is.
+    E07's other three new tables are NOT here and should not be:
+    `ModelPrice`, `CreditPrice` and `Plan` are global product configuration,
+    identical for every tenant.
     """
     expected = {
         "accounts.Invitation",
@@ -97,6 +104,7 @@ def test_registry_holds_exactly_the_fourteen_household_owned_models():
         "assistant.ReceiptDraft",
         "assistant.MemoryEmbedding",
         "assistant.UsageInteraction",
+        "assistant.UsageRecord",
     }
     actual = {m._meta.label for m in household_owned_models()}
 

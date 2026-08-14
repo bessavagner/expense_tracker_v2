@@ -258,3 +258,75 @@ class ModelPrice(models.Model):
 
     def __str__(self):
         return f"{self.model_name} @ {self.effective_from}"
+
+
+class UsageKind(models.TextChoices):
+    """What kind of provider call this was — NOT what kind of turn it served.
+
+    `InteractionKind` (text/image) describes the user's action. This describes
+    one billable call inside it. A single image interaction fans out into
+    EXTRACTION, possibly a second EXTRACTION (the vision retry), and a CHAT.
+    """
+
+    CHAT = "chat", "Conversa"
+    EXTRACTION = "extraction", "Extração de recibo"
+    TRANSCRIPTION = "transcription", "Transcrição"
+    EMBEDDING = "embedding", "Embedding"
+
+
+class UsageRecord(HouseholdOwnedModel):
+    """One provider call, with what it cost. The cost ledger.
+
+    Written *after* the call, because token counts do not exist before it. That
+    is precisely why this is not the same table as ``UsageInteraction``, which
+    must be written *before* the call to gate it (E07 spec D1).
+
+    ``interaction`` is nullable: an embedding or a transcription can be
+    triggered outside a chat turn, and a record with no interaction is still a
+    real cost that must appear in the operator's report.
+
+    ``cost_usd`` is nullable and means "not priceable", never "free". It is
+    computed and frozen at write time, so re-pricing a model never rewrites
+    history. USD, not BRL: providers price in USD and an FX rate is E15's
+    problem, not this table's.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    interaction = models.ForeignKey(
+        "assistant.UsageInteraction",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="records",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    kind = models.CharField(max_length=20, choices=UsageKind.choices)
+    model = models.CharField(max_length=120)
+    input_tokens = models.IntegerField(null=True, blank=True)
+    output_tokens = models.IntegerField(null=True, blank=True)
+    cost_usd = models.DecimalField(max_digits=12, decimal_places=6, null=True, blank=True)
+    latency_ms = models.IntegerField(null=True, blank=True)
+    ok = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "registro de uso"
+        verbose_name_plural = "registros de uso"
+        indexes = [
+            # The operator report's access pattern: one household, one period.
+            models.Index(
+                fields=["household", "-created_at"],
+                name="usagerec_hh_recent_idx",
+            ),
+            # "What does receipt OCR cost relative to text chat?" — S07-5.
+            models.Index(fields=["kind", "-created_at"], name="usagerec_kind_recent_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.kind} {self.model} {self.cost_usd}"

@@ -15,6 +15,12 @@ class AgentScope:
 
     household: object | None
     user: object
+    # The UsageInteraction this run belongs to, so a tool that makes its own
+    # provider call (check_memory → get_embedding) can attribute its cost to
+    # the same user action. Threaded explicitly rather than via a ContextVar:
+    # the SSE generator is iterated by ASGI in a different context from the
+    # view that built it, so a ContextVar set in the view would not be visible.
+    interaction: object | None = None
 
     @classmethod
     def for_request(cls, request):
