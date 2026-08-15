@@ -62,11 +62,28 @@ def cost_usd_for(model_name: str, usage) -> Decimal | None:
     from a genuinely free call, and an unpriced model silently metering at zero
     is exactly how a cost report becomes fiction. The report counts nulls and
     says so.
+
+    Cache reads are billed apart (D03). ``input_tokens`` INCLUDES
+    ``cache_read_tokens`` — they are a subset of the prompt, not a second
+    bucket — so the fresh half is the difference, and pricing the whole prompt
+    at the full rate over-reported by roughly 4x on a repeated workload.
     """
     price = price_for(model_name)
     if price is None:
         return None
     inp = Decimal(getattr(usage, "input_tokens", 0) or 0)
     out = Decimal(getattr(usage, "output_tokens", 0) or 0)
-    total = (inp / MILLION) * price.input_per_mtok + (out / MILLION) * price.output_per_mtok
+    # Clamped because a negative fresh half would UNDER-state the bill, and
+    # under-stating is the one direction that is unsafe here.
+    cached = min(Decimal(getattr(usage, "cache_read_tokens", 0) or 0), inp)
+    # A row with no cached rate bills cache reads at the full input rate: the
+    # old behaviour, which errs high rather than inventing a discount.
+    cached_rate = price.cached_input_per_mtok
+    if cached_rate is None:
+        cached_rate = price.input_per_mtok
+    total = (
+        ((inp - cached) / MILLION) * price.input_per_mtok
+        + (cached / MILLION) * cached_rate
+        + (out / MILLION) * price.output_per_mtok
+    )
     return total.quantize(QUANTUM)

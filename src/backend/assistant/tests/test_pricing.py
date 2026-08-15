@@ -13,9 +13,12 @@ pytestmark = pytest.mark.django_db
 
 
 class FakeUsage:
-    def __init__(self, input_tokens, output_tokens):
+    def __init__(self, input_tokens, output_tokens, cache_read_tokens=0):
         self.input_tokens = input_tokens
         self.output_tokens = output_tokens
+        # `input_tokens` INCLUDES this. pydantic-ai's `RunUsage` reports cache
+        # reads as a subset of the prompt, not as an extra bucket.
+        self.cache_read_tokens = cache_read_tokens
 
 
 @pytest.fixture(autouse=True)
@@ -25,11 +28,12 @@ def _clear_cache():
     clear_price_cache()
 
 
-def _price(name="openai:test", inp="1.00", out="10.00", when=date(2020, 1, 1)):
+def _price(name="openai:test", inp="1.00", out="10.00", when=date(2020, 1, 1), cached=None):
     return ModelPrice.objects.create(
         model_name=name,
         input_per_mtok=Decimal(inp),
         output_per_mtok=Decimal(out),
+        cached_input_per_mtok=Decimal(cached) if cached is not None else None,
         effective_from=when,
         source_url="https://example.test/pricing",
         checked_on=when,
@@ -89,6 +93,53 @@ def test_missing_token_counts_are_treated_as_zero():
     """A provider that returns no usage must not crash the metering path."""
     _price()
     assert cost_usd_for("openai:test", FakeUsage(None, None)) == Decimal("0.000000")
+
+
+def test_cached_input_is_billed_at_the_cached_rate():
+    """The D03 defect: 1M input tokens of which 400k were cache reads.
+
+    Full price would be $1.00 + $1.00 = $2.00; all-cached would be $0.10 +
+    $1.00 = $1.10. The truth is between them, and it is not either endpoint.
+    """
+    _price(inp="1.00", out="10.00", cached="0.10")
+    cost = cost_usd_for("openai:test", FakeUsage(1_000_000, 100_000, cache_read_tokens=400_000))
+    # 600k fresh @ $1 = $0.60; 400k cached @ $0.10 = $0.04; 100k out @ $10 = $1.00
+    assert cost == Decimal("1.640000")
+    assert Decimal("1.100000") < cost < Decimal("2.000000")
+
+
+def test_a_model_with_no_cached_rate_keeps_the_full_price_estimate():
+    """An unfilled column must over-report, never silently discount.
+
+    Reporting zero — or guessing a discount nobody read off the pricing page —
+    would turn a missing measurement into an authoritative-looking number.
+    """
+    _price(inp="1.00", out="10.00", cached=None)
+    assert cost_usd_for(
+        "openai:test", FakeUsage(1_000_000, 100_000, cache_read_tokens=400_000)
+    ) == Decimal("2.000000")
+
+
+def test_usage_without_a_cache_field_is_priced_as_all_fresh():
+    """Embeddings and transcriptions hand over adapters with no cache attribute."""
+    _price(inp="1.00", out="10.00", cached="0.10")
+
+    class NoCacheField:
+        input_tokens = 1_000_000
+        output_tokens = 0
+
+    assert cost_usd_for("openai:test", NoCacheField()) == Decimal("1.000000")
+
+
+def test_more_cache_reads_than_input_tokens_never_makes_the_bill_negative():
+    """A provider that double-counts, or a summed usage across two attempts,
+    could report more cache reads than input tokens. Unclamped, the fresh half
+    goes negative and the cost is UNDER-stated — the one direction that is
+    unsafe: E01's spend ceiling would trip late instead of early.
+    """
+    _price(inp="1.00", out="10.00", cached="0.10")
+    cost = cost_usd_for("openai:test", FakeUsage(1_000, 0, cache_read_tokens=5_000))
+    assert cost == Decimal("0.000100")  # all 1000 tokens billed as cached
 
 
 @pytest.mark.parametrize(

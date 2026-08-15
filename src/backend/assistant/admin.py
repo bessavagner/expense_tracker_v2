@@ -31,6 +31,7 @@ class ModelPriceAdmin(admin.ModelAdmin):
     list_display = (
         "model_name",
         "input_per_mtok",
+        "cached_input_per_mtok",
         "output_per_mtok",
         "effective_from",
         "checked_on",

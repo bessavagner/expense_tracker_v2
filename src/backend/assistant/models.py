@@ -245,6 +245,17 @@ class ModelPrice(models.Model):
         help_text="Exatamente como aparece em settings, incluindo o prefixo do provedor.",
     )
     input_per_mtok = models.DecimalField(max_digits=12, decimal_places=6)
+    # Nullable, and NULL means "we have not read a cached rate for this model",
+    # never "there is no discount". `cost_usd_for` falls back to the full input
+    # rate, so an unfilled row keeps the old over-estimate — the safe direction
+    # (E01's ceiling trips early) — instead of inventing a discount. D03.
+    cached_input_per_mtok = models.DecimalField(
+        max_digits=12,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        help_text="Tarifa de tokens de entrada já em cache. Vazio = cobra a tarifa cheia.",
+    )
     output_per_mtok = models.DecimalField(max_digits=12, decimal_places=6)
     effective_from = models.DateField()
     source_url = models.URLField(
