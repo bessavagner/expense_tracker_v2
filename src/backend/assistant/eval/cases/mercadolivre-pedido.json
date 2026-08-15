@@ -1,0 +1,25 @@
+{
+  "id": "mercadolivre-pedido",
+  "images": ["receipt_mercadolivre_desconto.png"],
+  "image_source": "tracked",
+  "media_type": "image/png",
+  "provenance": "Screenshot of a Mercado Livre order detail screen, already tracked in the repository as the multi-unit regression fixture. The bug it records: the 2-unit line shows R$66,48, which is the TOTAL for both units, and a read that multiplied it by the quantity again registered R$1.066,18 instead of R$999,70.",
+  "hard_cases": ["marketplace-order", "multi-unit-line", "discount", "no-printed-total", "no-printed-date"],
+  "categories": ["Roupa", "Suplemento", "Eletronico", "Lanche"],
+  "payment_methods": [
+    {"name": "Credito C6", "type": "credit_card", "closing_day": 25},
+    {"name": "Pix", "type": "pix"}
+  ],
+  "store": "Mercado Livre",
+  "store_key": "mercado",
+  "date": null,
+  "payment_hint": null,
+  "discount": "0",
+  "amount_paid": null,
+  "items": [
+    {"description": "Calção Bermuda Short Poker Térmico", "line_total": "66.09", "category": "Roupa"},
+    {"description": "Bermuda Térmica Anti Assadura Esportiva", "line_total": "66.48", "category": "Roupa", "quantity": "2"},
+    {"description": "Whey Protein Gourmet Sem Lactose 907g", "line_total": "217.14", "category": "Suplemento"},
+    {"description": "Smartwatch Amazfit Bip Max Gps Amoled", "line_total": "649.99", "category": "Eletronico"}
+  ]
+}

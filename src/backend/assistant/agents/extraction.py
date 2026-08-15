@@ -16,6 +16,7 @@ from django.conf import settings
 from pydantic import BaseModel, field_validator
 from pydantic_ai import Agent, BinaryContent
 
+from assistant.agents.model_compat import settings_for
 from assistant.metering import Timer
 
 _BR_DATE_RE = re.compile(r"^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})$")
@@ -165,6 +166,33 @@ def receipt_needs_review(extraction: ReceiptExtraction, min_confidence: float) -
     return not receipt_is_consistent(extraction)
 
 
+def build_extraction_prompt(
+    images: list[tuple[bytes, str]],
+    categories: list[str] | None = None,
+    payment_methods: list[str] | None = None,
+) -> list:
+    """Assemble the vision prompt: instruction text plus every image.
+
+    Split out of ``extract_receipt`` so the E08 harness can run the SAME prompt
+    against a different model and read ``result.usage()`` back, which
+    ``extract_receipt`` discards. Pure — no I/O, no metering, no settings read.
+    """
+    instruction = EXTRACTION_INSTRUCTION
+    if categories:
+        instruction += (
+            "\nCategorias do usuário (atribua a categoria de CADA item escolhendo "
+            "EXATAMENTE uma desta lista; se nenhuma servir, deixe category=null): "
+            + ", ".join(categories)
+            + "."
+        )
+    if payment_methods:
+        instruction += (
+            "\nFormas de pagamento cadastradas (proponha em payment_hint a que casa, "
+            "ou deixe como aparece no recibo): " + ", ".join(payment_methods) + "."
+        )
+    return [instruction] + [BinaryContent(data=data, media_type=mt) for data, mt in images]
+
+
 async def extract_receipt(
     images: list[tuple[bytes, str]],
     categories: list[str] | None = None,
@@ -186,31 +214,20 @@ async def extract_receipt(
     roda fora de um request (harness de avaliação), e um registro de custo sem
     household é pior que nenhum: não dá para escopar nem cobrar de ninguém.
     """
-    instruction = EXTRACTION_INSTRUCTION
-    if categories:
-        instruction += (
-            "\nCategorias do usuário (atribua a categoria de CADA item escolhendo "
-            "EXATAMENTE uma desta lista; se nenhuma servir, deixe category=null): "
-            + ", ".join(categories)
-            + "."
-        )
-    if payment_methods:
-        instruction += (
-            "\nFormas de pagamento cadastradas (proponha em payment_hint a que casa, "
-            "ou deixe como aparece no recibo): " + ", ".join(payment_methods) + "."
-        )
-    prompt = [instruction]
-    prompt += [BinaryContent(data=data, media_type=mt) for data, mt in images]
+    prompt = build_extraction_prompt(images, categories, payment_methods)
 
     # `model=None` means the agent runs the model it was constructed with,
     # which is LLM_VISION_MODEL — the same string the vision retry passes
     # explicitly. Recording the resolved name keeps both attempts comparable in
     # the operator report.
     resolved = str(model or settings.LLM_VISION_MODEL)
+    # Matched on `resolved`, not on `model`: with `model=None` the agent runs
+    # LLM_VISION_MODEL, and that is the string whose provider quirks apply.
+    compat = settings_for(resolved)
     timer = Timer()
     try:
         with timer:
-            result = await extraction_agent.run(prompt, model=model)
+            result = await extraction_agent.run(prompt, model=model, model_settings=compat)
     except Exception:
         # Metered before re-raising: the provider read the image and charged
         # for it whether or not it gave us usable JSON back (S07-2).

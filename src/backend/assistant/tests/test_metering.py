@@ -388,7 +388,7 @@ class TestExtractionIsMetered:
         from assistant.agents.extraction import ReceiptExtraction
         from assistant.tests.fakes import FakeRunResult
 
-        async def flaky_run(prompt, model=None):
+        async def flaky_run(prompt, model=None, model_settings=None):
             if model is None:
                 raise RuntimeError("primeira extração falha")
             return FakeRunResult(ReceiptExtraction())
@@ -601,15 +601,32 @@ def test_no_unmetered_provider_call_site_exists():
         r"\.embeddings\.create\("
     )
 
+    # The E08 evaluation harness (dev-only, gated on RUN_LLM_TESTS=1, never
+    # reachable from a request). It must NOT meter: `UsageRecord` is scoped to a
+    # household, and a harness run has no household — it invents a throwaway one
+    # inside a transaction that is always rolled back. A cost row nobody can be
+    # charged for would pollute the very ledger the pricing decisions are read
+    # from. See `assistant/eval/costing.py`, which prices these runs separately.
+    EXEMPT = {
+        "assistant/eval/extraction_runner.py",
+        "assistant/eval/behaviour_runner.py",
+    }
+
     offenders = []
     for path in root.rglob("*.py"):
         rel = str(path.relative_to(root))
         # Test modules make deliberate unmetered calls through doubles, and
         # migrations never reach a provider at all.
-        if "/tests/" in f"/{rel}" or "/migrations/" in rel:
+        if "/tests/" in f"/{rel}" or "/migrations/" in rel or rel in EXEMPT:
             continue
         text = path.read_text(encoding="utf-8")
         if CALL.search(text) and "record_usage" not in text:
             offenders.append(rel)
 
     assert not offenders, "Unmetered provider call sites (E07 S07-2):\n  " + "\n  ".join(offenders)
+
+    # A stale exemption is a hole in the ratchet: rename or delete an exempt
+    # module and the name silently stops matching anything, so the next call
+    # site added under that path is never checked.
+    for rel in EXEMPT:
+        assert (root / rel).exists(), f"stale EXEMPT entry, no such file: {rel}"

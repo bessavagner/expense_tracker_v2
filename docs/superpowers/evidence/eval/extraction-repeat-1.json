@@ -1,0 +1,67 @@
+{
+  "generated_at": "2026-08-14T21:14:52-03:00",
+  "reports": [
+    {
+      "dimensions": {
+        "amount_accuracy": 0.953515,
+        "category_accuracy": 0.951827,
+        "date_accuracy": 0.857143,
+        "item_precision": 0.968254,
+        "item_recall": 1.0,
+        "money_ok_rate": 0.857143,
+        "store_accuracy": 1.0
+      },
+      "failures": [
+        "cosmos-2026-06-19: money invariant FAILED",
+        "hipermacional-2026-06-15: spurious 8",
+        "hipernacional-2026-06-19: partial",
+        "hipernacional-2026-07-08: partial",
+        "mateus-2026-06-22: partial"
+      ],
+      "model": "openai:gpt-5.4",
+      "n": 7,
+      "overall": 0.837502,
+      "suite": "extraction",
+      "totals": {
+        "avg_latency_ms": 8209,
+        "calls": 7,
+        "cost_usd": "0.167582",
+        "input_tokens": 28921,
+        "output_tokens": 6352,
+        "unpriced_calls": 0
+      }
+    },
+    {
+      "dimensions": {
+        "amount_accuracy": 0.940816,
+        "category_accuracy": 0.700472,
+        "date_accuracy": 0.857143,
+        "item_precision": 0.968254,
+        "item_recall": 1.0,
+        "money_ok_rate": 0.857143,
+        "store_accuracy": 0.857143
+      },
+      "failures": [
+        "americanas-2026-06-12: money invariant FAILED",
+        "cosmos-2026-06-19: partial",
+        "hipermacional-2026-06-15: spurious 8",
+        "hipernacional-2026-06-19: partial",
+        "hipernacional-2026-07-08: partial",
+        "mateus-2026-06-22: partial"
+      ],
+      "model": "openai-responses:gpt-5.6-terra",
+      "n": 7,
+      "overall": 0.802656,
+      "suite": "extraction",
+      "totals": {
+        "avg_latency_ms": 11577,
+        "calls": 7,
+        "cost_usd": "0.282466",
+        "input_tokens": 89339,
+        "output_tokens": 8649,
+        "unpriced_calls": 0
+      }
+    }
+  ],
+  "skipped": []
+}

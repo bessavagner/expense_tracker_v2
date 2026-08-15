@@ -1542,6 +1542,116 @@ spend" guarantee true.
 > from E01. The code reads `ASSISTANT_ABUSE_*`; the defaults are identical
 > (60/300/15/50), so behaviour only changes if a value was customised.
 
+## Evaluating a model (E08)
+
+The question this answers is "can we ship on a cheaper model?", with a number
+instead of an opinion. It does **not** change which model production uses —
+that is E09.
+
+### Run it
+
+```bash
+RUN_LLM_TESTS=1 POSTGRES_PORT=5433 uv run python src/backend/manage.py eval_models \
+  --models "openai:gpt-5.4,openrouter:qwen/qwen3.7-flash" \
+  --suite both \
+  --out docs/superpowers/evidence/eval/2026-08-14.md
+```
+
+- `--suite extraction` reads receipt photos and scores the read.
+- `--suite behaviour` drives the real assistant through seven conversations and
+  scores the **ledger rows** it produced.
+- `--cases a,b` narrows to specific case ids while iterating.
+- `--stub` runs the whole thing against `TestModel`, for free, when you are
+  changing the harness rather than measuring a model.
+- Without `RUN_LLM_TESTS=1` the command refuses. That is deliberate: it spends
+  money.
+
+Set `EVAL_FIXTURES_DIR` first, or the private receipt photos are missing and
+most of the dataset is skipped — see `docs/eval-dataset.md`.
+
+### Before you compare: two things that will mislead you
+
+**Smoke-test a new model on one case first.**
+
+```bash
+RUN_LLM_TESTS=1 POSTGRES_PORT=5433 EVAL_FIXTURES_DIR=~/ledger-eval-fixtures \
+uv run python src/backend/manage.py eval_models \
+  --models "<the new model>" --suite extraction --cases americanas-2026-06-12
+```
+
+Two of the three models first pointed at this dataset returned HTTP 400 on
+*every* call — they refuse tool calling under their default reasoning settings,
+and every agent here uses tool calling. The workarounds live in
+`assistant/agents/model_compat.py`; add an entry there rather than at the call
+site. `docs/eval-dataset.md` § *Provider quirks* has the two known refusals and
+their exact provider messages.
+
+**One run does not rank two models.** `gpt-5.4` scored 0.97, then 0.83, then
+0.84 on the same seven cases within an hour. One case is 14% of the score and
+the money invariant is pass/fail per case, so the run-to-run swing is wider than
+the gap between two serious candidates — in one pair of runs the winner and
+loser swapped places. Run each candidate **at least three times**, compare the
+spread, and treat a gap narrower than that spread as unmeasured.
+
+### What it costs
+
+One full `--suite both` run is 7 vision calls plus roughly 9 chat turns per
+model. Read the actual figure from the `USD` column of
+`docs/superpowers/evidence/eval/baseline-2026-08-14.md` rather than from this
+sentence, which will rot. Multiply by the number of models in `--models`. A cell
+showing `0` with a non-zero `unpriced` note means the model has no `ModelPrice`
+row, not that it was free.
+
+### Reading the output
+
+| Column | What it means |
+|---|---|
+| `Score` | 0–1. Extraction: weighted across the dimensions. Behaviour: fraction of cases whose ledger was exactly right. |
+| `money_ok_rate` | Fraction of receipts whose items reconciled with the amount paid. **A model below 1.0 here is disqualified regardless of the rest** — a case that fails it scores 0 overall. |
+| `item_recall` | Lines the model found, over lines that exist. A miss is a missing expense. |
+| `item_precision` | Lines the model found that are real. Low means invention. |
+| `amount_accuracy` | Matched lines whose value was exactly right. |
+| `category_accuracy` | Matched lines filed under the right category. |
+| `cases_passed` | Behaviour only. Out of `n`. |
+| `USD` | Priced calls only. Unpriced calls are counted in a note, never as zero. |
+
+Under each table is a **"what it got wrong"** list naming every case that failed
+and why. Read it — an aggregate of 0.85 built from one catastrophic case and six
+perfect ones is a different model from one that is uniformly mediocre.
+
+On two of the receipts the money invariant runs **inverted**: the Mercado Livre
+order screen prints no total, so the correct answer is `null` and a model that
+supplies a number fails. See `docs/eval-dataset.md`.
+
+If the report says cases were **skipped**, the private photos are missing. See
+`docs/eval-dataset.md` and set `EVAL_FIXTURES_DIR`. A skipped case is never a
+failure, but a run with skips is not comparable to one without.
+
+### Safety
+
+Everything the behavioural suite writes — households, users, categories,
+entries, receipt drafts — happens inside a transaction that is **always** rolled
+back, so the command is safe to point at any database. It also writes no
+`UsageRecord`: a harness run has no household to bill, and a cost row nobody can
+be charged for would corrupt the operator report above. `test_eval_command.py`
+asserts both; if you change the command, keep those tests.
+
+To confirm after a run:
+
+```bash
+POSTGRES_PORT=5433 uv run python src/backend/manage.py shell -c "
+from accounts.models import Household
+print('eval households left behind:', Household.objects.filter(name__startswith='eval-').count())
+"
+```
+
+Expected: `0`. Anything else means the rollback did not hold — stop and fix the
+command before trusting any number in the report.
+
+### Adding a case
+
+`docs/eval-dataset.md`. Ground truth is committed, receipt photos are not.
+
 ### Known gap: transcription cost is null
 
 Providers price transcription per minute of audio; `ModelPrice` models token

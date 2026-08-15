@@ -116,13 +116,37 @@ RUN_LLM_TESTS=1 <documented harness command>
 Observable assertions:
 
 - [ ] The golden dataset has at least 10 receipt cases with complete ground truth
-- [ ] At least 6 behavioural cases exist, each asserting resulting ledger state
-- [ ] A comparison table exists for the **current production models** — this is the baseline every future model is judged against
-- [ ] The money invariant is scored and weighted decisively
-- [ ] Scoring logic is unit-tested deterministically without calling a model
-- [ ] The `iteraction.txt` Americanas failure is a scored case
-- [ ] Normal CI runtime is unchanged
-- [ ] `docs/runbook.md` documents the command, its cost, and how to interpret results
+      — **NOT MET: 7 cases.** Only 7 distinct receipts exist; two of the
+      candidate photos are byte-identical to fixtures already committed and two
+      more are pages of one receipt. Shipped as 7 with the shortfall recorded
+      rather than padded with synthesised filler. See `docs/eval-dataset.md`
+      § *Known shortfall*. Closing it is now the cheapest way to reduce the
+      run-to-run spread documented in the baseline.
+- [x] At least 6 behavioural cases exist, each asserting resulting ledger state
+      — 7 cases, scored on the rows the agent actually wrote.
+- [x] A comparison table exists for the **current production models** — this is the baseline every future model is judged against
+      — `docs/superpowers/evidence/eval/baseline-2026-08-14.md`. `openai:gpt-5.4`:
+      extraction **0.886** (n=5), behaviour **0.810** (n=3), with per-run JSON.
+- [x] The money invariant is scored and weighted decisively
+- [x] Scoring logic is unit-tested deterministically without calling a model
+- [x] The `iteraction.txt` Americanas failure is a scored case
+      — `americanas-split-on-request`.
+- [x] Normal CI runtime is unchanged — the harness is gated on `RUN_LLM_TESTS=1`
+      and never runs in normal CI; suite is 1559 passed / 3 skipped in ~90s.
+- [x] `docs/runbook.md` documents the command, its cost, and how to interpret results
+      — plus the two ways it misleads: models that refuse the request outright,
+      and scores that move between identical runs.
+
+**Found while establishing the baseline, still open:**
+
+- Behavioural case `hipermacional-six-categories-no-double-count` fails on
+  **every** run — `ledger total 0 != expected 376.70`, the agent registers
+  nothing for a six-category receipt, on the model production runs today. It
+  reproduces, so it is a product defect rather than eval noise. Not an E08
+  deliverable; needs its own ticket.
+- The gpt-5.6 swap staged mid-epic was **reverted** on the evidence: cheaper per
+  token, 51% more expensive per receipt, no measured quality gain. This restores
+  the epic's own scope line — E08 measures, E09 decides.
 
 ## Out of scope
 

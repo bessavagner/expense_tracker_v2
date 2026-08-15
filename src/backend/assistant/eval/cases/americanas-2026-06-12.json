@@ -1,0 +1,26 @@
+{
+  "id": "americanas-2026-06-12",
+  "images": ["receipt_americanas.jpg"],
+  "image_source": "tracked",
+  "media_type": "image/jpeg",
+  "provenance": "Real household receipt, already tracked in the repository since the prompt-006 regression work. Kept public; retracting it would not un-publish it.",
+  "hard_cases": ["multi-category", "discount", "thermal-print"],
+  "categories": ["Roupa", "Lanche", "Alimentacao"],
+  "payment_methods": [
+    {"name": "Credito C6", "type": "credit_card", "closing_day": 25},
+    {"name": "Pix", "type": "pix"}
+  ],
+  "store": "americanas sa - 1063",
+  "store_key": "americanas",
+  "date": "2026-06-12",
+  "payment_hint": "CREDITO",
+  "discount": "3.99",
+  "amount_paid": "42.16",
+  "items": [
+    {"description": "SOUTIEN TOP B+ TAF21 BRANCO GG", "line_total": "9.99", "category": "Roupa"},
+    {"description": "BACONZITOS B&G ELMA CHIPS M", "line_total": "9.99", "category": "Lanche"},
+    {"description": "LAYS CLASSICA B&G ELMA CHIPS M", "line_total": "9.99", "category": "Lanche"},
+    {"description": "WAFER MAIS AMENDOIM 102G HERSHEYS", "line_total": "6.19", "category": "Lanche"},
+    {"description": "BATATA PRINGLES CREME E CEBOLA 109G", "line_total": "9.99", "category": "Lanche"}
+  ]
+}

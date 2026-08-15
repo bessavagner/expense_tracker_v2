@@ -328,6 +328,20 @@ DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "Ledger <nao-responda@
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
 # AI Assistant
+#
+# These stay on `gpt-5.4`, and that is a measured decision rather than inertia.
+# `gpt-5.6-terra` is a newer generation and cheaper per token ($2.00/$12.00 per
+# Mtok vs $2.50/$15.00), and on that basis it was briefly made the default. The
+# E08 harness then scored both against real receipts: terra cost **51% more per
+# receipt**, because it consumes ~2.6x the input tokens on the same images, and
+# it showed no quality gain — the score gap was narrower than either model's own
+# run-to-run spread. See docs/superpowers/evidence/eval/baseline-2026-08-14.md.
+#
+# So: a cheaper per-token price is not a cheaper model, and the only way to know
+# is to run the harness. Never edit these strings from memory — re-check the
+# provider's live pricing page, re-run the eval, and update the `ModelPrice` rows
+# in the same change, or every cost figure the product reports silently becomes
+# fiction.
 LLM_MODEL = os.environ.get("LLM_MODEL", "openai:gpt-5.4")
 # Agente único (prompt 009): um assistente forte com todas as ferramentas.
 # Provider-agnóstico — por padrão herda LLM_MODEL; defina LLM_ASSISTANT_MODEL no
@@ -389,6 +403,13 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 # Abaixo deste nível de confiança (ou se a soma do recibo não fecha), o bot
 # confirma campo a campo antes de gravar, em vez de auto-registrar.
 ASSISTANT_RECEIPT_MIN_CONFIDENCE = float(os.environ.get("ASSISTANT_RECEIPT_MIN_CONFIDENCE", "0.6"))
+
+# E08 evaluation fixtures. The golden dataset's ground truth is committed; the
+# receipt PHOTOS are not — this repository is public and they are real household
+# receipts carrying CNPJ, card last-4 digits and a purchase history. Point this
+# at a private directory holding the images named in `assistant/eval/cases/*.json`.
+# Unset is fine: those cases are skipped with a warning, never a failure.
+EVAL_FIXTURES_DIR = os.environ.get("EVAL_FIXTURES_DIR", "")
 
 # Agent tracing (E06, ADR-005). No token -> no Logfire, which is the local and
 # CI path. The token comes from Secret Manager in production.

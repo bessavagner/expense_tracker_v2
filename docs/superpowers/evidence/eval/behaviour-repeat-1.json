@@ -1,0 +1,26 @@
+{
+  "generated_at": "2026-08-14T21:23:37-03:00",
+  "reports": [
+    {
+      "dimensions": {
+        "cases_passed": 6.0
+      },
+      "failures": [
+        "hipermacional-six-categories-no-double-count: no row satisfied Alimentacao (no rows left); no row satisfied Lanche (no rows left); no row satisfied Pets (no rows left); no row satisfied Casa (no rows left); no row satisfied Limpeza (no rows left); no row satisfied Perfumaria (no rows left); ledger total 0 != expected 376.70"
+      ],
+      "model": "openai:gpt-5.4",
+      "n": 7,
+      "overall": 0.857143,
+      "suite": "behaviour",
+      "totals": {
+        "avg_latency_ms": 4581,
+        "calls": 13,
+        "cost_usd": "0.426812",
+        "input_tokens": 160345,
+        "output_tokens": 1730,
+        "unpriced_calls": 0
+      }
+    }
+  ],
+  "skipped": []
+}

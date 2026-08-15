@@ -64,7 +64,11 @@ class FakeAgent:
     def __init__(self, behaviour):
         self.behaviour = behaviour
         self.calls = []
+        # Per attempt, so a test can assert the fallback got its OWN provider
+        # quirks rather than the primary's.
+        self.settings = []
 
-    def run_stream(self, prompt, *, deps, message_history, model=None):
+    def run_stream(self, prompt, *, deps, message_history, model=None, model_settings=None):
         self.calls.append(model)
+        self.settings.append(model_settings)
         return self.behaviour[model]

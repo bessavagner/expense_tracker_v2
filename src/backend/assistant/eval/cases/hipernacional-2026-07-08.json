@@ -1,0 +1,41 @@
+{
+  "id": "hipernacional-2026-07-08",
+  "images": ["IMG_20260708_180705067_HDR.jpg"],
+  "image_source": "private",
+  "media_type": "image/jpeg",
+  "provenance": "Real household receipt, paid by Pix. Four weighed bulk lines (castanha, amendoim, mix de frutas, uva passas) priced per kilo, and five near-identical pet-food lines that differ only in flavour. Not committed: real household receipt, public repository (plan decision D-A).",
+  "hard_cases": ["thermal-print", "weighed-item", "multi-category", "repeated-lines", "pix"],
+  "categories": ["Alimentacao", "Lanche", "Pets", "Casa", "Limpeza"],
+  "payment_methods": [
+    {"name": "Credito C6", "type": "credit_card", "closing_day": 25},
+    {"name": "Pix", "type": "pix"},
+    {"name": "Dinheiro", "type": "cash"}
+  ],
+  "store": "HIPERNACIONAL LTDA",
+  "store_key": "hiper",
+  "date": "2026-07-08",
+  "payment_hint": "CARTEIRA DIGITAL",
+  "discount": "0",
+  "amount_paid": "157.97",
+  "items": [
+    {"description": "ENERG EXTR POWER 473ML MANGO", "line_total": "7.25", "category": "Lanche"},
+    {"description": "ENERG EXTR POWER 473ML MANGO", "line_total": "7.25", "category": "Lanche"},
+    {"description": "ENERG EXTR POWER 473ML MANGO", "line_total": "7.25", "category": "Lanche"},
+    {"description": "REFRI SUKITA LATA 350ML LARANJA", "line_total": "3.35", "category": "Lanche"},
+    {"description": "IOG BETANIA YO BEM 170G MORANGO", "line_total": "4.15", "category": "Alimentacao"},
+    {"description": "SORVETE NESTLE ZERO ACUC 450G NAPOLITANO", "line_total": "34.99", "category": "Alimentacao"},
+    {"description": "FILEZINHO REGINA MILANESA 700G", "line_total": "23.75", "category": "Alimentacao"},
+    {"description": "GUARANA ANTARCTICA LATA ZERO 350ML", "line_total": "3.35", "category": "Lanche"},
+    {"description": "EMP CASTANHA CAJU SEM SAL kg", "line_total": "10.58", "category": "Alimentacao", "quantity": "0.072"},
+    {"description": "EMP AMENDO TORRADO SEM SAL SEM PELE kg", "line_total": "5.45", "category": "Alimentacao", "quantity": "0.202"},
+    {"description": "EMP MIX DE FRUTAS TROPICAIS kg", "line_total": "16.43", "category": "Alimentacao", "quantity": "0.106"},
+    {"description": "UVA PASSAS PRETA kg", "line_total": "7.62", "category": "Alimentacao", "quantity": "0.254"},
+    {"description": "BISC NEGRESCO RECH 90G CHOCOLATE", "line_total": "3.65", "category": "Alimentacao"},
+    {"description": "RACAO CHAMP ADULTO SCH 85G CARNE", "line_total": "2.99", "category": "Pets"},
+    {"description": "RACAO CHAMP ADULTO SCH 85G CARNE", "line_total": "2.99", "category": "Pets"},
+    {"description": "RACAO CHAMP ADULTO SCH 85G CARNE", "line_total": "2.99", "category": "Pets"},
+    {"description": "RACAO CHAMP ADULTO SCH 85G FRANGO", "line_total": "2.99", "category": "Pets"},
+    {"description": "RACAO CHAMP ADULTO SCH 85G FRANGO", "line_total": "2.99", "category": "Pets"},
+    {"description": "MARCADOR ACRILEX P TECIDO VERDE MUSGO", "line_total": "7.95", "category": "Casa"}
+  ]
+}
