@@ -93,6 +93,7 @@ when it changes what another epic should do; anything smaller is a commit.
 |---|---|---|---|---|---|
 | [D01](D01-behaviour-harness-omits-the-receipt-draft.md) | Behaviour harness omits the `ReceiptDraft`, making receipt cases unpassable | R2 | W | E08 | **done** (2026-08-15)⁵ |
 | [D02](D02-name-resolution-is-accent-sensitive.md) | Name resolution is accent-sensitive, so "Crédito C6" cannot find "Credito C6" | R2 | W | — | **done** (2026-08-15)⁶ |
+| [D03](D03-cost-report-ignores-cached-input-tokens.md) | The cost report bills cached input tokens at full price, so every USD figure is too high | R2 | | E07 | ready⁷ |
 
 ### Dependency graph
 
@@ -159,6 +160,17 @@ missing `ReceiptDraft`; `build_world` already created it. The real blocker was t
 the fixture's items carried no category, so `propose_receipt` refused the very tool
 the photo turn instructs the agent to call. A stub test now walks propose → commit
 with no provider, so the case is provably passable for free.
+
+⁷ **D03 was found by comparing the report with the provider's bill.** E09
+reported ~$11 of spend for a session that actually cost **$2.54**. `cost_usd_for`
+prices every input token at the full rate, but `input_tokens` *includes* cached
+ones — measured at 47% of the prompt on a repeated read — and `ModelPrice` has no
+cached rate. The error is always in the same direction (over-report), which is
+safe for E01's ceiling and wrong for E07's report. **E09's 3.75× factor stands**:
+both sides were measured identically, and the cheap model has *more* to gain from
+caching than the one it beat. Distrust the absolute $/sweep, not the ratio.
+Nothing in the repo could have caught this — every test checks our arithmetic
+against our own inputs, and the arithmetic was self-consistent.
 
 ⁶ **D02 was found by E09's re-baseline, not by review.** `_resolve_by_name` was
 case-insensitive but accent-**sensitive**, so a model writing `Crédito C6` — correct
