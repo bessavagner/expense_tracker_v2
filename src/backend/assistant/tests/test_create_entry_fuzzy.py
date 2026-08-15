@@ -91,3 +91,87 @@ class TestCreateEntryCategoryCaseInsensitive:
         assert "criada" in result.lower() or "registrada" in result.lower()
         entry = Entry.objects.for_household(household).get(description="Cat minúscula")
         assert entry.category.name == "Alimentação"
+
+
+@pytest.mark.django_db
+class TestNameResolutionIsAccentInsensitive:
+    """D02: the resolver was case-insensitive but accent-SENSITIVE.
+
+    A live run on gpt-5.4 (2026-08-15) failed a behavioural case exactly here:
+    the user wrote "Credito C6", the model wrote "Crédito C6" — correct
+    Portuguese — and the tool refused a payment method its own error message
+    then listed. The same wall meets a user typing "alimentacao" on a phone
+    keyboard against a category stored as "Alimentação".
+    """
+
+    def test_an_accented_name_resolves_an_unaccented_row(
+        self, seeded_user, seeded_scope, household
+    ):
+        baker.make(
+            "finances.PaymentMethod",
+            household=household,
+            name="Credito C6 Sem Acento",
+            type="credit_card",
+            closing_day=25,
+        )
+
+        result = create_entry(
+            seeded_scope,
+            date_str="2026-06-12",
+            amount_str="30.00",
+            description="Acentuada",
+            category_name="Alimentação",
+            payment_method_name="Crédito C6 Sem Acento",
+        )
+
+        assert "não encontrada" not in result, result
+        entry = Entry.objects.for_household(household).get(description="Acentuada")
+        assert entry.payment_method.name == "Credito C6 Sem Acento"
+
+    def test_an_unaccented_name_resolves_an_accented_row(
+        self, seeded_user, seeded_scope, household
+    ):
+        """The phone-keyboard direction: no accents typed, accents stored."""
+        create_entry(
+            seeded_scope,
+            date_str="2026-06-12",
+            amount_str="30.00",
+            description="Sem acento",
+            category_name="Alimentacao",
+            payment_method_name="Credito C6",
+        )
+
+        entry = Entry.objects.for_household(household).get(description="Sem acento")
+        assert entry.category.name == "Alimentação"
+        assert entry.payment_method.name == "Crédito C6"
+
+    def test_the_ambiguity_message_still_names_the_stored_spelling(
+        self, seeded_user, seeded_scope, household
+    ):
+        """Folding is for MATCHING. What we show the user is what they stored."""
+        baker.make(
+            "finances.PaymentMethod",
+            household=household,
+            name="Crédito C6 Adicional",
+            type="credit_card",
+            closing_day=25,
+        )
+
+        result = create_entry(
+            seeded_scope,
+            date_str="2026-06-12",
+            amount_str="30.00",
+            description="Ambigua sem acento",
+            category_name="Alimentacao",
+            # Unaccented AND partial, so it cannot resolve exactly: it matches
+            # both stored methods and has to ask.
+            payment_method_name="credito c",
+        )
+
+        assert "ambígua" in result.lower()
+        assert "Crédito C6" in result
+        assert (
+            not Entry.objects.for_household(household)
+            .filter(description="Ambigua sem acento")
+            .exists()
+        )
