@@ -1,7 +1,8 @@
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
+from django.utils import timezone
 from model_bakery import baker
 
 from finances.models.entry import EntryType
@@ -298,26 +299,47 @@ def _month_before(d: date) -> date:
 
 
 @pytest.mark.django_db
-def test_a_window_entirely_before_a_brand_new_households_creation_is_empty(household):
-    """A brand-new household has no explicit origin and no data yet, so it
-    derives its origin from its own creation month (E11 step 3, no
-    `_early_origin` pin here). A window requested entirely before that must
-    come back empty — there is nothing to project before the household
-    existed.
-
-    The window is the month immediately BEFORE the household's real creation
-    month, not an arbitrary early date like 2000: if step 3 were deleted,
-    `projection_origin` would fall through to the module default
-    (Nov/2025), which sits before an arbitrary-early window too, and this
-    test would pass whether or not derivation actually ran. Anchoring to
-    creation - 1 month makes the assertion depend on step 3 specifically.
+class TestBrandNewHouseholdWindow:
+    """Frozen so that "the household was created this month" is a fact of the
+    test rather than of the run: `created_at` is `auto_now_add`, so an unfrozen
+    clock stamps it with whatever instant the suite happens to execute at, and
+    the assertion below then depends on where that instant falls relative to a
+    month boundary. Midday UTC (the documented default in
+    docs/testing-conventions.md) is the instant that makes the requirement
+    "creation month and the UTC calendar day agree" true, so nothing here rests
+    on the runner's own timezone.
     """
-    creation_month = household.created_at.date().replace(day=1)
-    month_before_creation = _month_before(creation_month)
 
-    rows = build_projection(household, month_before_creation, 1, today=date.today())
+    FROZEN_NOW = datetime(2026, 6, 15, 12, 0, tzinfo=UTC)
 
-    assert rows == []
+    @pytest.fixture(autouse=True)
+    def _frozen_clock(self, time_machine):
+        time_machine.move_to(self.FROZEN_NOW, tick=False)
+
+    def test_a_window_entirely_before_a_brand_new_households_creation_is_empty(self, household):
+        """A brand-new household has no explicit origin and no data yet, so it
+        derives its origin from its own creation month (E11 step 3, no
+        `_early_origin` pin here). A window requested entirely before that must
+        come back empty — there is nothing to project before the household
+        existed.
+
+        The window is the month immediately BEFORE the household's creation
+        month, not an arbitrary early date like 2000: if step 3 were deleted,
+        `projection_origin` would fall through to the module default
+        (Nov/2025), which sits before an arbitrary-early window too, and this
+        test would pass whether or not derivation actually ran. Anchoring to
+        creation - 1 month makes the assertion depend on step 3 specifically.
+
+        `created_at` is derived through `timezone.localtime` here for the same
+        reason step 3 does it: it is UTC-aware, and a raw `.date()` names a
+        different month from the household's own calendar near a boundary.
+        """
+        creation_month = timezone.localtime(household.created_at).date().replace(day=1)
+        month_before_creation = _month_before(creation_month)
+
+        rows = build_projection(household, month_before_creation, 1, today=self.FROZEN_NOW.date())
+
+        assert rows == []
 
 
 @pytest.mark.django_db
