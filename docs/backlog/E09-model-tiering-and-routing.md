@@ -128,11 +128,29 @@ Observable assertions:
       — `test_escalation_is_bounded_to_one_retry`: both reads are bad and the
       call count is exactly 2.
 - [ ] The model mix is changeable by env var, proven by changing it against a
-      deployed revision — **NOT MET.** Every model is env-configurable and
-      tested (`test_settings_tiers.py`, including the empty-value trap), and the
-      `gcloud` command is in the runbook. But nothing was deployed in this epic,
-      so the *proof against a deployed revision* is outstanding. Do it with the
-      next deploy and tick then.
+      deployed revision — **PARTIALLY MET.** The mix **is live in production**:
+      deployed 2026-08-15 as revision `expense-tracker-00046-l64`, verified by
+      querying the running container, which resolves `LLM_VISION_MODEL` to
+      `openai:gpt-5.6-luna` and `LLM_VISION_ESCALATION_MODEL` to
+      `openai:gpt-5.4-mini`, both priced. Every model is env-configurable and
+      tested (`test_settings_tiers.py`, including the empty-value trap).
+
+      What is still unproven is the literal assertion: **no model has been
+      changed by env var against a deployed revision.** The new defaults took
+      effect because `LLM_VISION_MODEL` was never set on the service — which is
+      a different thing from having exercised the override. The documented
+      rollback in `docs/runbook.md` is therefore **unrehearsed**. Rehearse it
+      once, in calm conditions, and tick then:
+
+      ```bash
+      gcloud run services update expense-tracker \
+        --project expense-tracker-482807 --region southamerica-east1 \
+        --update-env-vars LLM_VISION_MODEL=openai:gpt-5.4,LLM_VISION_ESCALATION_MODEL=openai:gpt-5.4
+      # verify, then remove the overrides to fall back to the code defaults:
+      gcloud run services update expense-tracker \
+        --project expense-tracker-482807 --region southamerica-east1 \
+        --remove-env-vars LLM_VISION_MODEL,LLM_VISION_ESCALATION_MODEL
+      ```
 - [x] `docs/runbook.md` documents the mix, its evidence, and the rollback
       — § *The production model mix (E09)*, including the escalation-rate query
       and what each reason means.

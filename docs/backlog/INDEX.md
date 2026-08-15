@@ -194,9 +194,16 @@ production bug this product exists to prevent. `luna` is as good as `mini` on te
 and 3.4× cheaper again, which is the measured answer if E10 ever needs a better
 degraded tier.
 
-The unticked box is *"proven by changing it against a deployed revision"*: every
-model is env-configurable and tested, but nothing was deployed in this epic. Tick it
-with the next deploy.
+**Deployed 2026-08-15** as revision `expense-tracker-00046-l64`, verified live. The
+deploy also carried **nine unshipped migrations**: E07's entire metering schema
+(`ModelPrice`, `UsageRecord`, the credit tables) had never reached production, so the
+cost ledger E07 delivered had been recording nothing. Worth checking on any epic
+closed by audit rather than by deploy.
+
+The one unticked box is the literal *"proven by changing it against a deployed
+revision"*. The mix went live because the service had no `LLM_VISION_MODEL` set, so
+the code defaults applied — the env-var override itself is still unexercised and the
+documented rollback is unrehearsed.
 
 The advice this footnote used to carry was followed first: the dataset went 7 → 15
 cases and the spread halved (0.14 → 0.068) before any candidate ran.
