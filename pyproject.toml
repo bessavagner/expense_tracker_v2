@@ -21,6 +21,9 @@ dependencies = [
     "django-allauth[mfa]>=65.19.1",
     "sentry-sdk[django]>=2.20",
     "logfire>=3.0",
+    # E10 / ADR-004. Brings `google-auth` transitively, which core.tasks.auth
+    # uses to verify the inbound OIDC token.
+    "google-cloud-tasks>=2.18",
 ]
 
 [tool.pytest.ini_options]

@@ -491,6 +491,39 @@ MAX_CSV_UPLOAD_BYTES = int(os.environ.get("MAX_CSV_UPLOAD_BYTES", str(10 * 1024 
 # assistant's five images plus slack.
 DATA_UPLOAD_MAX_NUMBER_FILES = 10
 
+# Async work pipeline (E10, ADR-004).
+#
+# Off by default, and that default is the whole local story: with
+# CLOUD_TASKS_ENABLED=0 the eager backend runs handlers in-process, so the
+# application needs no GCP credentials and no emulator to be complete. This is
+# the answer to E10 open question 4 — a synchronous fallback beat waiting for
+# an emulator that does not exist.
+CLOUD_TASKS_ENABLED = os.environ.get("CLOUD_TASKS_ENABLED", "0") == "1"
+# Half of Cloud Tasks' fixed 1 MiB task ceiling, which cannot be raised
+# (https://cloud.google.com/tasks/docs/quotas, "Maximum task size"). Only the
+# TaskRun id crosses the wire, so this guards the ROW: a multi-megabyte
+# JSONField on a pooled Supabase connection is its own problem, and refusing
+# here — with a message naming object storage — is what stops someone
+# discovering the limit as an unexplained dispatch failure. Receipt photos and
+# voice notes are far over it by design; they wait for E12's GCS bucket.
+TASK_PAYLOAD_MAX_BYTES = int(os.environ.get("TASK_PAYLOAD_MAX_BYTES", str(512 * 1024)))
+# The identity Cloud Tasks mints its OIDC token as. `core.tasks.auth` refuses
+# every task request when this is unset, which is the correct default on a
+# developer machine.
+CLOUD_TASKS_OIDC_SERVICE_ACCOUNT = os.environ.get("CLOUD_TASKS_OIDC_SERVICE_ACCOUNT", "")
+# The `aud` claim the token is minted for. Must equal the audience configured
+# on the task itself — this service's public base URL. A mismatch here is the
+# most common cause of a 403 on a task that looks correctly configured.
+CLOUD_TASKS_AUDIENCE = os.environ.get("CLOUD_TASKS_AUDIENCE", "")
+CLOUD_TASKS_PROJECT = os.environ.get("CLOUD_TASKS_PROJECT", "")
+# The queue must live in the same region as the service, or every dispatch
+# pays a cross-region hop it does not need.
+CLOUD_TASKS_LOCATION = os.environ.get("CLOUD_TASKS_LOCATION", "southamerica-east1")
+CLOUD_TASKS_QUEUE = os.environ.get("CLOUD_TASKS_QUEUE", "ledger-default")
+# This service's public base URL. Cloud Tasks calls back in over the internet,
+# so this is a real host name, not a loopback address.
+CLOUD_TASKS_TARGET_BASE_URL = os.environ.get("CLOUD_TASKS_TARGET_BASE_URL", "")
+
 # The abuse ceiling (E07 S07-3). These were E01's ASSISTANT_THROTTLE_* limits;
 # they are renamed, not weakened, because their JOB changed. E01 used them as
 # the quota. E07's quota is credits, and these are now purely the anti-abuse

@@ -510,6 +510,162 @@ breaks.
 
 ---
 
+## Async tasks (E10)
+
+Slow, retryable work runs off the request through Cloud Tasks. The queue calls
+back into this same service at `/tasks/<name>/`, verified by OIDC — the service
+is deployed `--allow-unauthenticated`, so Cloud Run does not check the token and
+`core/tasks/auth.py` does.
+
+**What actually runs off-request today: memory-rule embedding generation, and
+nothing else.** Transcription and receipt extraction are still inline. That is
+not an oversight — Cloud Tasks caps a task at 1 MiB, a fixed system limit, and a
+voice note is up to 25 MB. Those move when E12 lands a GCS bucket to park the
+bytes in.
+
+### Provisioning (one-off, per environment)
+
+```bash
+PROJECT=expense-tracker-482807
+REGION=southamerica-east1
+
+# 1. The identity Cloud Tasks mints its OIDC token as.
+gcloud iam service-accounts create ledger-tasks \
+  --display-name="Cloud Tasks OIDC identity for the ledger service" \
+  --project="$PROJECT"
+
+# 2. Let the Cloud Run runtime service account create tasks, and mint tokens
+#    as the identity above. Both are needed: enqueuer alone gets you a task
+#    with no token, and the handler will then 403 it.
+RUNTIME_SA="$(gcloud run services describe expense-tracker \
+  --project="$PROJECT" --region="$REGION" \
+  --format='value(spec.template.spec.serviceAccountName)')"
+
+gcloud projects add-iam-policy-binding "$PROJECT" \
+  --member="serviceAccount:${RUNTIME_SA}" \
+  --role="roles/cloudtasks.enqueuer"
+
+gcloud iam service-accounts add-iam-policy-binding \
+  "ledger-tasks@${PROJECT}.iam.gserviceaccount.com" \
+  --member="serviceAccount:${RUNTIME_SA}" \
+  --role="roles/iam.serviceAccountUser" \
+  --project="$PROJECT"
+
+# 3. The queue. Every limit here is chosen, not defaulted — the default
+#    maxAttempts is 100 and the default dispatch rate is 500/s, and this queue
+#    shares a 1-CPU instance with every page load.
+gcloud tasks queues create ledger-default \
+  --location="$REGION" --project="$PROJECT" \
+  --max-attempts=8 \
+  --min-backoff=10s \
+  --max-backoff=600s \
+  --max-doublings=4 \
+  --max-concurrent-dispatches=4 \
+  --max-dispatches-per-second=5 \
+  --log-sampling-ratio=1.0
+```
+
+`--max-attempts=8` is deliberately **higher** than any handler's own ceiling
+(`@task_handler(..., max_attempts=N)`, 4 for the embedding task). The
+application's ceiling is meant to win: when it is reached the handler answers
+200, the queue stops, and the `TaskRun` row records `dead`. If the queue's
+ceiling were the lower of the two, tasks would vanish with no row saying so —
+which is the failure the whole dead-letter path exists to prevent.
+
+### Deploy variables
+
+Add to `gcloud run deploy --set-env-vars` (see *Deploy a new revision*; keep the
+`^@^` separator, these values contain no commas but the existing ones do):
+
+```
+CLOUD_TASKS_ENABLED=1
+CLOUD_TASKS_PROJECT=expense-tracker-482807
+CLOUD_TASKS_LOCATION=southamerica-east1
+CLOUD_TASKS_QUEUE=ledger-default
+CLOUD_TASKS_TARGET_BASE_URL=https://<service-host>
+CLOUD_TASKS_AUDIENCE=https://<service-host>
+CLOUD_TASKS_OIDC_SERVICE_ACCOUNT=ledger-tasks@expense-tracker-482807.iam.gserviceaccount.com
+```
+
+`CLOUD_TASKS_AUDIENCE` must equal the base URL exactly, with no trailing slash.
+A mismatch is the single most common cause of a 403 on a task that otherwise
+looks correctly configured — the log line reads `Refused /tasks/…: token
+rejected: ValueError`.
+
+### Locally, and in CI
+
+Leave `CLOUD_TASKS_ENABLED` unset. The eager backend runs handlers in-process
+the moment they are enqueued: no GCP credentials, no emulator, no queue. The
+attempt accounting and the dead-letter decision are the same code
+(`core/tasks/execution.py`), so behaviour on the third failure does not differ
+between a laptop and production. What *does* differ, and is worth remembering:
+eager work runs inside the request that scheduled it, so locally there is no
+instance relief and no real backoff.
+
+### What it costs
+
+Cloud Tasks bills per operation and the first million per month are free. At
+this scale — a handful of memory rules a week — it is free. The cost that is
+real is the *embedding call* each task makes, which is already metered as a
+`UsageRecord` with `kind=embedding`; see *Spend ceilings*.
+
+### Inspecting a failed task
+
+Every task is a `TaskRun` row. Start in admin, at
+`https://<host>/<ADMIN_URL_PATH>/core/taskrun/`, filtered by status `Descartada`
+(dead). Or from a shell:
+
+```bash
+POSTGRES_PORT=5433 uv run python src/backend/manage.py shell -c "
+from core.models import TaskRun, TaskStatus
+for r in TaskRun.objects.filter(status=TaskStatus.DEAD).order_by('-created_at')[:20]:
+    print(r.pk, r.name, r.attempts, r.request_id, r.last_error[:120])
+"
+```
+
+The `request_id` column is the link back to the request that scheduled the
+work. Paste it into the Cloud Logging filter from *Start from the request ID* —
+it returns both the originating request and the task's own log lines, because
+`CloudTasksBackend` forwards it as `X-Request-ID` and `request_id_middleware`
+adopts it.
+
+Every dead-lettered task is also a Sentry event
+(`core/tasks/execution.py` calls `capture_exception` on the final failure), so
+the tracker is the other place to start.
+
+### Replaying a dead-lettered task
+
+```bash
+POSTGRES_PORT=5433 uv run python src/backend/manage.py replay_task <TASK_RUN_UUID>
+```
+
+In production, run it through the Cloud Run job or a `gcloud run services
+update`-style one-off — the same route as any other management command.
+
+The replay is a **new** `TaskRun`. The original keeps its `dead` status, its
+attempt count and its `last_error`, because that is the evidence you were
+reading a minute ago and overwriting it would be the wrong trade. Running the
+command twice for the same failure is deduplicated, so a double-typed command
+costs nothing.
+
+`--force` replays a task that has not been dead-lettered. Reach for it only when
+you know a task is stuck — for example a row left `pending` because the process
+died mid-handler.
+
+### How this misleads
+
+- **A `done` row does not mean the user got what they wanted.** It means the
+  handler returned without raising. For the embedding task that is a genuine
+  success; for a future handler, check what the handler actually asserts.
+- **`attempts` counts *dispatches this app saw*, not queue retries.** A task the
+  queue dropped before delivery — a bad URL, a 403 — never increments it. If a
+  `TaskRun` sits at `pending` with `attempts=0` and never moves, the problem is
+  between Cloud Tasks and the endpoint, not in the handler. Check the queue's
+  own logs:
+  `gcloud logging read 'resource.type="cloud_tasks_queue" resource.labels.queue_id="ledger-default"' --limit=20 --project=expense-tracker-482807`
+
+---
+
 ## Cold starts: the keepalive job
 
 `min-instances` is **0**, so an idle service scales to zero and the next request

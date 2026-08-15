@@ -2,6 +2,7 @@ import unicodedata
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
+import sentry_sdk
 from asgiref.sync import sync_to_async as _sync_to_async
 from django.db import transaction
 from django.db.models import Sum
@@ -16,6 +17,8 @@ from assistant.agents.memory import (
 )
 from assistant.models import MemoryRule, MemorySource, ReceiptDraft, ReceiptDraftStatus
 from assistant.services.embedding import get_embedding
+from assistant.tasks import EMBED_MEMORY_RULE
+from core.tasks import enqueue
 from finances.models import (
     Category,
     Entry,
@@ -1274,6 +1277,24 @@ def create_memory_rule(scope, trigger: str, field: str, value: str) -> str:
             "created_by": scope.user,
         },
     )
+    # The vector is generated off the request (E10 S10-4). Until it lands, the
+    # substring matcher in `find_matching_rules` still finds this rule, so the
+    # feature degrades to "exact trigger only" rather than breaking.
+    #
+    # The key is "this rule, at this value", not a hash of the payload: a
+    # correction that changes the value must re-embed, and re-saving the same
+    # value must not.
+    try:
+        enqueue(
+            EMBED_MEMORY_RULE,
+            {"rule_id": str(rule.pk)},
+            idempotency_key=f"{EMBED_MEMORY_RULE}:{rule.pk}:{rule.value}",
+        )
+    except Exception:
+        # A rule the user just taught us must survive an unavailable queue.
+        # Only semantic recall is delayed; Sentry gets the reason.
+        sentry_sdk.capture_exception()
+
     action = "criada" if created else "atualizada"
     return f"Regra de memória {action}: '{trigger}' → {field}='{value}'."
 
