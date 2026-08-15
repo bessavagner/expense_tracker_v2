@@ -13,22 +13,27 @@ is in the `baseline-15-*.json` files beside this one.
 E09's regression threshold is "within one measured spread", and the 0.14 spread
 came from seven cases. Carrying it to a different dataset would be quoting a
 number about something else. Two things also changed underneath it: the dataset
-doubled (E09 Task 2), and D01 was fixed, so a behavioural case that no model
-could pass is now passable.
+doubled (E09 Task 2), and two defects were fixed — D01, a fixture no model could
+pass, and D02, an accent-sensitive name resolver in production.
 
 ## The production baseline
 
 | | Extraction | Behaviour |
 |---|---|---|
 | Cases | 15 | 7 |
-| Score (mean of 3) | **0.699** | **0.857** |
-| Runs | 0.723 / 0.655 / 0.719 | 0.857 / 0.857 / 0.857 |
+| Score (mean of 3) | **0.699** | **1.000** |
+| Runs | 0.723 / 0.655 / 0.719 | 1.000 / 1.000 / 1.000 |
 | Range | 0.655 – 0.723 | — |
 | **Spread** | **0.068** | **0.000** |
 | `money_ok_rate` | **0.711** (0.667 – 0.733) | — |
-| Cost per sweep | **$0.3530** | $0.4623 |
-| Input tokens per sweep | 74,881 | 173,960 |
-| Latency per call | 7.8 s | 3.9 s |
+| Cases passed | — | 7 of 7, every run |
+| Cost per sweep | **$0.3530** | $0.4272 |
+| Input tokens per sweep | 74,881 | ~150,000 |
+| Latency per call | 7.8 s | 3.4 s |
+
+The behavioural suite was measured **after** D02 was fixed. Before the fix it
+read 0.857 (6/7) on all three runs, and the missing case was the accent defect
+below, not the model.
 
 ### The spread halved, which was the point
 
@@ -39,9 +44,8 @@ could pass is now passable.
 | Behaviour spread | 0.14 | **0.000** |
 
 The behavioural spread collapsing to zero is not luck. E08's 0.14 came from two
-cases flapping, and both now have a known cause: `hipermacional-six-categories`
-was unpassable (D01, fixed) and `billing-month-after-closing-day` fails for a
-tool defect (D02, below) rather than at random.
+cases flapping, and both had a cause rather than being noise: D01 and D02, both
+now fixed. See *The behavioural score was never about the model* below.
 
 ### The score fell, and that is the dataset working
 
@@ -66,19 +70,33 @@ this shape, so this defect was invisible and `money_ok_rate` read 0.914.
 
 This is not a reason to soften the gate. It is the reason the gate exists.
 
-### One behavioural case fails for a tool defect, not a model defect
+### The behavioural score was never about the model
 
-`billing-month-after-closing-day` fails 3/3 with `ledger total 0`. The model
-reads it correctly and calls `register_entry` with `payment_method_name:
-"Crédito C6"` — correct Portuguese — against a row stored as `Credito C6`.
-`_resolve_by_name` is case-insensitive but accent-**sensitive**, so it refuses,
-and the case has one turn in which to recover. Written up as **D02**.
+The behavioural suite now scores **1.000 — 7 of 7, three runs, zero spread**.
+E08 measured 0.810 on the same model and the same cases. Nothing about gpt-5.4
+changed. Both missing cases were defects on our side:
 
-Unlike D01 the case IS passable: a model that echoes the user's unaccented
-spelling gets through, and gpt-5.4 did in one of E08's three runs. So **0.857 is
-a floor, 1.000 the ceiling** on this suite until D02 lands. Any candidate scored
-against this baseline is charged for the same defect, so comparisons between
-models stay fair; only the absolute number is depressed.
+| | Cause | Fixed |
+|---|---|---|
+| `hipermacional-six-categories-no-double-count` | The fixture's items carried no category, so `propose_receipt` refused the very tool the photo turn instructs the agent to call. No model could pass it. | **D01** |
+| `billing-month-after-closing-day` | The model called `register_entry` with `payment_method_name: "Crédito C6"` — correct Portuguese — against a row stored `Credito C6`. `_resolve_by_name` was case-insensitive but accent-**sensitive**, so the tool refused a method its own error message then listed. | **D02** |
+
+That is worth stating plainly, because E09 exists to choose a model on these
+numbers: **0.810 was a measurement of our harness and our tools, not of the
+model.** A cheaper candidate scored against 0.810 could have looked adequate
+while genuinely regressing, since a fifth of the deficit was ours and would not
+have moved when the model did.
+
+D02 was a real production bug on the main path, not only a harness artefact: a
+household that stored `Alimentação` could not type `alimentacao` from a phone
+keyboard, and one that stored `Alimentacao` was refused whenever anything wrote
+the word properly.
+
+**A perfect behavioural baseline changes what that suite can now tell us.** At
+1.000 it can no longer separate good candidates from excellent ones — it can
+only detect a candidate that is *worse*. For E09 that is exactly its job: the
+question is whether a cheaper text model regresses, and any drop from 1.000 is
+now unambiguous rather than lost in noise.
 
 ## The gates E09 is measured against
 
@@ -93,6 +111,10 @@ rather than argued backwards from it.
 > (0.699 − 0.068, the mean less one measured spread), and its `money_ok_rate`
 > must be **≥ 0.711** — no drop at all. A cheaper model that misprorates a
 > discount is not cheaper.
+>
+> **Behavioural gate.** A candidate text model must stay at **1.000** on the
+> behavioural suite. The spread there is 0.000 over three runs, so any drop is a
+> real regression and not variance.
 >
 > **Escalation gate.** The escalation rate must be materially below 100%. At
 > 100% the cheap model is not cheap: every receipt is paid for twice.
@@ -114,5 +136,6 @@ for i in 1 2 3; do
 done
 ```
 
-Same again with `--suite behaviour`. Both sweeps cost about **$0.82** together;
-three of each is about **$2.45**.
+Same again with `--suite behaviour`. Both sweeps cost about **$0.78** together;
+three of each is about **$2.34**. The behavioural figures here were measured
+after the D02 fix; the pre-fix run is in this directory's git history.

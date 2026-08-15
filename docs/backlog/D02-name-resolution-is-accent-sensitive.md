@@ -2,7 +2,7 @@
 id: D02
 title: Name resolution is accent-sensitive, so "Crédito C6" cannot find "Credito C6"
 release: R2
-status: ready
+status: done
 depends_on: []
 blocks: []
 wedge_critical: false
@@ -72,13 +72,15 @@ as a floor and 1.00 as the ceiling until this is fixed.
 
 ## What to do
 
-- [ ] `_resolve_by_name` compares accent-folded, case-folded names on both
+- [x] `_resolve_by_name` compares accent-folded, case-folded names on both
       sides, for exact and partial matches alike
-- [ ] Tests: `Crédito C6` resolves a row stored as `Credito C6`, and
+- [x] Tests: `Crédito C6` resolves a row stored as `Credito C6`, and
       `alimentacao` resolves a row stored as `Alimentação`
-- [ ] The ambiguity path still reports the **stored** names, not the folded ones
-- [ ] Re-run the behavioural suite and record whether
-      `billing-month-after-closing-day` passes 3/3
+- [x] The ambiguity path still reports the **stored** names, not the folded ones
+- [x] Re-run the behavioural suite: `billing-month-after-closing-day` passes
+      **3/3**, and the whole suite went from 0.857 (6/7) to **1.000 (7/7)** on
+      all three runs. See
+      `docs/superpowers/evidence/eval/baseline-15-cases-2026-08-15.md`.
 
 Prefer folding in Python over an `unaccent` extension: the comparison set is one
 household's categories and payment methods — tens of rows, not thousands — and
