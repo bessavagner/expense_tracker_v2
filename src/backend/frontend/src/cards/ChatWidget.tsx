@@ -28,6 +28,7 @@ const MAX_IMAGES = 5;
 
 interface Props {
   apiUrl: string;
+  autostart?: string;
 }
 
 const GENERIC_ERROR = "Erro de conexão. Tente novamente.";
@@ -205,8 +206,9 @@ function MarkdownMessage({ content }: { content: string }) {
   );
 }
 
-export default function ChatWidget({ apiUrl }: Props) {
+export default function ChatWidget({ apiUrl, autostart }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
@@ -244,13 +246,14 @@ export default function ChatWidget({ apiUrl }: Props) {
 
   // Load history on first open
   useEffect(() => {
-    if (isOpen && messages.length === 0) {
+    if (isOpen && messages.length === 0 && !historyLoaded) {
       fetch(`${apiUrl}history/`, { credentials: "same-origin" })
         .then((r) => r.json())
         .then((data: Message[]) => setMessages(data))
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => setHistoryLoaded(true));
     }
-  }, [isOpen, apiUrl]);
+  }, [isOpen, apiUrl, historyLoaded, messages.length]);
 
   // Auto-scroll
   useEffect(() => {
@@ -273,6 +276,16 @@ export default function ChatWidget({ apiUrl }: Props) {
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
   }, []);
+
+  // Any surface can ask for the chat (see frontend/src/chat.ts); the last
+  // onboarding step asks by loading `/?comecar=foto`, which is the whole point
+  // of S11-3's "ends by handing the user to the activation moment".
+  useEffect(() => {
+    const onOpenChat = () => setIsOpen(true);
+    window.addEventListener("open-chat", onOpenChat);
+    if (autostart === "foto") setIsOpen(true);
+    return () => window.removeEventListener("open-chat", onOpenChat);
+  }, [autostart]);
 
   // Encaixe: empurra o conteúdo principal abrindo espaço para o painel.
   useEffect(() => {
@@ -713,6 +726,38 @@ export default function ChatWidget({ apiUrl }: Props) {
 
   const chatMessages = (
     <div className="flex-1 overflow-y-auto p-3 space-y-2">
+      {historyLoaded && messages.length === 0 && (
+        <div className="p-4 text-sm">
+          <p className="font-semibold">Oi! Eu lanço seus gastos para você.</p>
+          <p className="opacity-70 mt-1">
+            Não precisa saber o nome das categorias — eu descubro. Tente
+            assim:
+          </p>
+          <div className="flex flex-col gap-2 mt-3">
+            <button
+              type="button"
+              className="btn btn-sm btn-outline justify-start"
+              onClick={() => setInput("me manda uma foto do cupom")}
+            >
+              📷 Me manda uma foto do cupom
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-outline justify-start"
+              onClick={() => setInput("gastei 45 no mercado no crédito")}
+            >
+              💬 “gastei 45 no mercado no crédito”
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-outline justify-start"
+              onClick={() => setInput("quanto gastei este mês?")}
+            >
+              📊 “quanto gastei este mês?”
+            </button>
+          </div>
+        </div>
+      )}
       {messages.map((msg) =>
         msg.role === "notice" ? (
           <div key={msg.id} role="status" className="alert alert-soft alert-info text-xs">

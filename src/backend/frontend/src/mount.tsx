@@ -31,10 +31,11 @@ function mountAll() {
     const name = el.getAttribute("data-react-component");
     const apiUrl = el.getAttribute("data-api-url") || "";
     const sparkUrl = el.getAttribute("data-spark-url") ?? undefined;
+    const autostart = el.getAttribute("data-autostart") || undefined;
     if (name && COMPONENTS[name]) {
       const Component = COMPONENTS[name];
       const root = createRoot(el);
-      root.render(<Component apiUrl={apiUrl} sparkUrl={sparkUrl} />);
+      root.render(<Component apiUrl={apiUrl} sparkUrl={sparkUrl} autostart={autostart} />);
     }
   });
 }

@@ -54,7 +54,8 @@
     </div>
 
     <!-- Floating chat island (React) -->
-    <div data-react-component="ChatWidget" data-api-url="/api/assistant/"></div>
+    <div data-react-component="ChatWidget" data-api-url="/api/assistant/"
+         data-autostart="{{ request.GET.comecar|default:'' }}"></div>
 
     <!-- Floating "+" FAB: opens the shared entry modal; persists on every page -->
     <button id="fab-new-entry"
