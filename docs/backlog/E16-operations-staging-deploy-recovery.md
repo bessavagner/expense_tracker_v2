@@ -2,7 +2,7 @@
 id: E16
 title: "Operations: staging, deploy & recovery"
 release: R4
-status: blocked
+status: ready
 depends_on: [E06]
 blocks: []
 wedge_critical: false

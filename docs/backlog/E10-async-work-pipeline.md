@@ -2,7 +2,7 @@
 id: E10
 title: Async work pipeline
 release: R2
-status: blocked
+status: ready
 depends_on: [E06]
 blocks: [E12]
 wedge_critical: true

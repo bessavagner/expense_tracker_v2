@@ -2,7 +2,7 @@
 id: E14
 title: Product analytics
 release: R3
-status: blocked
+status: ready
 depends_on: [E06, E11]
 blocks: []
 wedge_critical: false
