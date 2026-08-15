@@ -187,7 +187,7 @@ class TestChatEndpoint:
         before = ReceiptDraft.objects.for_household(household).count()
 
         async def fake_extract(
-            images, categories=None, payment_methods=None, model=None, *, scope=None
+            images, categories=None, payment_methods=None, model=None, *, scope=None, **kwargs
         ):
 
             return ReceiptExtraction(
@@ -259,19 +259,27 @@ class TestChatEndpoint:
         response = logged_client.post("/api/assistant/chat/", data={"image": big})
         assert response.status_code == 400
 
-    def test_image_fallback_uses_vision_model(self, logged_client, user, monkeypatch, settings):
-        """Quando a extração inicial falha, o fallback tenta com LLM_VISION_MODEL."""
+    def test_image_fallback_uses_the_escalation_model(
+        self, logged_client, user, monkeypatch, settings
+    ):
+        """Quando a leitura barata falha, a segunda tentativa usa o modelo FORTE.
+
+        Antes de E09 as duas chamadas usavam LLM_VISION_MODEL — o mesmo modelo —
+        então a 'segunda tentativa' só sobrevivia a uma falha transitória e nunca
+        podia melhorar uma leitura ruim.
+        """
         settings.LLM_VISION_MODEL = "openai:vision-sentinel"
+        settings.LLM_VISION_ESCALATION_MODEL = "openai:strong-sentinel"
         captured = {}
 
         async def fake_extract(
-            images, categories=None, payment_methods=None, model=None, *, scope=None
+            images, categories=None, payment_methods=None, model=None, *, scope=None, **kwargs
         ):
 
             captured.setdefault("calls", []).append(model)
-            if model is None:
+            if len(captured["calls"]) == 1:
                 raise RuntimeError("primeira extração falha")
-            # segunda chamada com vision model tem sucesso
+            # segunda chamada, no modelo forte, tem sucesso
             from assistant.agents.extraction import ReceiptExtraction
 
             return ReceiptExtraction()
@@ -288,8 +296,8 @@ class TestChatEndpoint:
             response = logged_client.post("/api/assistant/chat/", data={"image": image})
             consume_streaming(response)
 
-        assert captured["calls"][0] is None, "primeira chamada sem model override"
-        assert captured["calls"][1] == "openai:vision-sentinel", "segunda usa LLM_VISION_MODEL"
+        assert captured["calls"][0] == "openai:vision-sentinel", "primeira é a leitura barata"
+        assert captured["calls"][1] == "openai:strong-sentinel", "segunda escala para o forte"
 
     def test_image_is_preprocessed_before_send(self, logged_client, user, monkeypatch):
         """_handle_image deve passar a imagem por prepare_receipt_image."""
@@ -306,7 +314,7 @@ class TestChatEndpoint:
         from assistant.agents.extraction import ReceiptExtraction
 
         async def fake_extract(
-            images, categories=None, payment_methods=None, model=None, *, scope=None
+            images, categories=None, payment_methods=None, model=None, *, scope=None, **kwargs
         ):
 
             calls["extract_images"] = images
@@ -338,7 +346,7 @@ class TestChatEndpoint:
         captured = {}
 
         async def fake_extract(
-            images, categories=None, payment_methods=None, model=None, *, scope=None
+            images, categories=None, payment_methods=None, model=None, *, scope=None, **kwargs
         ):
 
             captured["images"] = images
@@ -494,7 +502,7 @@ class TestChatEndpoint:
         captured = {}
 
         async def fake_extract(
-            images, categories=None, payment_methods=None, model=None, *, scope=None
+            images, categories=None, payment_methods=None, model=None, *, scope=None, **kwargs
         ):
 
             captured["categories"] = categories
@@ -682,7 +690,7 @@ class TestChokepointWiring:
         captured = {}
 
         async def fake_extract(
-            images, categories=None, payment_methods=None, model=None, *, scope=None
+            images, categories=None, payment_methods=None, model=None, *, scope=None, **kwargs
         ):
             return ReceiptExtraction()
 
@@ -910,3 +918,164 @@ class TestHistoryEndpoint:
         client = Client()
         response = client.get("/api/assistant/history/")
         assert response.status_code == 403
+
+
+_PNG_1PX = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00"
+    b"\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9c"
+    b"c\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
+def _good_extraction():
+    """Confident, and the items cover what was paid. Nothing to escalate."""
+    from decimal import Decimal
+
+    from assistant.agents.extraction import ReceiptExtraction, ReceiptItem
+
+    return ReceiptExtraction(
+        store="Loja",
+        date="2026-06-12",
+        amount_paid=Decimal("10.00"),
+        confidence=0.9,
+        items=[ReceiptItem(description="X", line_total=Decimal("10.00"), category="Casa")],
+    )
+
+
+def _inconsistent_extraction():
+    """The items come nowhere near the amount paid: a line was missed."""
+    from decimal import Decimal
+
+    from assistant.agents.extraction import ReceiptExtraction, ReceiptItem
+
+    return ReceiptExtraction(
+        store="Loja",
+        date="2026-06-12",
+        amount_paid=Decimal("99.00"),
+        confidence=0.9,
+        items=[ReceiptItem(description="X", line_total=Decimal("10.00"), category="Casa")],
+    )
+
+
+@pytest.mark.django_db
+class TestVisionEscalation:
+    """E09 S09-3: read cheap first, escalate once, and only on a real signal."""
+
+    def _post_image(self, logged_client):
+        image = SimpleUploadedFile("recibo.png", _PNG_1PX, content_type="image/png")
+        with assistant_agent.override(model=TestModel()):
+            response = logged_client.post("/api/assistant/chat/", data={"image": image})
+            consume_streaming(response)
+        return response
+
+    def test_a_confident_read_never_calls_the_second_model(
+        self, logged_client, user, household, monkeypatch, settings
+    ):
+        """The saving IS the calls not made. This test is the cost gate."""
+        settings.LLM_VISION_MODEL = "cheap:model"
+        settings.LLM_VISION_ESCALATION_MODEL = "strong:model"
+        calls = []
+
+        async def fake_extract(images, **kwargs):
+            calls.append(kwargs.get("model"))
+            return _good_extraction()
+
+        monkeypatch.setattr("assistant.views.extract_receipt", fake_extract)
+
+        self._post_image(logged_client)
+
+        assert calls == ["cheap:model"]
+
+    def test_an_inconsistent_read_escalates_once(
+        self, logged_client, user, household, monkeypatch, settings
+    ):
+        settings.LLM_VISION_MODEL = "cheap:model"
+        settings.LLM_VISION_ESCALATION_MODEL = "strong:model"
+        calls = []
+
+        async def fake_extract(images, **kwargs):
+            calls.append(kwargs.get("model"))
+            return _inconsistent_extraction() if len(calls) == 1 else _good_extraction()
+
+        monkeypatch.setattr("assistant.views.extract_receipt", fake_extract)
+
+        self._post_image(logged_client)
+
+        assert calls == ["cheap:model", "strong:model"]
+
+    def test_escalation_is_bounded_to_one_retry(
+        self, logged_client, user, household, monkeypatch, settings
+    ):
+        """DoD: bounded to one retry, never a loop. Both reads are bad here."""
+        settings.LLM_VISION_MODEL = "cheap:model"
+        settings.LLM_VISION_ESCALATION_MODEL = "strong:model"
+        calls = []
+
+        async def fake_extract(images, **kwargs):
+            calls.append(kwargs.get("model"))
+            return _inconsistent_extraction()
+
+        monkeypatch.setattr("assistant.views.extract_receipt", fake_extract)
+
+        self._post_image(logged_client)
+
+        assert len(calls) == 2
+
+    def test_a_failed_first_read_escalates_rather_than_giving_up(
+        self, logged_client, user, household, monkeypatch, settings
+    ):
+        """The old retry re-ran the SAME model, so it could only survive a blip."""
+        settings.LLM_VISION_MODEL = "cheap:model"
+        settings.LLM_VISION_ESCALATION_MODEL = "strong:model"
+        calls = []
+
+        async def fake_extract(images, **kwargs):
+            calls.append(kwargs.get("model"))
+            if len(calls) == 1:
+                raise RuntimeError("primeira leitura falhou")
+            return _good_extraction()
+
+        monkeypatch.setattr("assistant.views.extract_receipt", fake_extract)
+
+        self._post_image(logged_client)
+
+        assert calls == ["cheap:model", "strong:model"]
+
+    def test_the_escalated_call_records_its_reason(
+        self, logged_client, user, household, monkeypatch, settings
+    ):
+        settings.LLM_VISION_MODEL = "cheap:model"
+        settings.LLM_VISION_ESCALATION_MODEL = "strong:model"
+        calls = []
+
+        async def fake_extract(images, **kwargs):
+            calls.append(kwargs.get("escalation_reason", ""))
+            return _inconsistent_extraction() if len(calls) == 1 else _good_extraction()
+
+        monkeypatch.setattr("assistant.views.extract_receipt", fake_extract)
+
+        self._post_image(logged_client)
+
+        assert calls == ["", "inconsistent"]
+
+    def test_the_escalated_read_is_the_one_that_reaches_the_draft(
+        self, logged_client, user, household, monkeypatch, settings
+    ):
+        """Escalating and then discarding the better read would spend for nothing."""
+        from assistant.models import ReceiptDraft
+
+        settings.LLM_VISION_MODEL = "cheap:model"
+        settings.LLM_VISION_ESCALATION_MODEL = "strong:model"
+        calls = []
+
+        async def fake_extract(images, **kwargs):
+            calls.append(kwargs.get("model"))
+            return _inconsistent_extraction() if len(calls) == 1 else _good_extraction()
+
+        monkeypatch.setattr("assistant.views.extract_receipt", fake_extract)
+
+        self._post_image(logged_client)
+
+        draft = ReceiptDraft.objects.for_household(household).order_by("-created_at").first()
+        assert draft is not None
+        assert (draft.payload or {}).get("amount_paid") == "10.00"

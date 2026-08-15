@@ -8,6 +8,7 @@ from django.http import JsonResponse, StreamingHttpResponse
 from django.views.decorators.http import require_GET, require_http_methods
 
 from assistant.agents.assistant import assistant_agent
+from assistant.agents.escalation import should_escalate
 from assistant.agents.extraction import (
     extract_receipt,
     extraction_to_prompt,
@@ -519,25 +520,8 @@ async def _handle_images(request, scope, decision, images, caption):
     cats = await sync_to_async(list_categories)(scope)
     pms = await sync_to_async(list_payment_methods)(scope)
 
-    # Fase 1: extração estruturada (combina todas as imagens num recibo).
+    # Fase 1: leitura BARATA (combina todas as imagens num recibo).
     extraction = None
-    try:
-        extraction = await extract_receipt(
-            prepared, categories=cats, payment_methods=pms, scope=scope
-        )
-    except Exception:
-        # No explicit capture_exception: Sentry's logging integration turns an
-        # ERROR-level record into an event, and logger.exception is ERROR. Adding
-        # one here would double-report.
-        logger.exception("Falha na extração estruturada do recibo; tentando com modelo de visão.")
-
-    if extraction is not None:
-        return await _dispatch_extraction(
-            scope, decision, chat_msg, extraction, caption, user_label
-        )
-
-    # Fallback: tenta UMA vez a extração com o modelo de visão; sem sucesso,
-    # pede reenvio (nunca grava direto).
     try:
         extraction = await extract_receipt(
             prepared,
@@ -550,8 +534,32 @@ async def _handle_images(request, scope, decision, images, caption):
         # No explicit capture_exception: Sentry's logging integration turns an
         # ERROR-level record into an event, and logger.exception is ERROR. Adding
         # one here would double-report.
-        logger.exception("Extração do recibo falhou mesmo com o modelo de visão.")
-        extraction = None
+        logger.exception("Leitura barata do recibo falhou; escalando.")
+
+    # Fase 2: UMA escalação para o modelo forte, e só quando um sinal dispara.
+    # Antes deste bloco a segunda tentativa reexecutava LLM_VISION_MODEL — o
+    # mesmo modelo — então só sobrevivia a falha transitória e nunca melhorava
+    # uma leitura ruim que tivesse RETORNADO.
+    reason = should_escalate(extraction)
+    if reason is not None:
+        logger.info("Escalando leitura do recibo: %s", reason)
+        try:
+            escalated = await extract_receipt(
+                prepared,
+                categories=cats,
+                payment_methods=pms,
+                model=settings.LLM_VISION_ESCALATION_MODEL,
+                scope=scope,
+                escalation_reason=reason,
+            )
+        except Exception:
+            logger.exception("Extração do recibo falhou mesmo no modelo forte.")
+        else:
+            # Fica com a leitura escalada mesmo que ela também não feche: é a do
+            # modelo mais forte, e há exatamente UMA tentativa (DoD: nunca um
+            # laço). `receipt_needs_review` a jusante ainda leva o usuário à
+            # confirmação campo a campo quando não fecha.
+            extraction = escalated
 
     if extraction is None:
 
