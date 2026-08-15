@@ -507,6 +507,14 @@ CLOUD_TASKS_ENABLED = os.environ.get("CLOUD_TASKS_ENABLED", "0") == "1"
 # discovering the limit as an unexplained dispatch failure. Receipt photos and
 # voice notes are far over it by design; they wait for E12's GCS bucket.
 TASK_PAYLOAD_MAX_BYTES = int(os.environ.get("TASK_PAYLOAD_MAX_BYTES", str(512 * 1024)))
+# The identity Cloud Tasks mints its OIDC token as. `core.tasks.auth` refuses
+# every task request when this is unset, which is the correct default on a
+# developer machine.
+CLOUD_TASKS_OIDC_SERVICE_ACCOUNT = os.environ.get("CLOUD_TASKS_OIDC_SERVICE_ACCOUNT", "")
+# The `aud` claim the token is minted for. Must equal the audience configured
+# on the task itself — this service's public base URL. A mismatch here is the
+# most common cause of a 403 on a task that looks correctly configured.
+CLOUD_TASKS_AUDIENCE = os.environ.get("CLOUD_TASKS_AUDIENCE", "")
 
 # The abuse ceiling (E07 S07-3). These were E01's ASSISTANT_THROTTLE_* limits;
 # they are renamed, not weakened, because their JOB changed. E01 used them as
