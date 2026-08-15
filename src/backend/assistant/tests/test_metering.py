@@ -388,7 +388,7 @@ class TestExtractionIsMetered:
         from assistant.agents.extraction import ReceiptExtraction
         from assistant.tests.fakes import FakeRunResult
 
-        async def flaky_run(prompt, model=None):
+        async def flaky_run(prompt, model=None, model_settings=None):
             if model is None:
                 raise RuntimeError("primeira extração falha")
             return FakeRunResult(ReceiptExtraction())

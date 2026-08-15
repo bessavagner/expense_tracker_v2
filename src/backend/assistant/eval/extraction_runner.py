@@ -18,6 +18,7 @@ from assistant.agents.extraction import (
     build_extraction_prompt,
     extraction_agent,
 )
+from assistant.agents.model_compat import settings_for
 from assistant.eval.dataset import ReceiptCase
 
 
@@ -45,7 +46,7 @@ async def run_extraction_case(case: ReceiptCase, model) -> RawRun:
     )
     started = time.perf_counter()
     try:
-        result = await extraction_agent.run(prompt, model=model)
+        result = await extraction_agent.run(prompt, model=model, model_settings=settings_for(model))
     except Exception as exc:  # noqa: BLE001 - a failed read is data, not a crash
         return RawRun(
             case_id=case.id,

@@ -13,6 +13,7 @@ from assistant.agents.extraction import (
     extraction_to_prompt,
     receipt_needs_review,
 )
+from assistant.agents.model_compat import settings_for
 from assistant.agents.scope import AgentScope
 from assistant.metering import Timer, record_usage
 from assistant.models import (
@@ -151,7 +152,15 @@ def _sse_response(
             try:
                 with timer:
                     async with agent.run_stream(
-                        prompt, deps=scope, message_history=message_history, model=attempt_model
+                        prompt,
+                        deps=scope,
+                        message_history=message_history,
+                        model=attempt_model,
+                        # Per-attempt, not per-request: the fallback is often a
+                        # different provider from the primary (the Essential tier
+                        # falls back to an OpenRouter model), and its quirks are
+                        # its own.
+                        model_settings=settings_for(attempt_model),
                     ) as stream:
                         async for text in stream.stream_text(delta=True):
                             full_response += text

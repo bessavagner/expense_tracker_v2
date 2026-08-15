@@ -16,6 +16,7 @@ from django.conf import settings
 from pydantic import BaseModel, field_validator
 from pydantic_ai import Agent, BinaryContent
 
+from assistant.agents.model_compat import settings_for
 from assistant.metering import Timer
 
 _BR_DATE_RE = re.compile(r"^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})$")
@@ -220,10 +221,13 @@ async def extract_receipt(
     # explicitly. Recording the resolved name keeps both attempts comparable in
     # the operator report.
     resolved = str(model or settings.LLM_VISION_MODEL)
+    # Matched on `resolved`, not on `model`: with `model=None` the agent runs
+    # LLM_VISION_MODEL, and that is the string whose provider quirks apply.
+    compat = settings_for(resolved)
     timer = Timer()
     try:
         with timer:
-            result = await extraction_agent.run(prompt, model=model)
+            result = await extraction_agent.run(prompt, model=model, model_settings=compat)
     except Exception:
         # Metered before re-raising: the provider read the image and charged
         # for it whether or not it gave us usable JSON back (S07-2).

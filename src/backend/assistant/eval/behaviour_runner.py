@@ -19,6 +19,7 @@ from asgiref.sync import sync_to_async
 from django.utils import timezone
 
 from assistant.agents.assistant import assistant_agent
+from assistant.agents.model_compat import settings_for
 from assistant.agents.scope import AgentScope
 from assistant.eval.behaviour import BehaviourCase, LedgerRow
 
@@ -164,7 +165,11 @@ async def run_behaviour_case(case: BehaviourCase, model, household, user) -> Beh
         for prompt in prompts:
             try:
                 result = await assistant_agent.run(
-                    prompt, deps=scope, message_history=history, model=model
+                    prompt,
+                    deps=scope,
+                    message_history=history,
+                    model=model,
+                    model_settings=settings_for(model),
                 )
             except Exception as exc:  # noqa: BLE001 - a failed turn is data
                 error = f"{type(exc).__name__}: {exc}"
