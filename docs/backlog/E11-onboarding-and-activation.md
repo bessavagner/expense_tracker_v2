@@ -2,7 +2,7 @@
 id: E11
 title: Onboarding & activation
 release: R3
-status: ready
+status: review
 depends_on: [E05]
 blocks: [E14, E17]
 wedge_critical: true
@@ -98,14 +98,31 @@ cd src/backend/frontend && pnpm build
 
 Observable assertions:
 
-- [ ] The activation event is documented in this repo and emitted as a measurable event
-- [ ] A brand-new household can record an entry with zero manual setup
-- [ ] Seeded categories align with the assistant's category rules, verified by test
-- [ ] Guided setup is at most five steps, every one skippable, progress resumable
-- [ ] Every listed surface has a purposeful empty state
-- [ ] **An unaided walkthrough has been done by a real person who has not seen the product**, from signup to activation, and their friction points are recorded
-- [ ] The walkthrough was performed on a phone, since the product ships as a PWA and Android TWA
-- [ ] Time from signup to activation is measurable
+- [x] The activation event is documented in this repo and emitted as a measurable event — `docs/architecture/activation-event.md`; emitted from `assistant/agents/tools.py::commit_receipt`; `assistant/tests/test_activation_event.py`
+- [x] A brand-new household can record an entry with zero manual setup — `accounts/tests/test_starter_data.py::TestSignupSeeds`
+- [x] Seeded categories align with the assistant's category rules, verified by test — `test_every_starter_memory_rule_targets_a_starter_category`, which reads both lists from independent modules
+- [x] Guided setup is at most five steps, every one skippable, progress resumable — `accounts/tests/test_onboarding_flow.py`, `test_onboarding_state.py`; three steps against a ceiling of five
+- [x] Every listed surface has a purposeful empty state — `finances/tests/test_empty_states.py` covers dashboard, entries, cockpit, projection, consolidated and settings
+- [ ] **An unaided walkthrough has been done by a real person who has not seen the product**, from signup to activation, and their friction points are recorded — **NOT DONE**, see ¹
+- [ ] The walkthrough was performed on a phone, since the product ships as a PWA and Android TWA — **NOT DONE**, see ¹
+- [x] Time from signup to activation is measurable — `manage.py activation_report`, `core/tests/test_activation_report.py`
+
+¹ **The two unticked boxes are the same box, and they are the point of the
+epic.** Everything a machine can check is green: 1787 tests, coverage 92%
+against a gate of 80%, lint and format clean, migrations reversible and
+rehearsed, and the frontend building. None of that is the evidence this epic
+asked for. The DoD says in its own words that a passing suite is not sufficient
+here — the evidence is a stranger reaching activation on a phone without help,
+and no agent can be that stranger.
+
+The protocol, the record to fill in, and a list of gaps already suspected from
+the build are at `docs/superpowers/evidence/e11-walkthrough/`. Three things
+worth knowing before running it: the guided setup was verified by tests and
+type-checking but **never looked at on a 390px viewport**; a household created
+in the current month loses the previous month from its default projection
+window (correct, but it may read as missing data); and a failed chat-history
+request renders a blank panel with no error, deliberately, because error UX is
+E17's.
 
 ## Out of scope
 

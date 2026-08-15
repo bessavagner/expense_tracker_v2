@@ -75,7 +75,7 @@ pipeline) is still open inside R2 but is not named by this gate.
 | [E08](E08-ai-evaluation-harness.md) | AI evaluation harness | R2 | W | E02 | **done** (2026-08-14)³ |
 | [E09](E09-model-tiering-and-routing.md) | Model tiering & routing | R2 | W | E07, E08 | **done** (2026-08-15)⁴ |
 | [E10](E10-async-work-pipeline.md) | Async work pipeline | R2 | W | E06 | ready |
-| [E11](E11-onboarding-and-activation.md) | Onboarding & activation | R3 | W | E05 | ready |
+| [E11](E11-onboarding-and-activation.md) | Onboarding & activation | R3 | W | E05 | review⁹ |
 | [E12](E12-durable-import-export-jobs.md) | Durable import/export jobs | R3 | | E10 | blocked |
 | [E13](E13-lgpd-compliance.md) | LGPD compliance | R3 | | E12, E18 | blocked |
 | [E14](E14-product-analytics.md) | Product analytics | R3 | | E06, E11 | ready¹ |
@@ -177,6 +177,30 @@ pages, `cost_usd_for` splitting the prompt into fresh and cached halves,
 `UsageRecord.cache_read_tokens` for auditability, and a `Cached` column in the
 eval table — the E09 ratios were unaffected and the evidence documents were
 annotated rather than re-measured.
+
+⁹ **E11 is `review`, not `done`, and the gap is deliberate.** Every machine-
+checkable assertion passes — 1787 tests, coverage 92% against a gate of 80%,
+lint clean, migrations reversible and rehearsed. The two open boxes are the
+unaided walkthrough on a phone, which is the evidence the epic actually asked
+for and which no agent can supply. Protocol and empty record at
+`docs/superpowers/evidence/e11-walkthrough/`.
+
+Two things this epic learned that outlive it. First, **the activation event is
+household-scoped and an invited member has two households** — their own,
+auto-created and never used, and the inviter's, where they work. That is
+pre-existing tenancy behaviour, and it means E14's S14-1 open question ("does
+an invited member count as a separate activation?") should be answered from
+that fact rather than guessed; it is written down in
+`docs/architecture/activation-event.md`. Second, **`PROJECTION_ORIGIN_MONTH`
+is now per household** and the env var only seeds a one-time backfill — the
+old global floor silently discarded imported history, so a CSV of 2024 landed
+below it and vanished from the acumulado.
+
+**Found on the way, not fixed here (belongs to E02):**
+`finances/tests/test_entries_live_summary.py:135,178` pair an unfrozen
+`date.today()` with a hardcoded `date(2026, 6, 1)` literal — the same
+time-bomb shape global constraint 10 forbids. It predates E11 and no E11 task
+touches that file, so repairing it here would have been scope creep.
 
 ⁸ **D04 was found by looking at Sentry for the first time in a day.** Checking
 that the 2026-08-15 schema-drift outage had reported correctly (it had — 7
