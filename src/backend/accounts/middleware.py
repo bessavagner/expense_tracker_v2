@@ -5,7 +5,6 @@ one at a time. The choice lives in the session; the *validation* of that
 choice lives here, because a session value is user-controlled input.
 """
 
-from django.conf import settings
 from django.core.exceptions import ValidationError
 
 from accounts.models import Membership
@@ -77,21 +76,29 @@ def active_household_middleware(get_response):
 #: Prefixes the redirect never touches. Everything here either has no user
 #: interface to redirect (the API, the health check, the task dispatcher), or
 #: redirecting it would break something worse than an unonboarded dashboard
-#: (the setup flow itself would loop; logout would become unreachable; the
-#: staff-only admin console would force an operator through a household setup
-#: flow that has nothing to do with their job).
+#: (the setup flow itself would loop; logout would become unreachable).
+#:
+#: The admin console is deliberately NOT here, even though staff have no
+#: household-onboarding concept. `settings.ADMIN_URL_PATH` is a secret the
+#: product hides by making its 404 indistinguishable from a wrong guess
+#: (`core.admin_gate`, and the settings.py comment above `ADMIN_URL_PATH`
+#: documents the prior incident). A path-prefix exemption would reopen that
+#: oracle: the real path would answer 404 (exempt, gate raises) while every
+#: wrong guess answered 302-to-onboarding (not exempt, this middleware
+#: redirects) for any authenticated user whose household is unonboarded — a
+#: class that includes every new signup. Staff are exempted by identity below
+#: instead.
 _ONBOARDING_EXEMPT_PREFIXES = (
     "/casa/comecar/",
     "/api/",
     "/accounts/",
     "/tasks/",
-    "/healthz",
+    "/healthz/",
     "/static/",
     "/sw.js",
     "/offline/",
     "/manifest.webmanifest",
     "/.well-known/",
-    "/" + settings.ADMIN_URL_PATH,
 )
 
 
@@ -106,10 +113,18 @@ def onboarding_redirect_middleware(get_response):
     * never HTMX — HTMX swaps a redirect's *body* into whatever target the
       fragment named, which would paint the whole setup page inside a table
       cell rather than navigating;
+    * never staff — the admin console has nothing to do with a household's
+      setup, and exempting it by path instead would reopen the secret-path
+      oracle `core.admin_gate` exists to close (see the comment on
+      `_ONBOARDING_EXEMPT_PREFIXES`). This also covers `createsuperuser`,
+      whose account holds no `Membership` and so would otherwise be routed
+      into a setup flow for a household it did not mean to create;
     * never the exempt prefixes above.
 
-    One query per request, and only for a household that has not finished. A
-    finished household short-circuits on the `completed_at` column.
+    One query per request, and only for a household that has not finished —
+    `OnboardingState.is_complete` walks `steps_done` in Python, so the row is
+    still fetched on every non-exempt GET; there is no query-level
+    short-circuit on `completed_at`.
     """
     from django.http import HttpResponseRedirect
     from django.urls import reverse
@@ -120,6 +135,7 @@ def onboarding_redirect_middleware(get_response):
         if (
             request.method == "GET"
             and getattr(request, "household", None) is not None
+            and not request.user.is_staff
             and not request.headers.get("HX-Request")
             and not request.path.startswith(_ONBOARDING_EXEMPT_PREFIXES)
         ):

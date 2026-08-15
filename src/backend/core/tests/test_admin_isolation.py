@@ -105,13 +105,20 @@ class TestOnlyStaffReachAdmin:
         """The epic's sixth observable assertion, anonymous half."""
         assert Client().get(_admin_url()).status_code == 404
 
-    def test_an_authenticated_non_staff_user_gets_404(self, user):
-        """The epic's sixth observable assertion, verbatim."""
+    def test_an_authenticated_non_staff_user_gets_404(self, user, household):
+        """The epic's sixth observable assertion, verbatim.
+
+        Requests `household` (onboarded, per conftest) so this exercises only
+        the gate under test: an unonboarded household would be redirected to
+        the guided setup by E11's onboarding middleware before ever reaching
+        `core.admin_gate`, for the same reason a wrong guess is — see
+        `accounts.tests.test_onboarding_redirect` for that boundary.
+        """
         client = Client()
         client.force_login(user)
         assert client.get(_admin_url()).status_code == 404
 
-    def test_a_non_staff_user_cannot_reach_a_model_page_either(self, user):
+    def test_a_non_staff_user_cannot_reach_a_model_page_either(self, user, household):
         client = Client()
         client.force_login(user)
         assert client.get(_admin_url("core/customuser/")).status_code == 404
