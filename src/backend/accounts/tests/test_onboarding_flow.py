@@ -58,6 +58,45 @@ class TestTheFlow:
 
 
 @pytest.mark.django_db
+class TestMalformedInput:
+    @pytest.mark.parametrize("amount", ["NaN", "Infinity", "-Infinity"])
+    def test_a_non_finite_amount_does_not_crash_and_writes_nothing(
+        self, logged_client, household, amount
+    ):
+        OnboardingState.objects.filter(household=household).delete()
+
+        response = logged_client.post(
+            reverse("onboarding_step", args=[OnboardingStep.INCOME]),
+            {"name": "Salário", "amount": amount},
+        )
+
+        assert response.status_code == 302
+        assert Income.objects.for_household(household).count() == 0
+        assert OnboardingState.for_household(household).next_step() == OnboardingStep.CARDS
+
+
+@pytest.mark.django_db
+class TestDoubleSubmit:
+    def test_submitting_income_twice_writes_one_row(self, logged_client, household):
+        OnboardingState.objects.filter(household=household).delete()
+        payload = {"name": "Salário", "amount": "4500.00"}
+
+        logged_client.post(reverse("onboarding_step", args=[OnboardingStep.INCOME]), payload)
+        logged_client.post(reverse("onboarding_step", args=[OnboardingStep.INCOME]), payload)
+
+        assert Income.objects.for_household(household).count() == 1
+
+    def test_submitting_a_card_twice_writes_one_row(self, logged_client, household):
+        OnboardingState.objects.filter(household=household).delete()
+        payload = {"name": "Nubank", "closing_day": "25"}
+
+        logged_client.post(reverse("onboarding_step", args=[OnboardingStep.CARDS]), payload)
+        logged_client.post(reverse("onboarding_step", args=[OnboardingStep.CARDS]), payload)
+
+        assert PaymentMethod.objects.for_household(household).filter(name="Nubank").count() == 1
+
+
+@pytest.mark.django_db
 class TestSkipping:
     @pytest.mark.parametrize("step", list(OnboardingStep))
     def test_every_step_can_be_skipped(self, logged_client, household, step):
