@@ -674,7 +674,7 @@ Run:
 POSTGRES_PORT=5433 uv run pytest src/backend/assistant/tests/test_activation_event.py \
   src/backend/accounts/tests/test_signup_emits_event.py -q
 ```
-Expected: PASS (10 tests)
+Expected: PASS (11 tests)
 
 - [ ] **Step 7: Run the neighbours that touch these functions**
 
@@ -2054,6 +2054,7 @@ git commit -m "feat(onboarding): three guided steps, all skippable, ending at th
 - Modify: `src/backend/templates/settings/_payment_methods_tab.html`
 - Modify: `src/backend/templates/settings/_income_tab.html`
 - Modify: `src/backend/templates/projection/_projection_table.html`
+- Modify: `src/backend/finances/views/projection.py` (`build_projection_context`, ~line 129)
 - Modify: `src/backend/templates/cockpit/_income_section.html`
 - Modify: `src/backend/templates/cockpit/_systemic_section.html`
 - Modify: `src/backend/templates/cockpit/_parcelamentos_section.html`
@@ -2078,6 +2079,8 @@ Create `src/backend/finances/tests/test_empty_states.py`:
 Server-rendered surfaces only. The React cards are covered by `pnpm build`
 plus the visual-verdict pass, since this repo has no frontend test runner.
 """
+
+from datetime import date
 
 import pytest
 from django.urls import reverse
@@ -2112,10 +2115,27 @@ class TestEmptySurfacesTeach:
         assert "quanto sobra" in body
 
     def test_the_projection_explains_itself_before_there_is_data(self, logged_client):
+        """Keyed on the household having no data, NOT on `rows` being empty.
+
+        `_default_start` returns last month, which is after the projection
+        origin in every realistic case, so `build_projection` returns a full
+        window of zero rows and the `{% if not rows %}` branch never fires for
+        a new household. It stays as the pre-origin fallback it already was.
+        """
         body = logged_client.get(reverse("finances:projection")).content.decode()
 
         assert "Nada para projetar ainda" in body
         assert "estimar os próximos meses" in body
+
+    def test_the_projection_stops_teaching_once_there_is_data(self, logged_client, household, user):
+        from model_bakery import baker
+
+        baker.make("finances.Income", household=household, created_by=user,
+                   month=date(2026, 8, 1), amount=1000)
+
+        body = logged_client.get(reverse("finances:projection")).content.decode()
+
+        assert "Nada para projetar ainda" not in body
 
 
 @pytest.mark.django_db
@@ -2325,9 +2345,29 @@ Add `import { openChat } from "../chat";` to the four cards that use it.
                 </p>
 ```
 
-`templates/projection/_projection_table.html` — replace line 114:
+**The projection needs a view change, not only a template one.**
+`_default_start` returns *last month*, which is after the projection origin in
+every realistic case — so `build_projection` hands back a full window of
+zero-filled rows and the existing `{% if not rows %}` branch never fires for a
+new household. Keying the teaching state off `rows` would ship dead code.
+
+In `finances/views/projection.py`, in the dict `build_projection_context`
+returns (~line 129), add one key:
+
+```python
+        # A new household gets a full window of zero rows, not an empty list —
+        # so "is there anything to project?" has to ask the data, not the rows.
+        "has_any_data": any(
+            r["total"] or r["income"] for r in rows
+        ),
+```
+
+`templates/projection/_projection_table.html` — leave the existing
+`{% if not rows %}` block (it is the pre-origin fallback and still correct) and
+add, immediately after it:
 
 ```html
+{% if rows and not has_any_data %}
 <div class="text-center py-10 text-base-content/60">
     <span class="text-3xl">🔮</span>
     <p class="font-semibold mt-2">Nada para projetar ainda</p>
@@ -2335,6 +2375,7 @@ Add `import { openChat } from "../chat";` to the four cards that use it.
         A projeção usa sua renda e seus lançamentos para estimar os próximos meses.
     </p>
 </div>
+{% endif %}
 ```
 
 - [ ] **Step 6b: Rewrite the four cockpit sections**
@@ -2375,7 +2416,7 @@ Add `import { openChat } from "../chat";` to the four cards that use it.
 - [ ] **Step 7: Run the test to verify it passes**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/finances/tests/test_empty_states.py -q`
-Expected: PASS (10 tests)
+Expected: PASS (11 tests)
 
 - [ ] **Step 8: Build the frontend**
 
@@ -2398,7 +2439,7 @@ git add src/backend/frontend/src src/backend/static/frontend/mount.js \
         src/backend/templates/settings/_payment_methods_tab.html \
         src/backend/templates/settings/_income_tab.html \
         src/backend/templates/projection/_projection_table.html \
-        src/backend/templates/cockpit/ \
+        src/backend/templates/cockpit/ src/backend/finances/views/projection.py \
         src/backend/finances/tests/test_empty_states.py
 git commit -m "feat(onboarding): empty states that teach and point at the camera"
 ```
