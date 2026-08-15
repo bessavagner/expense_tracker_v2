@@ -75,6 +75,7 @@ async def record_usage(
             kind=kind,
             model=model,
             input_tokens=getattr(usage, "input_tokens", None) if usage else None,
+            cache_read_tokens=getattr(usage, "cache_read_tokens", None) if usage else None,
             output_tokens=getattr(usage, "output_tokens", None) if usage else None,
             cost_usd=cost,
             latency_ms=latency_ms,

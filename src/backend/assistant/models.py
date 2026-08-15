@@ -328,6 +328,12 @@ class UsageRecord(HouseholdOwnedModel):
     kind = models.CharField(max_length=20, choices=UsageKind.choices)
     model = models.CharField(max_length=120)
     input_tokens = models.IntegerField(null=True, blank=True)
+    # A SUBSET of input_tokens, not an addition — the provider reports cache
+    # reads as part of the prompt. NULL means the provider reported nothing;
+    # 0 means nothing was cached. Recorded so the discount `cost_usd` already
+    # applied is auditable months later (D03), rather than only visible on the
+    # provider's own dashboard.
+    cache_read_tokens = models.IntegerField(null=True, blank=True)
     output_tokens = models.IntegerField(null=True, blank=True)
     cost_usd = models.DecimalField(max_digits=12, decimal_places=6, null=True, blank=True)
     latency_ms = models.IntegerField(null=True, blank=True)

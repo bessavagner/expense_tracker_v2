@@ -25,9 +25,10 @@ pytestmark = pytest.mark.django_db
 
 
 class FakeUsage:
-    def __init__(self, input_tokens=100, output_tokens=50):
+    def __init__(self, input_tokens=100, output_tokens=50, cache_read_tokens=0):
         self.input_tokens = input_tokens
         self.output_tokens = output_tokens
+        self.cache_read_tokens = cache_read_tokens
 
 
 @pytest.fixture
@@ -692,3 +693,54 @@ class TestEscalationIsRecorded:
         record = UsageRecord.objects.get()
         assert record.ok is False
         assert record.escalation_reason == "inconsistent"
+
+
+def test_a_record_captures_the_cached_half_of_the_prompt(household, user, priced):
+    """The discount has to be auditable after the fact, not only re-derivable
+    from the provider's dashboard — which is how D03 was found in the first
+    place, and the only reason anyone noticed."""
+    async_to_sync(record_usage)(
+        household=household,
+        user=user,
+        kind=UsageKind.CHAT,
+        model="openai:test",
+        usage=FakeUsage(1_000_000, 0, cache_read_tokens=400_000),
+        latency_ms=10,
+        ok=True,
+    )
+    rec = UsageRecord.objects.get()
+    assert rec.input_tokens == 1_000_000
+    assert rec.cache_read_tokens == 400_000
+
+
+def test_a_provider_that_reports_no_cache_field_records_null_not_zero(household, user, priced):
+    """NULL is "not reported"; 0 is "nothing was cached". Collapsing them would
+    make an unmeasured provider look like a provider with no cache hits."""
+
+    class NoCacheField:
+        input_tokens = 500
+        output_tokens = 5
+
+    async_to_sync(record_usage)(
+        household=household,
+        user=user,
+        kind=UsageKind.EMBEDDING,
+        model="openai:test",
+        usage=NoCacheField(),
+        latency_ms=10,
+        ok=True,
+    )
+    assert UsageRecord.objects.get().cache_read_tokens is None
+
+
+def test_a_failed_call_records_null_cache_tokens(household, user, priced):
+    async_to_sync(record_usage)(
+        household=household,
+        user=user,
+        kind=UsageKind.EXTRACTION,
+        model="openai:test",
+        usage=None,
+        latency_ms=10,
+        ok=False,
+    )
+    assert UsageRecord.objects.get().cache_read_tokens is None
