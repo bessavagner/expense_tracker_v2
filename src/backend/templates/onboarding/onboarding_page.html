@@ -1,6 +1,26 @@
 {% extends "base.html" %}
+
 {% block title %}Vamos começar — Expense Tracker{% endblock %}
+
 {% block content %}
-<h2 class="text-2xl font-bold">Vamos começar</h2>
-<p class="opacity-70">Passo: {{ step }}</p>
+<div class="max-w-lg mx-auto">
+    <div class="flex items-center justify-between mb-2">
+        <p class="text-xs uppercase tracking-wide opacity-60">
+            Passo {{ step_number }} de {{ step_total }}
+        </p>
+        <a href="{% url 'finances:import_upload' %}" class="link link-hover text-xs opacity-70">
+            Já uso planilha (opcional)
+        </a>
+    </div>
+    <progress class="progress progress-accent w-full mb-6"
+              value="{{ step_number }}" max="{{ step_total }}"></progress>
+
+    <div class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+            {% if step == "income" %}{% include "onboarding/_step_income.html" %}
+            {% elif step == "cards" %}{% include "onboarding/_step_cards.html" %}
+            {% else %}{% include "onboarding/_step_capture.html" %}{% endif %}
+        </div>
+    </div>
+</div>
 {% endblock %}

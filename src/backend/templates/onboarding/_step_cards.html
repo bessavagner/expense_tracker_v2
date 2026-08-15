@@ -1,0 +1,39 @@
+<h2 class="card-title">Qual cartão de crédito você usa?</h2>
+<p class="text-sm opacity-70">
+    O dia de fechamento é o dia em que o cartão fecha a fatura — o que você
+    compra depois dele cai na fatura do mês seguinte.
+</p>
+
+<form method="post" action="{% url 'onboarding_step' 'cards' %}" class="mt-4"
+      x-data="{ day: 25 }">
+    {% csrf_token %}
+    <fieldset class="fieldset">
+        <label class="label" for="card-name">Nome do cartão</label>
+        <input type="text" name="name" id="card-name" class="input w-full"
+               placeholder="Nubank" autocomplete="off" autofocus>
+
+        <label class="label" for="card-closing-day">Dia de fechamento</label>
+        <input type="number" name="closing_day" id="card-closing-day"
+               class="input w-full" min="1" max="31" inputmode="numeric"
+               x-model.number="day" value="25">
+    </fieldset>
+
+    <div class="alert alert-info mt-3 text-sm">
+        <span>
+            Uma compra no dia <span class="font-semibold" x-text="day"></span>
+            entra na fatura deste mês; no dia
+            <span class="font-semibold" x-text="day + 1"></span>, na do mês seguinte.
+        </span>
+    </div>
+
+    <button type="submit" class="btn btn-accent w-full mt-4" data-pending="Salvando…">
+        Continuar
+    </button>
+</form>
+
+<form method="post" action="{% url 'onboarding_skip' 'cards' %}">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-ghost btn-sm w-full mt-2">
+        Não uso cartão de crédito
+    </button>
+</form>

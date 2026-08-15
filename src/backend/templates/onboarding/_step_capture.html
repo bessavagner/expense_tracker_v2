@@ -1,0 +1,17 @@
+<h2 class="card-title">Agora o que este app faz de diferente</h2>
+<p class="text-sm opacity-70">
+    Fotografe um cupom fiscal. O app lê item por item, separa por categoria e
+    lança tudo na fatura certa — você só confirma.
+</p>
+
+<form method="post" action="{% url 'onboarding_step' 'capture' %}" class="mt-4">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-accent btn-lg w-full" data-pending="Abrindo…">
+        📷 Fotografar um cupom
+    </button>
+</form>
+
+<form method="post" action="{% url 'onboarding_skip' 'capture' %}">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-ghost btn-sm w-full mt-2">Depois</button>
+</form>

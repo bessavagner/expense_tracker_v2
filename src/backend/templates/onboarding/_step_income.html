@@ -1,0 +1,28 @@
+<h2 class="card-title">Quanto entra por mês?</h2>
+<p class="text-sm opacity-70">
+    É com esse número que o app calcula quanto sobra. Dá para mudar depois.
+</p>
+
+<form method="post" action="{% url 'onboarding_step' 'income' %}" class="mt-4">
+    {% csrf_token %}
+    <fieldset class="fieldset">
+        <label class="label" for="income-name">De onde vem</label>
+        <input type="text" name="name" id="income-name" class="input w-full"
+               value="Salário" autocomplete="off">
+
+        <label class="label" for="income-amount">Valor por mês</label>
+        <label class="input w-full">
+            <span class="opacity-60">R$</span>
+            <input type="number" name="amount" id="income-amount" step="0.01" min="0"
+                   inputmode="decimal" placeholder="0,00" autofocus>
+        </label>
+    </fieldset>
+    <button type="submit" class="btn btn-accent w-full mt-4" data-pending="Salvando…">
+        Continuar
+    </button>
+</form>
+
+<form method="post" action="{% url 'onboarding_skip' 'income' %}">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-ghost btn-sm w-full mt-2">Agora não</button>
+</form>
