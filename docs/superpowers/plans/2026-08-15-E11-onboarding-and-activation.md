@@ -1864,16 +1864,28 @@ class OnboardingStepView(_StepView):
             amount = Decimal(request.POST.get("amount") or "")
         except InvalidOperation:
             return
-        if amount <= 0:
+        # `Decimal("NaN")` and `Decimal("Infinity")` both parse without
+        # raising; `is_finite()` is what actually rules them out, before the
+        # `<= 0` comparison (which itself raises on NaN) or a DB write (which
+        # rejects Infinity with its own, less graceful, error).
+        if not amount.is_finite() or amount <= 0:
             return
-        Income.objects.create(
+        # `get_or_create`, matching `_save_card` below: a double-tapped
+        # "Continuar" — a second tab, or a request that outruns the
+        # client-side guard in `_submit_guard.html` — must not write two
+        # incomes for one step. Scoped to (household, name, month) only for
+        # this onboarding write path; the settings screen still allows a
+        # second income with the same name deliberately.
+        Income.objects.get_or_create(
             household=request.household,
-            created_by=request.user,
             name=name,
-            amount=amount,
             month=date.today().replace(day=1),
-            is_recurring=True,
-            recurrence_start=date.today().replace(day=1),
+            defaults={
+                "created_by": request.user,
+                "amount": amount,
+                "is_recurring": True,
+                "recurrence_start": date.today().replace(day=1),
+            },
         )
 
     def _save_card(self, request):
