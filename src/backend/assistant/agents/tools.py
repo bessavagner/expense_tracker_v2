@@ -18,6 +18,7 @@ from assistant.agents.memory import (
 from assistant.models import MemoryRule, MemorySource, ReceiptDraft, ReceiptDraftStatus
 from assistant.services.embedding import get_embedding
 from assistant.tasks import EMBED_MEMORY_RULE
+from core.events import EventName, emit_once
 from core.tasks import enqueue
 from finances.models import (
     Category,
@@ -165,6 +166,16 @@ def create_entry(
         description=description,
         category=category,
         payment_method=payment_method,
+    )
+
+    # Wedge adoption (E11 S11-1): the household has now captured something
+    # through the assistant rather than by typing into a form. Once per
+    # household — E14 turns this into the AI-versus-manual ratio.
+    emit_once(
+        EventName.FIRST_AI_ENTRY,
+        household=scope.household,
+        user=scope.user,
+        metadata={"source": "chat"},
     )
 
     return (
@@ -655,6 +666,23 @@ def commit_receipt(scope) -> str:
         ReceiptDraft.objects.for_household(scope.household).filter(
             status=ReceiptDraftStatus.PENDING
         ).exclude(pk=draft.pk).update(status=ReceiptDraftStatus.DISCARDED)
+
+    # Activation. This is the product's defining moment — a photograph became
+    # money in the ledger, correctly split, in the right billing month — and it
+    # is the single event E14's activation rate is computed from. See
+    # docs/architecture/activation-event.md.
+    emit_once(
+        EventName.ACTIVATED,
+        household=scope.household,
+        user=scope.user,
+        metadata={"lines": len(created)},
+    )
+    emit_once(
+        EventName.FIRST_AI_ENTRY,
+        household=scope.household,
+        user=scope.user,
+        metadata={"source": "receipt"},
+    )
 
     total = sum((amt for _, amt in created), Decimal("0"))
     parts = "; ".join(f"{name} R$ {amt:.2f}" for name, amt in created)

@@ -13,6 +13,7 @@ from django.db import transaction
 from django.dispatch import receiver
 
 from accounts.models import Household, Membership, Role
+from core.events import EventName, emit_once
 
 _NAME_PREFIX = "Casa de "
 _NAME_MAX_LENGTH = 120
@@ -37,6 +38,10 @@ def create_household_for_new_user(request, user, **kwargs):
     with transaction.atomic():
         household = Household.objects.create(name=household_name_for(user))
         Membership.objects.create(user=user, household=household, role=Role.OWNER)
+        # The funnel's T0. Time-to-activation is measured from this row rather
+        # than from `date_joined` so that one query answers it and E14 does not
+        # have to join the auth table to compute a product metric.
+        emit_once(EventName.SIGNUP, household=household, user=user)
 
 
 @receiver(user_signed_up)
