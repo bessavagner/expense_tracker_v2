@@ -72,7 +72,7 @@ def test_created_by_survives_the_author_leaving_the_household():
     assert field.remote_field.on_delete is models.SET_NULL
 
 
-def test_registry_holds_exactly_the_fifteen_household_owned_models():
+def test_registry_holds_exactly_the_sixteen_household_owned_models():
     """A model that grows a household column without a decision, or loses one,
     changes this number. That is the point — it should be a conversation, not
     a silent diff.
@@ -88,6 +88,10 @@ def test_registry_holds_exactly_the_fifteen_household_owned_models():
     E07's other three new tables are NOT here and should not be:
     `ModelPrice`, `CreditPrice` and `Plan` are global product configuration,
     identical for every tenant.
+
+    The sixteenth is E11's `core.ProductEvent`. It carries a household so an
+    event is scoped and isolated exactly like every other row here — a member
+    must never see a neighbour's onboarding progress or activation moment.
     """
     expected = {
         "accounts.Invitation",
@@ -105,6 +109,7 @@ def test_registry_holds_exactly_the_fifteen_household_owned_models():
         "assistant.MemoryEmbedding",
         "assistant.UsageInteraction",
         "assistant.UsageRecord",
+        "core.ProductEvent",
     }
     actual = {m._meta.label for m in household_owned_models()}
 

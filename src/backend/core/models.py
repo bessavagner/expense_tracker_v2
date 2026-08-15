@@ -4,6 +4,8 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
+from accounts.models import HouseholdOwnedModel
+
 
 class CustomUser(AbstractUser):
     # AbstractUser leaves this blank-able and non-unique. E05 makes the address
@@ -126,3 +128,55 @@ class TaskRun(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.status}, {self.attempts}/{self.max_attempts})"
+
+
+class ProductEvent(HouseholdOwnedModel):
+    """One thing a person did that the product wants to count.
+
+    Database-derived rather than shipped to an analytics vendor (E14 open
+    question 1): it is cheaper, the numbers can be recomputed from history when
+    a definition changes, and it keeps one more sub-processor off E13's
+    inventory.
+
+    ``metadata`` never carries user content — no descriptions, no store names,
+    no chat text. Counts, ids and enum values only. Same discipline as
+    ``core.observability.scrub_event``, and for the same reason: this table is
+    read by operators and exported by E13.
+
+    ``once`` marks the events that may happen at most once per household —
+    activation above all. The partial unique constraint makes "the first
+    receipt" a database fact rather than a convention, so two concurrent
+    commits cannot both claim it.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=50)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    once = models.BooleanField(default=False)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "evento de produto"
+        verbose_name_plural = "eventos de produto"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["household", "name"],
+                condition=models.Q(once=True),
+                name="one_once_event_per_household",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["name", "-created_at"], name="event_name_recent_idx"),
+            models.Index(fields=["household", "-created_at"], name="event_hh_recent_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.name} @ {self.household} ({self.created_at:%Y-%m-%d %H:%M})"

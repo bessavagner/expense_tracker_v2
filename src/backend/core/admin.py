@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
-from .models import AdminAccessLog, CustomUser, TaskRun
+from .models import AdminAccessLog, CustomUser, ProductEvent, TaskRun
 
 
 @admin.register(CustomUser)
@@ -53,6 +53,22 @@ class TaskRunAdmin(admin.ModelAdmin):
         "updated_at",
     )
     ordering = ("-created_at",)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(ProductEvent)
+class ProductEventAdmin(admin.ModelAdmin):
+    """Read-only: these rows are measurements. An editable measurement is a lie."""
+
+    list_display = ("name", "household", "user", "created_at")
+    list_filter = ("name", "once")
+    date_hierarchy = "created_at"
+    readonly_fields = ("household", "name", "user", "once", "metadata", "created_at")
 
     def has_add_permission(self, request):
         return False
