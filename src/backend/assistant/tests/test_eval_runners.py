@@ -90,6 +90,140 @@ async def test_run_extraction_suite_runs_every_case_in_order():
     assert [r.case_id for r in runs] == [c.id for c in cases]
 
 
+# The same receipt read badly: the total survives but four of the five lines are
+# gone, so the items no longer cover what was paid. That is the signal
+# `should_escalate` fires on, and the one the money invariant is built around.
+INCONSISTENT_READ = {
+    "store": "Lojas Americanas",
+    "date": "2026-06-12",
+    "discount": "3.99",
+    "amount_paid": "42.16",
+    "confidence": 0.9,
+    "items": [
+        {
+            "description": "SOUTIEN TOP B+ TAF21 BRANCO GG",
+            "line_total": "9.99",
+            "category": "Roupa",
+        },
+    ],
+}
+
+
+class TestThePipelineRunner:
+    """S09-3: what ships is the pipeline, so the pipeline is what gets scored."""
+
+    @pytest.mark.anyio
+    async def test_a_good_cheap_read_is_not_escalated(self):
+        from assistant.eval.extraction_runner import run_pipeline_case
+
+        (case,) = load_receipt_cases(["americanas-2026-06-12"])
+        cheap = TestModel(custom_output_args=GOOD_READ)
+        strong = TestModel(custom_output_args=GOOD_READ)
+
+        run = await run_pipeline_case(case, cheap, strong)
+
+        assert run.escalated is False
+        assert run.error == ""
+
+    @pytest.mark.anyio
+    async def test_a_bad_cheap_read_is_rescued_by_the_strong_model(self):
+        from assistant.eval.extraction_runner import run_pipeline_case
+
+        (case,) = load_receipt_cases(["americanas-2026-06-12"])
+        cheap = TestModel(custom_output_args=INCONSISTENT_READ)
+        strong = TestModel(custom_output_args=GOOD_READ)
+
+        run = await run_pipeline_case(case, cheap, strong)
+
+        assert run.escalated is True
+        assert len(run.extraction.items) == len(GOOD_READ["items"])
+        assert run.extraction.amount_paid == Decimal(GOOD_READ["amount_paid"])
+
+    @pytest.mark.anyio
+    async def test_the_cost_of_both_attempts_is_counted(self):
+        """A pipeline whose cost column hid the retry would look free."""
+        from assistant.eval.extraction_runner import run_extraction_case, run_pipeline_case
+
+        (case,) = load_receipt_cases(["americanas-2026-06-12"])
+        cheap = TestModel(custom_output_args=INCONSISTENT_READ)
+        strong = TestModel(custom_output_args=GOOD_READ)
+
+        run = await run_pipeline_case(case, cheap, strong)
+        single = await run_extraction_case(case, strong)
+
+        assert run.usage.input_tokens > 0
+        assert run.usage.output_tokens > 0
+        assert run.usage.input_tokens > single.usage.input_tokens, (
+            "the retry's tokens must be added, not replaced"
+        )
+
+    @pytest.mark.anyio
+    async def test_each_attempt_is_priced_against_its_own_model(self):
+        """Two models, two prices. One label cannot stand for both.
+
+        Pricing a pipeline under its own label finds no `ModelPrice` row and
+        reports $0, which reads as free — and free is the number the E09 cost
+        gate would then be comparing against.
+        """
+        from assistant.eval.extraction_runner import run_pipeline_case
+
+        (case,) = load_receipt_cases(["americanas-2026-06-12"])
+
+        run = await run_pipeline_case(
+            case,
+            TestModel(custom_output_args=INCONSISTENT_READ),
+            TestModel(custom_output_args=GOOD_READ),
+        )
+
+        assert [a.model for a in run.attempts] == ["TestModel", "TestModel"]
+        assert run.usage.input_tokens == sum(a.usage.input_tokens for a in run.attempts)
+
+    @pytest.mark.anyio
+    async def test_an_unescalated_run_still_reports_its_one_attempt(self):
+        from assistant.eval.extraction_runner import run_pipeline_case
+
+        (case,) = load_receipt_cases(["americanas-2026-06-12"])
+        cheap = TestModel(custom_output_args=GOOD_READ)
+
+        run = await run_pipeline_case(case, cheap, TestModel(custom_output_args=GOOD_READ))
+
+        assert len(run.attempts) == 1
+
+    @pytest.mark.anyio
+    async def test_a_failed_cheap_read_escalates(self):
+        from assistant.eval.extraction_runner import run_pipeline_case
+
+        (case,) = load_receipt_cases(["americanas-2026-06-12"])
+
+        class Boom(TestModel):
+            async def request(self, *args, **kwargs):
+                raise RuntimeError("provider exploded")
+
+        run = await run_pipeline_case(case, Boom(), TestModel(custom_output_args=GOOD_READ))
+
+        assert run.escalated is True
+        assert run.error == ""
+        assert run.extraction.amount_paid == Decimal(GOOD_READ["amount_paid"])
+
+    @pytest.mark.anyio
+    async def test_a_single_model_run_is_never_marked_escalated(self):
+        """`mean(r.escalated)` is the escalation rate, so the default must be False."""
+        from assistant.eval.extraction_runner import run_extraction_case
+
+        (case,) = load_receipt_cases(["americanas-2026-06-12"])
+        run = await run_extraction_case(case, TestModel(custom_output_args=GOOD_READ))
+        assert run.escalated is False
+
+    @pytest.mark.anyio
+    async def test_the_suite_runs_every_case_in_order(self):
+        from assistant.eval.extraction_runner import run_pipeline_suite
+
+        cases = load_receipt_cases(["americanas-2026-06-12", "hipermacional-2026-06-15"])
+        cheap = TestModel(custom_output_args=GOOD_READ)
+        runs = await run_pipeline_suite(cases, cheap, cheap)
+        assert [r.case_id for r in runs] == [c.id for c in cases]
+
+
 # ── Behavioural runner ──────────────────────────────────────────────────────
 
 from datetime import date  # noqa: E402

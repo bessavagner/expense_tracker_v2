@@ -15,6 +15,7 @@ from decimal import Decimal
 from assistant.eval.behaviour import BehaviourCase, score_ledger
 from assistant.eval.costing import CostTotals, cost_of, total
 from assistant.eval.dataset import ReceiptCase
+from assistant.eval.extraction_runner import Attempt
 from assistant.eval.scoring import aggregate_extraction, score_extraction
 
 
@@ -36,7 +37,12 @@ def build_extraction_report(model: str, cases: Sequence[ReceiptCase], runs) -> M
     by_id = {c.id: c for c in cases}
     scores, costs, failures = [], [], []
     for run in runs:
-        costs.append(cost_of(model, run.usage, run.latency_ms))
+        # A pipeline run carries its attempts, on two different models. Pricing
+        # them under the report's own label would find no `ModelPrice` row and
+        # report the whole pipeline at $0 — which reads as free and is the exact
+        # number the E09 cost gate turns on.
+        for attempt in getattr(run, "attempts", ()) or [Attempt(model, run.usage, run.latency_ms)]:
+            costs.append(cost_of(attempt.model, attempt.usage, attempt.latency_ms))
         if run.error or run.extraction is None:
             failures.append(f"{run.case_id}: {run.error or 'no output'}")
             continue
