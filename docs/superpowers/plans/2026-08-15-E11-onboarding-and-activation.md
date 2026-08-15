@@ -1334,7 +1334,13 @@ from accounts.models import OnboardingState, OnboardingStep
 
 @pytest.mark.django_db
 class TestRedirect:
-    def test_an_unonboarded_household_is_sent_to_the_guided_setup(self, logged_client):
+    def test_an_unonboarded_household_is_sent_to_the_guided_setup(
+        self, logged_client, household
+    ):
+        # The shared `household` fixture arrives onboarded (see conftest), so a
+        # test about the NEW-household path has to say so explicitly.
+        OnboardingState.objects.filter(household=household).delete()
+
         response = logged_client.get("/")
 
         assert response.status_code == 302
@@ -1513,48 +1519,74 @@ Expected: PASS (11 tests)
 - [ ] **Step 7: Run the whole suite — this middleware touches every request**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/ -q`
-Expected: a batch of existing view tests now get a 302. Those tests must mark
-their household's onboarding complete. Add this to `src/backend/conftest.py`:
+Expected: a batch of existing view tests now get a 302 where they expected 200.
+
+**Fix this at the `household` fixture, not at `logged_client`.** 34 test files
+log in with `client.force_login(...)` rather than using `logged_client`, so
+patching `logged_client` alone would leave most of them failing. 27 of those 34
+already request a `household` fixture, so completing onboarding *there* fixes
+them without editing a single test file. Of the 7 that never mention a
+household, most only exercise paths the middleware exempts anyway.
+
+In `src/backend/conftest.py`, change the two household fixtures to arrive
+onboarded, and add a third for the new-household path:
 
 ```python
 @pytest.fixture
-def onboarded_household(household):
-    """A household past the guided setup, so view tests are not redirected.
+def household(user):
+    """The household the `user` fixture writes into — already onboarded.
 
-    Separate from `household` on purpose: a test that asserts something about a
-    *new* household must not silently get an onboarded one.
+    Onboarded by default because that is the product's ordinary state, and
+    because from E11 a household that has not finished the guided setup is
+    redirected out of every page. Without this, "the neighbour's row is absent"
+    would become a test that passes because *every* page is a 302.
+
+    A test about the new-household path asks for `new_household`, or deletes
+    the `OnboardingState` row itself.
     """
     from accounts.models import OnboardingState, OnboardingStep
+    from accounts.resolution import household_for_user
 
-    state = OnboardingState.for_household(household)
+    resolved = household_for_user(user)
+    state = OnboardingState.for_household(resolved)
     for step in OnboardingStep:
         state.mark(step)
-    return household
-```
+    return resolved
 
-and change the existing `logged_client` fixture to depend on `onboarded_household`
-instead of `household`:
 
-```python
 @pytest.fixture
-def logged_client(user, onboarded_household):
-    """A logged-in client whose user resolves to an onboarded household.
+def other_household(other_user):
+    """A second tenant, for asserting a query stays inside one household."""
+    from accounts.models import OnboardingState, OnboardingStep
+    from accounts.resolution import household_for_user
 
-    `onboarded_household` is requested for its side effects, and both matter:
-    the middleware reads `request.household` from a Membership, and from E11 a
-    household that has not finished the guided setup is redirected out of every
-    page — which would turn "the neighbour's row is absent" into a test that
-    passes because *every* page is a 302.
+    resolved = household_for_user(other_user)
+    state = OnboardingState.for_household(resolved)
+    for step in OnboardingStep:
+        state.mark(step)
+    return resolved
+
+
+@pytest.fixture
+def new_household(user):
+    """A household that has NOT been through the guided setup.
+
+    For tests that are actually about onboarding. Deliberately not the default:
+    a test that gets the new-household path by accident fails in a way that
+    looks like a routing bug.
     """
-    from django.test import Client
+    from accounts.resolution import household_for_user
 
-    client = Client()
-    client.force_login(user)
-    return client
+    return household_for_user(user)
 ```
 
-Then re-run `POSTGRES_PORT=5433 uv run pytest src/backend/ -q` and fix any
-remaining module-local client fixtures the same way.
+`logged_client` keeps its existing `(user, household)` signature and needs no
+change — its household is now onboarded through the fixture above.
+
+Then re-run `POSTGRES_PORT=5433 uv run pytest src/backend/ -q`. Fix whatever
+still fails by making the test's intent explicit — either it wants an onboarded
+household (request the fixture) or it is about the new-user path (delete the
+`OnboardingState` row). Never relax the middleware to make a test pass.
 
 - [ ] **Step 8: Commit**
 
