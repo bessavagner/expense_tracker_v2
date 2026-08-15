@@ -14,6 +14,10 @@ from core.views import (
 
 urlpatterns = [
     path("healthz/", health_check, name="health-check"),
+    # Cloud Tasks dispatch (E10). Public by necessity — the service is deployed
+    # --allow-unauthenticated — so `core.tasks.auth` verifies the OIDC token
+    # in-app on every request.
+    path("tasks/", include("core.tasks.urls")),
     path("manifest.webmanifest", ManifestView.as_view(), name="manifest"),
     path(".well-known/assetlinks.json", AssetLinksView.as_view(), name="assetlinks"),
     # The installed Android TWA and the PWA shortcut both point at these two
