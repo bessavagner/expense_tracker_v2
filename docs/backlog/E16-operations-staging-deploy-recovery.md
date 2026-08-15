@@ -36,6 +36,30 @@ The risk that should keep you up is not a bad deploy — it is discovering, duri
 | Health endpoint available for gating | `core/views.py:8` |
 | Cost-conscious keepalive already in place | Scheduler ping rather than `min-instances=1` |
 | Deploy backlog with much of this already scoped | `docs/deploy/backlog-deploy.md` items 9.4, 9.7, 12.5 |
+| A deploy that shipped code ahead of its migration, undetected for a day | the 2026-08-15 incident, below |
+| The 5xx alert policy that fired four minutes *after* the fix | policy `4509450462948742746`, provisioned by E06 |
+
+### The 2026-08-15 incident — why S16-8 and S16-9 exist
+
+Revision `00046-l64` carried `accounts.0005`'s `Household.plan` while production's
+database sat at `accounts.0004`. `resolve_active_household` selects `plan_id` in
+middleware on every request, so **every route 500'd for any logged-in user** from
+the 2026-08-14 deploy until the migration was applied on 2026-08-15 — roughly a
+day. Anonymous requests mostly passed, which is why it presented as "server error
+after login" rather than as an outage.
+
+Two independent failures, and the second is the more interesting one:
+
+1. **Nothing verified that the deployed image's migrations were applied.** S16-3
+   fixes this for *future* deploys by ordering migrations inside the pipeline. It
+   does not detect an already-deployed system that is drifted — which is the state
+   production was in for a day. Hence S16-9.
+2. **The alerting could not see it.** The 5xx policy is a *count* — "more than 5 in
+   5 minutes". A family-scale app with a broken authenticated path produces perhaps
+   a handful of errors a day, so the count never tripped until the operator sat
+   down and clicked around; the alert then fired at 17:34 UTC, four minutes after
+   the fix had already landed. The *ratio* was effectively 100% of authenticated
+   requests for a full day. Hence S16-8.
 
 ## Stories
 
@@ -105,6 +129,28 @@ The risk that should keep you up is not a bad deploy — it is discovering, duri
 - **Then** every credential needed to operate the service is recorded in a way that survives the maintainer being unavailable
 - **And** the runbook is complete enough that a competent stranger could deploy, roll back, and restore from it
 
+### S16-8 · Alert on the 5xx *ratio*, not only the count
+
+- **Given** the only error-rate policy counts absolute 5xx responses in a window, and a family-scale app never reaches that threshold on a persistent low-traffic failure — the 2026-08-15 outage ran a full day at ~100% failure for authenticated requests without alerting
+- **When** a ratio-based condition is added alongside the existing count
+- **Then** it alerts when 5xx exceed an agreed *share* of requests over a window, so a total failure at low volume pages as loudly as a spike at high volume
+- **And** the window and threshold are chosen so a single error on a quiet afternoon does not page — the failure mode to avoid is an alert nobody trusts
+- **And** the count-based policy is kept, because the two catch different shapes: a ratio is blind to a burst that is small relative to healthy traffic
+- **And** both policies' behaviour is recorded in the runbook's "When something breaks", including which one fires for which shape of failure
+
+> The existing keepalive ping is *healthy* traffic and inflates the denominator — a broken authenticated path against a passing `/healthz/` is exactly the case this story exists for. Verify the ratio still crosses the threshold with the keepalive counted, or exclude it from the metric.
+
+### S16-9 · Detect schema drift between the deployed image and the database
+
+- **Given** nothing today notices that a running revision's code expects a migration the database has never applied, and the symptom is a 500 in middleware rather than anything naming the cause
+- **When** drift detection exists
+- **Then** an unapplied migration for the currently-serving revision is surfaced without waiting for a user to hit the broken path
+- **And** the check runs after every production deploy, and on a schedule thereafter — the day-long window on 2026-08-15 opened at a deploy but stayed open because nothing re-checked
+- **And** it reports *which* migrations are missing, so the fix is `migrate <app>` rather than an investigation
+- **And** `/healthz/` is considered as the place to surface it, so the existing uptime check catches it — noting the deliberate trade-off that a health endpoint failing on drift takes the service out of rotation, which may be correct here since the service is already broken for its users
+
+> Related to S16-3 but not covered by it: S16-3 orders migrations *within* a deploy. This story detects a database that is already behind, including drift caused by a rollback, a manual `migrate` against the wrong target, or a deploy performed outside the pipeline.
+
 ## Definition of Done
 
 ```bash
@@ -127,6 +173,8 @@ Observable assertions:
 - [ ] Restore verification compares balances and acumulado, not just row counts
 - [ ] `docs/runbook.md` exists, covers every listed procedure, and is linked from the README quickstart
 - [ ] Someone other than the author has followed the deploy section successfully
+- [ ] A **ratio-based** 5xx policy exists alongside the count-based one, and a simulated total failure at low request volume fires it — the 2026-08-15 shape, which the count-based policy missed for a day
+- [ ] Schema drift between the serving revision and the database is detected without a user hitting it, names the missing migrations, and is re-checked on a schedule rather than only at deploy time
 
 ## Out of scope
 
