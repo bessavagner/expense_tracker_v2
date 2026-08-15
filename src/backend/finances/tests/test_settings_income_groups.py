@@ -5,6 +5,7 @@ from django.test import TestCase
 from model_bakery import baker
 
 from accounts.resolution import household_for_user
+from conftest import complete_onboarding
 from core.models import CustomUser
 from finances.models import Income
 
@@ -12,7 +13,7 @@ from finances.models import Income
 class TestIncomeGrouping(TestCase):
     def setUp(self):
         self.user = baker.make(CustomUser)
-        self.household = household_for_user(self.user)
+        self.household = complete_onboarding(household_for_user(self.user))
         self.client.force_login(self.user)
 
     def _make(self, name, amount, month, recurring=False):

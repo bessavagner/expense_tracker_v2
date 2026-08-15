@@ -78,6 +78,8 @@ MIDDLEWARE = [
     # never have cost us a membership query.
     "allauth.account.middleware.AccountMiddleware",
     "accounts.middleware.active_household_middleware",
+    # After the household is resolved, because it reads request.household. E11.
+    "accounts.middleware.onboarding_redirect_middleware",
     # After the household resolver: the user and the household do not exist
     # until AuthenticationMiddleware and the resolver above have both run.
     "core.middleware.log_context_middleware",

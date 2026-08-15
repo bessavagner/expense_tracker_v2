@@ -21,7 +21,11 @@ class TestLogout(TestCase):
 
 class TestNavbarControls(TestCase):
     def setUp(self):
+        from accounts.resolution import household_for_user
+        from conftest import complete_onboarding
+
         self.user = baker.make(CustomUser, email="navbar@example.com")
+        complete_onboarding(household_for_user(self.user))
         self.client.force_login(self.user)
 
     def test_navbar_has_theme_toggle_and_logout(self):

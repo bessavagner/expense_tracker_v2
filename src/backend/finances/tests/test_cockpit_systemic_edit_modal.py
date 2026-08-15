@@ -5,6 +5,7 @@ from django.test import TestCase
 from model_bakery import baker
 
 from accounts.resolution import household_for_user
+from conftest import complete_onboarding
 from core.models import CustomUser
 from finances.models import Category, PaymentMethod, SystemicExpense
 
@@ -12,6 +13,7 @@ from finances.models import Category, PaymentMethod, SystemicExpense
 class TestCockpitSystemicEditModal(TestCase):
     def setUp(self):
         self.user = baker.make(CustomUser)
+        complete_onboarding(household_for_user(self.user))
         self.client.force_login(self.user)
         self.cat = baker.make(Category, household=household_for_user(self.user))
         self.pm = baker.make(PaymentMethod, household=household_for_user(self.user), is_active=True)
@@ -67,6 +69,7 @@ class TestCockpitSystemicEditModal(TestCase):
 
     def test_cross_user_404(self):
         other = baker.make(CustomUser)
+        complete_onboarding(household_for_user(other))
         self.client.force_login(other)
         self.assertEqual(self.client.get(self._url()).status_code, 404)
 

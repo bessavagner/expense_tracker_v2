@@ -102,23 +102,67 @@ def other_user(db):
 
 @pytest.fixture
 def household(user):
-    """The household the `user` fixture writes into.
+    """The household the `user` fixture writes into — already onboarded.
 
-    Requested eagerly by anything that exercises a household-scoped read: the
-    middleware resolves `request.household` from a Membership, and a user
-    without one makes every scoped queryset return none().
+    Onboarded by default because that is the product's ordinary state, and
+    because from E11 a household that has not finished the guided setup is
+    redirected out of every page. Without this, "the neighbour's row is absent"
+    would become a test that passes because *every* page is a 302.
+
+    A test about the new-household path asks for `new_household`, or deletes
+    the `OnboardingState` row itself.
     """
+    from accounts.models import OnboardingState, OnboardingStep
     from accounts.resolution import household_for_user
 
-    return household_for_user(user)
+    resolved = household_for_user(user)
+    state = OnboardingState.for_household(resolved)
+    for step in OnboardingStep:
+        state.mark(step)
+    return resolved
 
 
 @pytest.fixture
 def other_household(other_user):
     """A second tenant, for asserting a query stays inside one household."""
+    from accounts.models import OnboardingState, OnboardingStep
     from accounts.resolution import household_for_user
 
-    return household_for_user(other_user)
+    resolved = household_for_user(other_user)
+    state = OnboardingState.for_household(resolved)
+    for step in OnboardingStep:
+        state.mark(step)
+    return resolved
+
+
+def complete_onboarding(household):
+    """Mark `household`'s guided setup complete; returns it for chaining.
+
+    The `household`/`other_household` fixtures above already arrive onboarded.
+    This is for tests that build a household directly — most often via
+    `accounts.resolution.household_for_user` in a `TestCase.setUp`, which does
+    not go through either fixture — so from E11 they would otherwise be
+    redirected to `/casa/comecar/` on every request.
+    """
+    from accounts.models import OnboardingState, OnboardingStep
+
+    state = OnboardingState.for_household(household)
+    for step in OnboardingStep:
+        state.mark(step)
+    return household
+
+
+@pytest.fixture
+def new_household(user):
+    """A household that has NOT been through the guided setup.
+
+    For tests that are actually about onboarding. Deliberately not the default:
+    a test that gets the new-household path by accident fails in a way that
+    looks like a routing bug.
+    """
+    from accounts.resolution import household_for_user
+
+    return household_for_user(user)
 
 
 @pytest.fixture

@@ -4,6 +4,7 @@ from django.test import TestCase
 from model_bakery import baker
 
 from accounts.resolution import household_for_user
+from conftest import complete_onboarding
 from core.models import CustomUser
 from finances.models import PaymentMethod
 from finances.models.payment_method import PaymentType
@@ -13,6 +14,7 @@ from finances.models.payment_method_closing_day import PaymentMethodClosingDay
 class TestCockpitVencimentos(TestCase):
     def setUp(self):
         self.user = baker.make(CustomUser)
+        complete_onboarding(household_for_user(self.user))
         self.client.force_login(self.user)
         self.pm = baker.make(
             PaymentMethod,

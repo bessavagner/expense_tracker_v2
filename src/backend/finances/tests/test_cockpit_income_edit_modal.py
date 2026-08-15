@@ -50,7 +50,7 @@ def test_post_invalid_returns_form(client, user, income):
     assert income.name == "Salário"
 
 
-def test_cross_household_404(client, income, other_user):
+def test_cross_household_404(client, income, other_user, other_household):
     """The boundary is tenancy, not identity: a member of another household
     cannot open this one's income, while its own members (above) get 200."""
     other = other_user

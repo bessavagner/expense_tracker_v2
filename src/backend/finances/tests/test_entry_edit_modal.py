@@ -66,7 +66,11 @@ def test_post_invalid_returns_form_with_errors(client, user, entry):
 def test_cannot_edit_another_households_entry(client, django_user_model, entry):
     """The boundary is tenancy, not identity: a logged-in stranger who is not a
     member of this household gets a 404, while its own members (above) get 200."""
+    from accounts.resolution import household_for_user
+    from conftest import complete_onboarding
+
     other = baker.make(django_user_model)
+    complete_onboarding(household_for_user(other))
     client.force_login(other)
     url = reverse("finances:entry_edit_modal", args=[entry.id])
     assert client.get(url).status_code == 404

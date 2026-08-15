@@ -5,6 +5,7 @@ one at a time. The choice lives in the session; the *validation* of that
 choice lives here, because a session value is user-controlled input.
 """
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 
 from accounts.models import Membership
@@ -68,6 +69,63 @@ def active_household_middleware(get_response):
             household_id = str(household.id)
             if request.session.get(ACTIVE_HOUSEHOLD_SESSION_KEY) != household_id:
                 request.session[ACTIVE_HOUSEHOLD_SESSION_KEY] = household_id
+        return get_response(request)
+
+    return middleware
+
+
+#: Prefixes the redirect never touches. Everything here either has no user
+#: interface to redirect (the API, the health check, the task dispatcher), or
+#: redirecting it would break something worse than an unonboarded dashboard
+#: (the setup flow itself would loop; logout would become unreachable; the
+#: staff-only admin console would force an operator through a household setup
+#: flow that has nothing to do with their job).
+_ONBOARDING_EXEMPT_PREFIXES = (
+    "/casa/comecar/",
+    "/api/",
+    "/accounts/",
+    "/tasks/",
+    "/healthz",
+    "/static/",
+    "/sw.js",
+    "/offline/",
+    "/manifest.webmanifest",
+    "/.well-known/",
+    "/" + settings.ADMIN_URL_PATH,
+)
+
+
+def onboarding_redirect_middleware(get_response):
+    """Send a household that has not been through setup to the setup.
+
+    Runs after `active_household_middleware`, because it needs
+    `request.household`. Deliberately narrow:
+
+    * only GET — a POST redirected loses its body, and a 302 on a form
+      submission is indistinguishable from the form having worked;
+    * never HTMX — HTMX swaps a redirect's *body* into whatever target the
+      fragment named, which would paint the whole setup page inside a table
+      cell rather than navigating;
+    * never the exempt prefixes above.
+
+    One query per request, and only for a household that has not finished. A
+    finished household short-circuits on the `completed_at` column.
+    """
+    from django.http import HttpResponseRedirect
+    from django.urls import reverse
+
+    from accounts.models import OnboardingState
+
+    def middleware(request):
+        if (
+            request.method == "GET"
+            and getattr(request, "household", None) is not None
+            and not request.headers.get("HX-Request")
+            and not request.path.startswith(_ONBOARDING_EXEMPT_PREFIXES)
+        ):
+            state = OnboardingState.for_household(request.household)
+            if not state.is_complete:
+                return HttpResponseRedirect(reverse("onboarding"))
         return get_response(request)
 
     return middleware

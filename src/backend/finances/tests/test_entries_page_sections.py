@@ -2,12 +2,15 @@
 from django.test import TestCase
 from model_bakery import baker
 
+from accounts.resolution import household_for_user
+from conftest import complete_onboarding
 from core.models import CustomUser
 
 
 class TestEntriesPageSections(TestCase):
     def setUp(self):
         self.user = baker.make(CustomUser)
+        complete_onboarding(household_for_user(self.user))
         self.client.force_login(self.user)
 
     def test_entries_page_includes_income_section_loader(self):

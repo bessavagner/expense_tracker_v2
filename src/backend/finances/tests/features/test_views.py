@@ -7,6 +7,7 @@ from model_bakery import baker
 from pytest_bdd import given, parsers, scenario, then, when
 
 from accounts.resolution import household_for_user
+from conftest import complete_onboarding
 
 
 @scenario("views.feature", "View entries for a specific month")
@@ -44,7 +45,7 @@ def given_user_with_march_entries(db, ctx):
     user = baker.make("core.CustomUser")
     client = Client()
     client.force_login(user)
-    household = household_for_user(user)
+    household = complete_onboarding(household_for_user(user))
     cat = baker.make(
         "finances.Category", household=household, name="Alimentação", budget_ceiling=Decimal("1300")
     )
@@ -85,7 +86,7 @@ def given_user_with_cats_pms(db, ctx):
     user = baker.make("core.CustomUser")
     client = Client()
     client.force_login(user)
-    household = household_for_user(user)
+    household = complete_onboarding(household_for_user(user))
     cat = baker.make("finances.Category", household=household, name="Alimentação")
     pm = baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
     ctx.update({"user": user, "household": household, "client": client, "category": cat, "pm": pm})
@@ -97,7 +98,7 @@ def given_user_with_cc(db, ctx):
     user = baker.make("core.CustomUser")
     client = Client()
     client.force_login(user)
-    household = household_for_user(user)
+    household = complete_onboarding(household_for_user(user))
     cat = baker.make("finances.Category", household=household, name="Trabalho")
     pm = baker.make(
         "finances.PaymentMethod", household=household, type="credit_card", closing_day=25
@@ -111,7 +112,7 @@ def given_user_with_multi_cat(db, ctx):
     user = baker.make("core.CustomUser")
     client = Client()
     client.force_login(user)
-    household = household_for_user(user)
+    household = complete_onboarding(household_for_user(user))
     cat1 = baker.make(
         "finances.Category", household=household, name="Alimentação", budget_ceiling=Decimal("1300")
     )
@@ -149,7 +150,7 @@ def given_user_with_category(db, name, ceiling, ctx):
     user = baker.make("core.CustomUser")
     client = Client()
     client.force_login(user)
-    household = household_for_user(user)
+    household = complete_onboarding(household_for_user(user))
     cat = baker.make(
         "finances.Category", household=household, name=name, budget_ceiling=Decimal(str(ceiling))
     )

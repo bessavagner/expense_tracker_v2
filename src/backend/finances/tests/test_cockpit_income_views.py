@@ -5,6 +5,7 @@ from django.test import TestCase
 from model_bakery import baker
 
 from accounts.resolution import household_for_user
+from conftest import complete_onboarding
 from core.models import CustomUser
 from finances.models import Income
 
@@ -15,8 +16,10 @@ class TestCockpitIncomeViews(TestCase):
         # Resolved for its side effect: it mints the Membership the middleware
         # reads. Without one `request.household` is None, and since phase 4
         # made the column NOT NULL that is an IntegrityError on the first
-        # write rather than a quietly empty read.
-        self.household = household_for_user(self.user)
+        # write rather than a quietly empty read. Onboarded, too — from E11 a
+        # household that has not finished the guided setup is redirected out
+        # of every GET.
+        self.household = complete_onboarding(household_for_user(self.user))
         self.client.force_login(self.user)
 
     def test_create_income_for_month_renders_section(self):

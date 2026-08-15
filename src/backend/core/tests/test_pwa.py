@@ -95,7 +95,12 @@ class TestIconFiles(TestCase):
 
 class TestBaseHeadTags(TestCase):
     def setUp(self):
-        self.client.force_login(baker.make(CustomUser, email="pwa@example.com"))
+        from accounts.resolution import household_for_user
+        from conftest import complete_onboarding
+
+        user = baker.make(CustomUser, email="pwa@example.com")
+        complete_onboarding(household_for_user(user))
+        self.client.force_login(user)
 
     def test_page_links_manifest(self):
         body = self.client.get("/").content.decode()

@@ -4,6 +4,7 @@ from django.test import TestCase
 from model_bakery import baker
 
 from accounts.resolution import household_for_user
+from conftest import complete_onboarding
 from core.models import CustomUser
 from finances.models import Category, Entry
 
@@ -11,6 +12,7 @@ from finances.models import Category, Entry
 class TestConsolidatedDropdownToggle(TestCase):
     def setUp(self):
         self.user = baker.make(CustomUser)
+        complete_onboarding(household_for_user(self.user))
         self.client.force_login(self.user)
         cat = baker.make(Category, household=household_for_user(self.user), name="Alimentação")
         baker.make(

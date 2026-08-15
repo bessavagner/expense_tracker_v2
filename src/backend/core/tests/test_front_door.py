@@ -52,7 +52,11 @@ class TestOldPathsStillAnswer:
         assert response["Location"] == "/accounts/logout/"
 
     def test_the_navbar_posts_to_a_url_that_really_ends_the_session(self):
+        from accounts.resolution import household_for_user
+        from conftest import complete_onboarding
+
         user = baker.make("core.CustomUser", email="sai@example.com")
+        complete_onboarding(household_for_user(user))
         client = Client()
         client.force_login(user)
         body = client.get("/").content.decode()
