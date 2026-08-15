@@ -249,9 +249,11 @@ export default function ChatWidget({ apiUrl, autostart }: Props) {
     if (isOpen && messages.length === 0 && !historyLoaded) {
       fetch(`${apiUrl}history/`, { credentials: "same-origin" })
         .then((r) => r.json())
-        .then((data: Message[]) => setMessages(data))
-        .catch(() => {})
-        .finally(() => setHistoryLoaded(true));
+        .then((data: Message[]) => {
+          setMessages(data);
+          setHistoryLoaded(true);
+        })
+        .catch(() => {});
     }
   }, [isOpen, apiUrl, historyLoaded, messages.length]);
 
