@@ -1,3 +1,5 @@
+import uuid
+
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
@@ -70,3 +72,57 @@ class AdminAccessLog(models.Model):
 
     def __str__(self):
         return f"{self.actor} {self.method} {self.path} @ {self.created_at:%Y-%m-%d %H:%M}"
+
+
+class TaskStatus(models.TextChoices):
+    PENDING = "pending", "Pendente"
+    DONE = "done", "Concluída"
+    DEAD = "dead", "Descartada"
+
+
+class TaskRun(models.Model):
+    """One unit of deferred work, and everything an operator needs about it.
+
+    Cloud Tasks has no dead-letter queue: when a task exhausts its attempts the
+    service simply drops it. So the attempt ceiling lives here, on a row that
+    can be queried, listed in admin and replayed — rather than only in the
+    queue's ``retryConfig``, where "it gave up" leaves no trace. It also makes
+    the whole retry and dead-letter path testable without the cloud.
+
+    ``idempotency_key`` is the at-least-once defence. Cloud Tasks may deliver
+    the same task more than once; ``core.tasks.enqueue`` upserts on this column
+    and the dispatch view refuses to re-run a row that already reached DONE.
+
+    ``payload`` lives on the row rather than in the task body on purpose: only
+    the row's id crosses the wire, so the fixed 1 MiB Cloud Tasks task ceiling
+    stops being something every caller has to reason about.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100)
+    idempotency_key = models.CharField(max_length=200, unique=True)
+    payload = models.JSONField(default=dict)
+    status = models.CharField(max_length=10, choices=TaskStatus.choices, default=TaskStatus.PENDING)
+    attempts = models.PositiveIntegerField(default=0)
+    max_attempts = models.PositiveIntegerField(default=5)
+    # The request that scheduled this work (E06, S10-5). Same 32-hex shape as
+    # `core.request_id`, so one Cloud Logging filter finds the originating
+    # request and the task it spawned.
+    request_id = models.CharField(max_length=32, blank=True, default="")
+    last_error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "execução de tarefa"
+        verbose_name_plural = "execuções de tarefa"
+        ordering = ["-created_at"]
+        indexes = [
+            # The dead-letter sweep the runbook documents.
+            models.Index(fields=["status", "-created_at"], name="taskrun_status_recent_idx"),
+            # "How is this particular handler doing?"
+            models.Index(fields=["name", "-created_at"], name="taskrun_name_recent_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.status}, {self.attempts}/{self.max_attempts})"
