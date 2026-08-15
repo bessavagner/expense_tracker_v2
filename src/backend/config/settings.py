@@ -458,8 +458,10 @@ LOGFIRE_CAPTURE_CONTENT = os.environ.get("LOGFIRE_CAPTURE_CONTENT", "1") == "1"
 # third party, which is a materially larger exposure and a large trace cost.
 LOGFIRE_CAPTURE_BINARY = os.environ.get("LOGFIRE_CAPTURE_BINARY", "0") == "1"
 
-# Projeção: mês de origem (YYYY-MM). Nada antes disso entra no acumulado — dados
-# anteriores são migração/seed e não contam na conta. Default: nov/2025.
+# Projeção: mês de origem (YYYY-MM), usado UMA VEZ pela migration 0009 de
+# accounts (E11) para congelar `Household.projection_origin_month` em cada
+# casa já existente. Depois do deploy o piso passa a ser por casa, derivado
+# dos próprios dados — mudar esta env var não afeta mais nada em produção.
 PROJECTION_ORIGIN_MONTH = os.environ.get("PROJECTION_ORIGIN_MONTH", "2025-11")
 
 ASSISTANT_MAX_IMAGE_MB = int(os.environ.get("ASSISTANT_MAX_IMAGE_MB", "10"))

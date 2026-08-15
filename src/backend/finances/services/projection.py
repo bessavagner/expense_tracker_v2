@@ -9,6 +9,7 @@ from datetime import date
 from decimal import Decimal
 
 from django.db.models import Min, Sum
+from django.utils import timezone
 
 from finances.models import Entry, Income, SystemicExpense
 from finances.models.entry import EntryType
@@ -60,7 +61,11 @@ def projection_origin(household) -> date:
 
     created = getattr(household, "created_at", None)
     if created is not None:
-        return created.date().replace(day=1)
+        # `created_at` is UTC-aware; converting to the app's local timezone
+        # before taking `.date()` matters right at a month boundary — a
+        # household created after 21:00 America/Sao_Paulo on the last day of
+        # a month is still UTC-stamped into the next month.
+        return timezone.localtime(created).date().replace(day=1)
     return DEFAULT_PROJECTION_ORIGIN
 
 

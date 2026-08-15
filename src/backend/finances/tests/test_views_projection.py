@@ -7,12 +7,14 @@ from django.urls import reverse
 from model_bakery import baker
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def _early_origin(household):
-    """This module exercises the view with dates chosen for narrative clarity,
-    not the origin floor itself. Pin the origin well before any of them so the
-    household's real creation timestamp (now) never floors the whole window
-    out from under an unrelated test.
+    """Requested explicitly by the handful of tests below whose fixed 2026
+    dates are narrative, not a test of the origin floor itself — without this,
+    the household's real creation timestamp (now) would floor the whole
+    window out from under them. NOT autouse: most of this module's tests
+    (and every new-household test) must keep exercising real derivation,
+    or a regression there would go unnoticed.
     """
     household.projection_origin_month = date(2020, 1, 1)
     household.save(update_fields=["projection_origin_month"])
@@ -35,14 +37,14 @@ class TestProjectionView:
         assert response.status_code == 200
         assert "projection/_projection_table.html" in [t.name for t in response.templates]
 
-    def test_respects_start_and_months_params(self, logged_client):
+    def test_respects_start_and_months_params(self, logged_client, _early_origin):
         response = logged_client.get("/projection/?start=2026-03&months=4")
         rows = response.context["rows"]
         assert len(rows) == 4
         assert rows[0]["month"] == date(2026, 3, 1)
         assert rows[-1]["month"] == date(2026, 6, 1)
 
-    def test_clamps_invalid_months(self, logged_client):
+    def test_clamps_invalid_months(self, logged_client, _early_origin):
         # Too-large / non-positive months are clamped to a sane range, never crash.
         big = logged_client.get("/projection/?start=2026-01&months=999")
         assert big.status_code == 200
@@ -57,7 +59,7 @@ class TestProjectionView:
         assert response.status_code == 200
         assert len(response.context["rows"]) >= 1
 
-    def test_scoped_to_household(self, logged_client, household, other_household):
+    def test_scoped_to_household(self, logged_client, household, other_household, _early_origin):
         """The boundary is tenancy, not identity."""
         cat = baker.make("finances.Category", household=other_household)
         pm = baker.make("finances.PaymentMethod", household=other_household, type="pix")
@@ -101,7 +103,7 @@ def test_year_options_span_data_history(logged_client, household):
 
 
 @pytest.mark.django_db
-def test_start_year_month_params_drive_window(logged_client):
+def test_start_year_month_params_drive_window(logged_client, _early_origin):
     html = logged_client.get(
         reverse("finances:projection"), {"start_year": "2026", "start_month": "3", "months": "2"}
     ).content.decode()
@@ -213,6 +215,40 @@ def test_overlay_simulation_builds_on_estimated():
     # Aug: -200 expense -> saldo -100; cumulative net 300 -> acumulado 1100+300=1400
     assert rows[1]["saldo_projetado_sim"] == Decimal("-100")
     assert rows[1]["acumulado_sim"] == Decimal("1400")
+
+
+@pytest.mark.django_db
+class TestNewHouseholdDefaultWindow:
+    """A brand-new household must not silently lose the first row of its own
+    default projection view.
+
+    `_default_start` returns the previous calendar month; a household with no
+    data yet derives its origin from its own creation month (this month), so
+    without this coverage a regression in derivation (or in `_early_origin`
+    quietly masking it — see the two module fixtures above) would go
+    unnoticed. This is exactly the audience E11 onboards.
+
+    Frozen clock, same convention as `TestEstimateToggle`: household creation
+    must land inside the frozen "now" so the scenario is deterministic.
+    """
+
+    FROZEN_NOW = datetime(2026, 6, 15, 12, 0, tzinfo=UTC)
+
+    @pytest.fixture(autouse=True)
+    def _frozen_clock(self, time_machine):
+        time_machine.move_to(self.FROZEN_NOW, tick=False)
+
+    def test_the_month_before_creation_is_absent_from_the_default_window(
+        self, logged_client, household
+    ):
+        response = logged_client.get("/projection/")
+        months = [r["month"] for r in response.context["rows"]]
+
+        # May/2026 is the previous month `_default_start` would normally open
+        # on; the household didn't exist yet, so it must not appear.
+        assert date(2026, 5, 1) not in months
+        assert months[0] == date(2026, 6, 1)
+        assert len(months) == 13  # DEFAULT_MONTHS (14) minus the dropped row
 
 
 @pytest.mark.django_db

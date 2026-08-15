@@ -291,6 +291,20 @@ def test_projection_is_scoped_to_the_household(user, household, other_user, othe
 
 
 @pytest.mark.django_db
+def test_a_window_entirely_before_a_brand_new_households_creation_is_empty(household):
+    """A brand-new household has no explicit origin and no data yet, so it
+    derives its origin from its own creation month (E11 step 3, no autouse
+    pin here). A window requested entirely before that must come back
+    empty — there is nothing to project before the household existed.
+    """
+    long_ago = date(2000, 1, 1)
+
+    rows = build_projection(household, long_ago, 1, today=date.today())
+
+    assert rows == []
+
+
+@pytest.mark.django_db
 def test_projection_of_no_household_is_empty_not_everything(user, household):
     """Fail closed. An unresolved tenant must never mean 'the whole table'."""
     baker.make(

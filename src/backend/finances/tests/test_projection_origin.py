@@ -1,7 +1,7 @@
 """The projection's origin is per household, because 'nothing before Nov 2025
 counts' is one household's migration history, not a fact about money."""
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 from model_bakery import baker
@@ -77,6 +77,27 @@ class TestOrigin:
     def test_no_household_at_all_does_not_raise(self):
         """Fail closed like every other household-less path in this codebase."""
         assert projection_origin(None) is not None
+
+
+@pytest.mark.django_db
+class TestOriginTimezoneBoundary:
+    """`created_at` is UTC-aware; naively taking `.date()` on it misdates a
+    household created late in the evening in the app's own timezone.
+
+    Frozen right at the boundary that makes the requirement observable:
+    01:00 UTC on Feb 1st is 22:00 on Jan 31st in America/Sao_Paulo (fixed
+    UTC-3, no DST since 2019). Raw UTC `.date()` would say Feb; the
+    household's own calendar day is still Jan 31st.
+    """
+
+    FROZEN_NOW = datetime(2026, 2, 1, 1, 0, tzinfo=UTC)
+
+    @pytest.fixture(autouse=True)
+    def _frozen_clock(self, time_machine):
+        time_machine.move_to(self.FROZEN_NOW, tick=False)
+
+    def test_creation_month_uses_the_app_timezone_not_utc(self, household):
+        assert projection_origin(household) == date(2026, 1, 1)
 
 
 @pytest.mark.django_db
