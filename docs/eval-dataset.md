@@ -114,6 +114,53 @@ To close it, photograph three more receipts, drop them in `$EVAL_FIXTURES_DIR`
 and follow *Adding a case* above. The loader picks up new files with no code
 change, and the hard-case table above shows which kinds are already well covered.
 
+## Provider quirks: models that refuse the request outright
+
+Before a model can score badly it has to answer at all, and two of the three
+challengers first pointed at this dataset returned HTTP 400 on **every** case.
+Both refusals are about *tool calling*, which every agent here does — an
+`output_type=` compiles to a function tool — so neither is avoidable by
+rewording a prompt.
+
+| Model family | What the provider says | What makes it work |
+|---|---|---|
+| `openai:gpt-5.6-*` | "Function tools with reasoning_effort are not supported ... in /v1/chat/completions" | `openai_reasoning_effort: "none"`, or move to `openai-responses:` and keep reasoning on |
+| `openrouter:qwen/*` | "The tool_choice parameter does not support being set to required or object in thinking mode" (provider: Alibaba) | `openrouter_reasoning: {"enabled": False}` |
+
+The table lives in code, in `assistant/agents/model_compat.py`, because
+production needs it too — `LLM_TIER_ESSENTIAL_FALLBACK` is a qwen model. Each
+entry was found by a live 400 and confirmed by a live success, not read off a
+changelog. `gpt-5.4` is deliberately not in it.
+
+The unified `thinking: False` does **not** substitute for either: pydantic-ai
+documents it as silently ignored on always-on reasoning models, and both
+providers still refused with it set.
+
+**When adding a model to a comparison, run one case first.** A whole-suite run
+against a model that cannot answer costs time and reports a table of zeroes, and
+the failure is in the per-model *failures* list rather than the summary row.
+
+## Scores move between identical runs
+
+The same model, the same seven cases, the same code, minutes apart:
+
+| Run | `openai:gpt-5.4` score | `money_ok_rate` |
+|---|---|---|
+| control | 0.97 | 1.00 |
+| head-to-head | 0.83 | 0.86 |
+| repeat 1 | 0.84 | 0.86 |
+
+One case is 14% of a seven-case score, and the money invariant is pass/fail per
+case, so a single receipt read differently moves the headline number by more
+than the gap between two candidate models. In the first head-to-head
+`gpt-5.6-terra` led `gpt-5.4` 0.94 to 0.83; in the next run the order reversed.
+
+**A single run does not rank two models.** Run each candidate at least three
+times and compare the spread, not one number — and treat any gap narrower than
+the spread as "not measured", not as a tie broken by preference. The dataset
+being seven cases rather than the DoD's ten (above) makes this worse, and is the
+strongest argument for closing that shortfall.
+
 ## Categories and memory
 
 Each case declares its own `categories` and `payment_methods`, and the harness

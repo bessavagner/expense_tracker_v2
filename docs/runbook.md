@@ -1569,6 +1569,30 @@ RUN_LLM_TESTS=1 POSTGRES_PORT=5433 uv run python src/backend/manage.py eval_mode
 Set `EVAL_FIXTURES_DIR` first, or the private receipt photos are missing and
 most of the dataset is skipped — see `docs/eval-dataset.md`.
 
+### Before you compare: two things that will mislead you
+
+**Smoke-test a new model on one case first.**
+
+```bash
+RUN_LLM_TESTS=1 POSTGRES_PORT=5433 EVAL_FIXTURES_DIR=~/ledger-eval-fixtures \
+uv run python src/backend/manage.py eval_models \
+  --models "<the new model>" --suite extraction --cases americanas-2026-06-12
+```
+
+Two of the three models first pointed at this dataset returned HTTP 400 on
+*every* call — they refuse tool calling under their default reasoning settings,
+and every agent here uses tool calling. The workarounds live in
+`assistant/agents/model_compat.py`; add an entry there rather than at the call
+site. `docs/eval-dataset.md` § *Provider quirks* has the two known refusals and
+their exact provider messages.
+
+**One run does not rank two models.** `gpt-5.4` scored 0.97, then 0.83, then
+0.84 on the same seven cases within an hour. One case is 14% of the score and
+the money invariant is pass/fail per case, so the run-to-run swing is wider than
+the gap between two serious candidates — in one pair of runs the winner and
+loser swapped places. Run each candidate **at least three times**, compare the
+spread, and treat a gap narrower than that spread as unmeasured.
+
 ### What it costs
 
 One full `--suite both` run is 7 vision calls plus roughly 9 chat turns per
