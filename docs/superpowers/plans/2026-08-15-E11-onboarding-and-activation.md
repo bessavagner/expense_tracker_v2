@@ -945,6 +945,9 @@ def seed_starter_data(household, user=None) -> dict:
 
     created = {"categories": 0, "payment_methods": 0, "rules": 0}
 
+    # The catalogue is one unit: a household with categories but no payment
+    # method still cannot record anything, so a half-seeded household is worse
+    # than an unseeded one the command can repair.
     with transaction.atomic():
         for name, is_system in STARTER_CATEGORIES:
             _, was_created = Category.objects.get_or_create(
@@ -962,18 +965,25 @@ def seed_starter_data(household, user=None) -> dict:
             )
             created["payment_methods"] += int(was_created)
 
-        # Imported inside the function, not at module scope: `assistant.models`
-        # already imports `accounts.models`, so an import the other way at
-        # module level would be circular. Same reason `core/tiers.py` exists.
-        scope = AgentScope(household=household, user=user)
-        existing_triggers = set(
-            _memory_rule_triggers(household)
-        )
-        for trigger, category_name in DEFAULT_RULES:
-            if trigger.lower() in existing_triggers:
-                continue
-            create_memory_rule(scope, trigger, "category", category_name)
-            created["rules"] += 1
+    # DELIBERATELY OUTSIDE the transaction above. `create_memory_rule` calls
+    # `core.tasks.enqueue`, which calls `backend_for_settings().dispatch(...)`
+    # synchronously with no `transaction.on_commit` — and with
+    # CLOUD_TASKS_ENABLED that is a real HTTP push. A task delivered before the
+    # `MemoryRule` row commits would look up a row that does not exist yet.
+    # Today every `create_memory_rule` caller runs in autocommit
+    # (`ATOMIC_REQUESTS` is off), so wrapping it here would introduce the race
+    # rather than inherit it.
+    #
+    # Imported inside the function, not at module scope: `assistant.models`
+    # already imports `accounts.models`, so an import the other way at module
+    # level would be circular. Same reason `core/tiers.py` exists.
+    scope = AgentScope(household=household, user=user)
+    existing_triggers = {t.lower() for t in _memory_rule_triggers(household)}
+    for trigger, category_name in DEFAULT_RULES:
+        if trigger.lower() in existing_triggers:
+            continue
+        create_memory_rule(scope, trigger, "category", category_name)
+        created["rules"] += 1
 
     emit_once(EventName.HOUSEHOLD_SEEDED, household=household, user=user,
               metadata=created)
@@ -994,13 +1004,18 @@ def _memory_rule_triggers(household):
 
 - [ ] **Step 5: Call it on signup**
 
-In `src/backend/accounts/signals.py`, inside `create_household_for_new_user`,
-after the `emit_once(EventName.SIGNUP, ...)` line and still inside the
-`transaction.atomic()` block:
+In `src/backend/accounts/signals.py`, in `create_household_for_new_user`, call
+the seeder **after** the `with transaction.atomic():` block closes — not inside
+it. The household and its owner membership must be atomic with each other; the
+seeding must not be, for the enqueue reason documented in `starter_data.py`.
+Dedent one level relative to the `emit_once(EventName.SIGNUP, ...)` line:
 
 ```python
-        seed_starter_data(household, user)
+    seed_starter_data(household, user)
 ```
+
+Seeding is idempotent and repairable by `manage.py seed_starter_data`, so a
+crash between the two leaves a recoverable state rather than a corrupt one.
 
 and add to the imports:
 
