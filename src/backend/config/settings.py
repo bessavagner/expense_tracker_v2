@@ -360,6 +360,26 @@ LLM_TRANSCRIBE_FALLBACK_MODEL = os.environ.get("LLM_TRANSCRIBE_FALLBACK_MODEL", 
 # LLM_API_KEY OpenAI; override por env para trocar de provider/modelo.
 LLM_VISION_MODEL = os.environ.get("LLM_VISION_MODEL", "openai:gpt-5.4")
 
+# The SECOND vision attempt. `LLM_VISION_MODEL` is the cheap first read; this is
+# the model that gets a receipt the cheap one was not confident about (E09
+# S09-3). It defaults to the current production model so that adding escalation
+# changes nothing until the matrix has actually chosen a cheaper first attempt —
+# a default that silently downgraded the only vision path would be a quality
+# regression shipped as a refactor.
+#
+# `or` rather than a get() default, for the reason LLM_TIER_* documents below:
+# `.env.example` ships these keys present but EMPTY.
+LLM_VISION_ESCALATION_MODEL = os.environ.get("LLM_VISION_ESCALATION_MODEL") or "openai:gpt-5.4"
+
+# When to spend money on that second attempt. Deliberately NOT
+# ASSISTANT_RECEIPT_MIN_CONFIDENCE, which decides whether to ask the user field
+# by field. The two answer different questions and will want to move in opposite
+# directions: asking more often is cheap, retrying more often is not. Sharing one
+# number means tuning either silently retunes the other (E09 open question 4).
+ASSISTANT_ESCALATE_MIN_CONFIDENCE = float(
+    os.environ.get("ASSISTANT_ESCALATE_MIN_CONFIDENCE") or "0.6"
+)
+
 # Model tiers (E07 spec D2). ADVANCED and STANDARD deliberately ship pointing
 # at the SAME model as today: PD-4 forbids a model swap without an E08
 # evaluation score, and E09 owns making them different. Shipping them equal
