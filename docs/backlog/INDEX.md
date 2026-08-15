@@ -77,6 +77,15 @@ graph LR
 | [E17](E17-trust-surface.md) | Trust surface: audit, error UX, landing | R4 | | E11 | blocked |
 | [E18](E18-account-surface.md) | Account surface (Conta) | R3 | | E05 | ready |
 
+### Defects
+
+Numbered `D` and kept in the same self-contained format. A defect earns a file
+when it changes what another epic should do; anything smaller is a commit.
+
+| ID | Defect | Rel | W | Depends on | Status |
+|---|---|---|---|---|---|
+| [D01](D01-behaviour-harness-omits-the-receipt-draft.md) | Behaviour harness omits the `ReceiptDraft`, making receipt cases unpassable | R2 | W | E08 | ready⁵ |
+
 ### Dependency graph
 
 ```mermaid
@@ -136,6 +145,11 @@ would corrupt the baseline it produces. Baseline recorded for `openai:gpt-5.4` a
 runs, behaviour 0.810 over three). The harness paid for itself on its first real
 run by refuting the gpt-5.6 swap staged mid-epic and by finding two provider
 refusals that no test could reach.
+
+⁵ **D01 should land before E09 measures anything behavioural.** It is small (create
+one fixture row) and it is currently subtracting a fixed penalty from every model's
+behavioural score, on the case most directly about the wedge. Behaviour reads 0.810
+with it and 0.944 without.
 
 ⁴ **E09 is open, but do not start it with routing.** E08 measured a run-to-run
 score spread of 0.14 on the seven-case set, which is *wider than the gap between
