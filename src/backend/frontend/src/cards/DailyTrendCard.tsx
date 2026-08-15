@@ -9,6 +9,7 @@ import {
   YAxis,
 } from "recharts";
 import EmptyState from "../components/EmptyState";
+import { openChat } from "../chat";
 import { formatBRL, formatBRLCompact } from "../format";
 import { CHART_COLORS } from "../theme";
 import type { DailyTrendData } from "../types";
@@ -60,9 +61,11 @@ export default function DailyTrendCard({ apiUrl }: Props) {
           <div className="h-48 animate-pulse" />
         ) : chartData.length === 0 ? (
           <EmptyState
-            emoji="📈"
-            title="Sem dados"
-            description="Registre gastos para ver a tendência diária"
+            emoji="📅"
+            title="Sem gastos neste mês"
+            description="Aqui aparece o gasto de cada dia, para você ver em que semana o mês aperta."
+            actionLabel="Fotografar um cupom"
+            onAction={() => openChat()}
           />
         ) : (
           <>

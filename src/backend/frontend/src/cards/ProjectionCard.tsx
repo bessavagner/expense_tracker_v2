@@ -35,8 +35,10 @@ export default function ProjectionCard({ apiUrl }: Props) {
           <h3 className="text-[11px] uppercase tracking-wide opacity-60">Projeção</h3>
           <EmptyState
             emoji="🔮"
-            title="Sem projeção"
-            description="Cadastre renda e gastos para projetar seu saldo futuro"
+            title="Ainda não dá para projetar"
+            description="Informe sua renda em Configurações e lance alguns gastos — aí o app estima quanto sobra nos próximos meses."
+            actionHref="/settings/income/"
+            actionLabel="Informar renda"
           />
         </div>
       </div>

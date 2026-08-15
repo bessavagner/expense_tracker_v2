@@ -20,7 +20,9 @@
           <td class="text-right whitespace-nowrap text-xs opacity-70">restante {{ row.remaining|money }}</td>
         </tr>
         {% empty %}
-        <tr><td colspan="4" class="text-center opacity-60">Nenhum parcelamento neste mês.</td></tr>
+        <tr><td colspan="4" class="text-center opacity-60 py-6">
+            Nenhum parcelamento neste mês. Uma compra parcelada aparece aqui, parcela por parcela.
+        </td></tr>
         {% endfor %}
       </tbody>
     </table>

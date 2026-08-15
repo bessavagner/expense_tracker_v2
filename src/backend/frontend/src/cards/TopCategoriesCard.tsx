@@ -2,6 +2,7 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { formatBRL } from "../format";
 import type { CategoryData } from "../types";
 import EmptyState from "../components/EmptyState";
+import { openChat } from "../chat";
 import { CHART_COLORS } from "../theme";
 import { useApiData } from "../useApiData";
 
@@ -24,11 +25,11 @@ export default function TopCategoriesCard({ apiUrl }: Props) {
         <div className="card-body p-4">
           <h3 className="text-[11px] uppercase tracking-wide opacity-60">Top Categorias</h3>
           <EmptyState
-            emoji="🏷️"
-            title="Sem categorias"
-            description="Categorize suas despesas para ver o ranking"
-            actionHref="/settings/"
-            actionLabel="Configurações"
+            emoji="🥗"
+            title="Sem gastos por categoria"
+            description="Assim que houver lançamentos, aqui aparece para onde o dinheiro está indo."
+            actionLabel="Fotografar um cupom"
+            onAction={() => openChat()}
           />
         </div>
       </div>

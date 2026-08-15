@@ -128,6 +128,9 @@ def build_projection_context(request):
 
     return {
         "rows": rows,
+        # A new household gets a full window of zero rows, not an empty list —
+        # so "is there anything to project?" has to ask the data, not the rows.
+        "has_any_data": any(r["total"] or r["income"] for r in rows),
         "today_month": today.replace(day=1),
         "start_year": start.year,
         "start_month": start.month,

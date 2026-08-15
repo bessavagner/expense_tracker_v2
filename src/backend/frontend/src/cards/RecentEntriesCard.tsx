@@ -1,6 +1,7 @@
 import { formatBRL } from "../format";
 import type { EntryData } from "../types";
 import EmptyState from "../components/EmptyState";
+import { openChat } from "../chat";
 import { useApiData } from "../useApiData";
 
 interface Props {
@@ -20,7 +21,13 @@ export default function RecentEntriesCard({ apiUrl }: Props) {
       <div className="card bg-base-200 border border-base-200">
         <div className="card-body p-4">
           <h3 className="text-[11px] uppercase tracking-wide opacity-60">Últimas Entradas</h3>
-          <EmptyState emoji="📝" title="Nenhuma entrada recente" description="Adicione sua primeira entrada para começar" actionHref="/entries/" actionLabel="Ver entradas" />
+          <EmptyState
+            emoji="📷"
+            title="Nada lançado ainda"
+            description="Fotografe um cupom fiscal — o app lê os itens, separa por categoria e lança tudo aqui."
+            actionLabel="Fotografar um cupom"
+            onAction={() => openChat()}
+          />
         </div>
       </div>
     );

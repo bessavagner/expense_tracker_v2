@@ -1,4 +1,5 @@
 import EmptyState from "../components/EmptyState";
+import { openChat } from "../chat";
 import {
   LineChart,
   Line,
@@ -31,7 +32,13 @@ export default function EvolutionCard({ apiUrl }: Props) {
       <div className="card bg-base-100 border border-base-300 shadow-sm">
         <div className="card-body p-4">
           <h3 className="text-[11px] uppercase tracking-wide opacity-60">Evolução</h3>
-          <EmptyState emoji="📈" title="Sem movimentação" description="Adicione entradas para acompanhar a evolução mensal" />
+          <EmptyState
+            emoji="📈"
+            title="Sem movimentação"
+            description="A partir do segundo mês com lançamentos, esta curva mostra se você está gastando mais ou menos."
+            actionLabel="Fotografar um cupom"
+            onAction={() => openChat()}
+          />
         </div>
       </div>
     );

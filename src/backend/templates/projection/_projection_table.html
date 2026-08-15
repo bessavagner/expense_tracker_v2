@@ -113,3 +113,12 @@
 {% if not rows %}
 <p class="text-center opacity-60 mt-4">Nenhum mês para projetar.</p>
 {% endif %}
+{% if rows and not has_any_data %}
+<div class="text-center py-10 text-base-content/60">
+    <span class="text-3xl">🔮</span>
+    <p class="font-semibold mt-2">Nada para projetar ainda</p>
+    <p class="text-sm">
+        A projeção usa sua renda e seus lançamentos para estimar os próximos meses.
+    </p>
+</div>
+{% endif %}
