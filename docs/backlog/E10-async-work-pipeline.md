@@ -12,6 +12,14 @@ wedge_critical: true
 
 ## Outcome
 
+> **Scope, decided 2026-08-15.** This epic builds the rails and moves one
+> workload. Transcription and receipt extraction are **deferred to E12**:
+> Cloud Tasks caps a task at 1 MiB — a fixed system limit — and this app's
+> audio (25 MB) and prepared receipt images (several MB) are far over it, so
+> they cannot move until E12 S12-2 provides object storage to park the bytes
+> in. E12 declares `depends_on: [E10]`; that stays true, because E12 consumes
+> these rails. See `docs/superpowers/plans/2026-08-15-E10-async-work-pipeline.md`.
+
 Slow, failure-prone work — transcription, receipt extraction, embeddings, bulk imports — runs off the request with retry and a dead-letter path, so a spike in receipt uploads does not degrade page loads and a transient provider failure does not lose a user's voice note.
 
 ## Why now
@@ -94,15 +102,49 @@ uv run ruff check src/backend/ && uv run ruff format --check src/backend/
 
 Observable assertions:
 
-- [ ] Task handlers reject requests not carrying a valid OIDC token, asserted by test
-- [ ] A handler invoked twice with the same payload produces one result, asserted by test for each moved workload
-- [ ] The one-pending-draft invariant holds under concurrent uploads and a retried task, asserted by test
+- [x] Task handlers reject requests not carrying a valid OIDC token, asserted by test
+      — `core/tests/test_task_auth.py`, `core/tests/test_task_views.py::TestAuthentication`.
+      Fails closed: with no service account configured, everything is refused.
+- [x] A handler invoked twice with the same payload produces one result, asserted by test
+      — `TestIdempotency::test_the_same_task_delivered_twice_produces_one_result`,
+      and for the moved workload,
+      `test_memory_embedding_task.py::TestHandler::test_running_it_twice_leaves_one_embedding`.
+- [ ] The one-pending-draft invariant holds under concurrent uploads and a retried task
+      — **deferred to E12.** Receipt extraction cannot move off the request
+      until there is object storage: Cloud Tasks caps a task at 1 MiB and five
+      prepared receipt JPEGs run to several MB.
 - [ ] A transient transcription failure is retried and succeeds without user action
-- [ ] A memory rule created while its embedding is pending is still matched by the substring path
-- [ ] A task execution's trace links back to its originating request ID
-- [ ] A deliberately failed task lands in the dead-letter path and is visible
-- [ ] Local development works without GCP credentials
-- [ ] `docs/runbook.md` documents inspecting and replaying dead-lettered tasks
+      — **deferred to E12**, same reason. Audio is capped at 25 MB.
+- [x] A memory rule created while its embedding is pending is still matched by the substring path
+      — `test_a_rule_with_no_embedding_yet_is_still_matched_by_substring`.
+- [x] A task execution's trace links back to its originating request ID
+      — `enqueue` captures `get_request_id()` onto the row; `CloudTasksBackend`
+      forwards it as `X-Request-ID`, which `request_id_middleware` already
+      adopts. `test_task_cloud.py::test_it_forwards_the_originating_request_id`.
+- [x] A deliberately failed task lands in the dead-letter path and is visible
+      — `TestRetryAndDeadLetter::test_the_final_failure_dead_letters_and_stops_the_retries`,
+      plus the read-only `TaskRun` admin and a Sentry event on the final failure.
+- [x] Local development works without GCP credentials
+      — `CLOUD_TASKS_ENABLED=0` selects `EagerBackend`;
+      `TestBackendSelection::test_it_is_eager_when_cloud_tasks_is_off`.
+- [x] `docs/runbook.md` documents inspecting and replaying dead-lettered tasks
+      — plus the two ways it misleads: a `done` row that only means "did not
+      raise", and an `attempts=0` row that means the queue never reached us.
+
+**Found while building the rails, still open:**
+
+- `create_memory_rule` had **never** generated an embedding, so
+  `MemoryEmbedding` was empty outside `seed_perf_data` and the semantic
+  fallback in `lookup_memory_async` was searching nothing. S10-4 was written on
+  the assumption that it did. Fixed here as generate-on-write, which is what
+  gave the rails their first real workload — but every memory rule created
+  before this epic still has no vector. A backfill command is not an E10
+  deliverable and needs its own ticket.
+- The dispatch view holds a `select_for_update` row lock for the duration of the
+  handler. That is correct and cheap for sub-second work, and it is a real
+  constraint on what may be moved: a handler that takes minutes would hold a
+  pooled Supabase connection for minutes. E12's import execution needs a
+  claim-and-release design rather than this one.
 
 ## Out of scope
 
@@ -111,12 +153,36 @@ Observable assertions:
 - Replacing `sync_to_async` throughout the agent — a real cost, and a separate refactor with its own risk
 - Celery, Redis, or a database-backed queue — rejected in ADR-004
 
-## Open questions
+## Open questions — resolved 2026-08-15
 
-1. **How does an async result reach a streaming SSE connection** that may have already closed? Options: hold the stream while the task runs, reconnect, or push on the next interaction. This is the epic's central design question and must be resolved before planning.
-2. **Does moving extraction off-request actually help,** given the user is waiting anyway? The benefit is retry, tracing, and not pinning an instance — not latency. Confirm the benefit is real before doing the work; if it is not, keep extraction inline and take only the retry and tracing.
-3. **What is the retry policy** for a paid API call? An aggressive retry on a vision model multiplies cost. Coordinate the limits with E07's quota accounting.
-4. **Cloud Tasks emulation locally** — is there an adequate emulator, or is a synchronous fallback the pragmatic answer?
+1. **How does an async result reach a streaming SSE connection?** **Resolved:
+   the client polls a status endpoint.** The widget consumes the chat response
+   with `fetch` + `response.body.getReader()` (`ChatWidget.tsx:413`), not
+   `EventSource` — the "SSE channel" is the POST's own chunked body, with no
+   reconnect and no `Last-Event-ID`. There is nothing to push into. Holding the
+   stream open while a task runs would pin two concurrent requests where there
+   was one, which is the opposite of this epic's goal on `--cpu 1
+   --concurrency 80`. **Not built in E10** — there is no async workload with a
+   user waiting on it yet. E12 builds it alongside the media workloads.
+2. **Does moving extraction off-request actually help?** **Moot for now, and
+   the answer is "not yet".** Cloud Tasks caps a task at 1 MiB (a fixed system
+   limit), audio is capped at 25 MB and five prepared receipt JPEGs run to
+   several MB — so extraction and transcription cannot move at all until there
+   is object storage to park the bytes in. That is E12 S12-2. E10 therefore
+   builds the rails and defers the media workloads.
+3. **What is the retry policy for a paid API call?** **Resolved: the
+   application owns the ceiling.** `@task_handler(..., max_attempts=N)` is the
+   real limit (4 for the embedding task); the Cloud Tasks queue is provisioned
+   at `--max-attempts=8` so the application's limit always wins and the giving-
+   up is recorded. `--max-concurrent-dispatches=4` keeps task traffic from
+   competing with page loads on the same 1-CPU instance. Costs stay visible
+   through E07's existing `UsageRecord` metering — the embedding task's
+   provider call is metered exactly as the inline one was.
+4. **Cloud Tasks emulation locally?** **Resolved: a synchronous fallback.**
+   `CLOUD_TASKS_ENABLED=0` selects `EagerBackend`, which runs handlers
+   in-process through the same `run_task_run` as production, so attempt
+   accounting and the dead-letter decision are identical. No emulator, no GCP
+   credentials.
 
 ## Skill pipeline
 

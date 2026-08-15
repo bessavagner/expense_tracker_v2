@@ -111,7 +111,7 @@ Key principle: **the LLM decides intent; deterministic Python does the arithmeti
 ## 🚀 Getting Started
 
 > Operating the production deployment (deploys, cold-start keepalive, smoke
-> tests, secrets, transactional email, admin access) lives in
+> tests, secrets, transactional email, admin access, async tasks) lives in
 > **[`docs/runbook.md`](docs/runbook.md)**.
 >
 > Comparing models before a swap: `docs/runbook.md` → *Evaluating a model (E08)*.
