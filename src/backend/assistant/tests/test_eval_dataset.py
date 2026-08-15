@@ -54,9 +54,7 @@ def test_every_hard_case_tag_is_documented():
     import pathlib
 
     doc = (
-        pathlib.Path(__file__).resolve().parents[3].parent
-        / "docs"
-        / "eval-dataset.md"
+        pathlib.Path(__file__).resolve().parents[3].parent / "docs" / "eval-dataset.md"
     ).read_text(encoding="utf-8")
     used = {h for c in load_receipt_cases() for h in c.hard_cases}
     undocumented = sorted(tag for tag in used if f"`{tag}`" not in doc)

@@ -50,6 +50,13 @@ graph LR
 | **R3 · Ready for strangers — BETA OPENS** | A new user reaches the activation event unaided. Import and export are durable. A data-subject request can be fulfilled in 15 days and a deletion honoured. Activation and D7 retention are instrumented. |
 | **R4 · GA & monetization** | Someone pays in BRL, is charged correctly, hits a quota gracefully, and you can restore the database inside your stated RTO — rehearsed, not assumed. |
 
+**R2's gate is observably true as of 2026-08-15.** Receipt and chat quality are
+scored against fifteen real receipts and seven conversations across five models
+(E08, E09), and the production vision mix measures **3.75× cheaper** than
+`gpt-5.4` with no regression at all — it scores *higher*, 0.719 against 0.699,
+with the money invariant improving from 0.711 to 0.756. E10 (async work
+pipeline) is still open inside R2 but is not named by this gate.
+
 ---
 
 ## 4. Epic index
@@ -66,7 +73,7 @@ graph LR
 | [E06](E06-observability-and-agent-tracing.md) | Observability & agent tracing | R1 | | E01 | **done** (2026-08-14) |
 | [E07](E07-usage-metering-and-quota.md) | Usage metering & quota | R1 | W | E04, E06 | **done** (2026-08-14)² |
 | [E08](E08-ai-evaluation-harness.md) | AI evaluation harness | R2 | W | E02 | **done** (2026-08-14)³ |
-| [E09](E09-model-tiering-and-routing.md) | Model tiering & routing | R2 | W | E07, E08 | ready⁴ |
+| [E09](E09-model-tiering-and-routing.md) | Model tiering & routing | R2 | W | E07, E08 | **done** (2026-08-15)⁴ |
 | [E10](E10-async-work-pipeline.md) | Async work pipeline | R2 | W | E06 | ready |
 | [E11](E11-onboarding-and-activation.md) | Onboarding & activation | R3 | W | E05 | ready |
 | [E12](E12-durable-import-export-jobs.md) | Durable import/export jobs | R3 | | E10 | blocked |
@@ -84,7 +91,8 @@ when it changes what another epic should do; anything smaller is a commit.
 
 | ID | Defect | Rel | W | Depends on | Status |
 |---|---|---|---|---|---|
-| [D01](D01-behaviour-harness-omits-the-receipt-draft.md) | Behaviour harness omits the `ReceiptDraft`, making receipt cases unpassable | R2 | W | E08 | ready⁵ |
+| [D01](D01-behaviour-harness-omits-the-receipt-draft.md) | Behaviour harness omits the `ReceiptDraft`, making receipt cases unpassable | R2 | W | E08 | **done** (2026-08-15)⁵ |
+| [D02](D02-name-resolution-is-accent-sensitive.md) | Name resolution is accent-sensitive, so "Crédito C6" cannot find "Credito C6" | R2 | W | — | **done** (2026-08-15)⁶ |
 
 ### Dependency graph
 
@@ -146,20 +154,40 @@ runs, behaviour 0.810 over three). The harness paid for itself on its first real
 run by refuting the gpt-5.6 swap staged mid-epic and by finding two provider
 refusals that no test could reach.
 
-⁵ **D01 should land before E09 measures anything behavioural.** It is small (create
-one fixture row) and it is currently subtracting a fixed penalty from every model's
-behavioural score, on the case most directly about the wedge. Behaviour reads 0.810
-with it and 0.944 without.
+⁵ **D01 closed 2026-08-15, with a corrected root cause.** The write-up blamed a
+missing `ReceiptDraft`; `build_world` already created it. The real blocker was that
+the fixture's items carried no category, so `propose_receipt` refused the very tool
+the photo turn instructs the agent to call. A stub test now walks propose → commit
+with no provider, so the case is provably passable for free.
 
-⁴ **E09 is open, but do not start it with routing.** E08 measured a run-to-run
-score spread of 0.14 on the seven-case set, which is *wider than the gap between
-serious candidates* — in one pair of runs the leader and loser swapped. E09's DoD
-requires "no score regression beyond an agreed threshold", and no honest threshold
-is tighter than the noise today. **Widen the dataset to 10+ cases first**; that is
-the cheapest way to shrink the spread, and every number E09 produces inherits it.
-`gpt-5.6-luna` is already a measured candidate worth a real run: 0.656 at $0.023
-per sweep against gpt-5.4's $0.187, which is the escalation-pipeline shape E09
-wants.
+⁶ **D02 was found by E09's re-baseline, not by review.** `_resolve_by_name` was
+case-insensitive but accent-**sensitive**, so a model writing `Crédito C6` — correct
+Portuguese — could not find a row stored `Credito C6`, and the user got an error
+naming a list that visibly contained what they asked for. A production bug on the
+main path: a household that stored `Alimentação` could not type `alimentacao` from a
+phone keyboard. With D01 and D02 both fixed, `gpt-5.4` scores **1.000 (7/7)** on the
+behavioural suite where E08 measured 0.810 — that number was never about the model.
+
+⁴ **E09 closed 2026-08-15 with one box unticked.** Vision now reads every receipt
+on `openai:gpt-5.6-luna` and escalates the ~1/3 it cannot reconcile to
+`openai:gpt-5.4-mini`. Measured **3.75× cheaper** than `gpt-5.4` — and *better*, at
+0.719 against 0.699, with the money invariant improving from 0.711 to 0.756. Neither
+model clears the bar alone; the composition does, which is why S09-3 insists the
+pipeline's score is what ships. Evidence:
+`docs/superpowers/evidence/eval/matrix-2026-08-15.md`.
+
+**Text stays on `gpt-5.4`, deliberately.** Both cheaper candidates were 0.952 against
+its 1.000, failing the category-split case one run in three — the transcript of the
+production bug this product exists to prevent. `luna` is as good as `mini` on text
+and 3.4× cheaper again, which is the measured answer if E10 ever needs a better
+degraded tier.
+
+The unticked box is *"proven by changing it against a deployed revision"*: every
+model is env-configurable and tested, but nothing was deployed in this epic. Tick it
+with the next deploy.
+
+The advice this footnote used to carry was followed first: the dataset went 7 → 15
+cases and the spread halved (0.14 → 0.068) before any candidate ran.
 
 ¹ **E14 is `ready` by operator override (2026-08-14).** Its `depends_on` names E11,
 which is still `ready` rather than `done`. The override is deliberate: E14's

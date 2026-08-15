@@ -355,21 +355,28 @@ LLM_TRANSCRIBE_MODEL = os.environ.get("LLM_TRANSCRIBE_MODEL", "gpt-4o-mini-trans
 # Fallback de transcrição: whisper-1 é mais tolerante ao webm/opus de navegador
 # (que o modelo primário às vezes rejeita como "corrupted or unsupported").
 LLM_TRANSCRIBE_FALLBACK_MODEL = os.environ.get("LLM_TRANSCRIBE_FALLBACK_MODEL", "whisper-1")
-# Modelo usado para LER imagem (recibo). Default = modelo de visão capaz (recibo
-# térmico/girado/baixo contraste vai mal no modelo leve). Herda a mesma
-# LLM_API_KEY OpenAI; override por env para trocar de provider/modelo.
-LLM_VISION_MODEL = os.environ.get("LLM_VISION_MODEL", "openai:gpt-5.4")
+# A PRIMEIRA leitura da imagem (recibo), barata. Toda foto passa por aqui.
+#
+# E09 chose this by measurement, not by list price:
+# `docs/superpowers/evidence/eval/matrix-2026-08-15.md`. Alone this model is not
+# good enough — 0.508 against gpt-5.4's 0.699, and it reconciles only 53% of
+# receipts. It ships because the ESCALATION below rescues the third it cannot
+# read, and the pair scores 0.719 at 3.75x less money than gpt-5.4 did.
+#
+# Changing this without changing LLM_VISION_ESCALATION_MODEL ships the 0.508 on
+# its own. They are one decision.
+LLM_VISION_MODEL = os.environ.get("LLM_VISION_MODEL") or "openai:gpt-5.6-luna"
 
-# The SECOND vision attempt. `LLM_VISION_MODEL` is the cheap first read; this is
-# the model that gets a receipt the cheap one was not confident about (E09
-# S09-3). It defaults to the current production model so that adding escalation
-# changes nothing until the matrix has actually chosen a cheaper first attempt —
-# a default that silently downgraded the only vision path would be a quality
-# regression shipped as a refactor.
+# The SECOND vision attempt: the receipt the cheap read could not reconcile or
+# was not confident about (E09 S09-3), about a third of them.
+#
+# gpt-5.4-mini rather than gpt-5.4 because it equals gpt-5.4 on the money
+# invariant (0.711 both) for 2.48x less. Escalating to gpt-5.4 instead measured
+# 2.59x overall — it fails the 3x gate on its own.
 #
 # `or` rather than a get() default, for the reason LLM_TIER_* documents below:
 # `.env.example` ships these keys present but EMPTY.
-LLM_VISION_ESCALATION_MODEL = os.environ.get("LLM_VISION_ESCALATION_MODEL") or "openai:gpt-5.4"
+LLM_VISION_ESCALATION_MODEL = os.environ.get("LLM_VISION_ESCALATION_MODEL") or "openai:gpt-5.4-mini"
 
 # When to spend money on that second attempt. Deliberately NOT
 # ASSISTANT_RECEIPT_MIN_CONFIDENCE, which decides whether to ask the user field

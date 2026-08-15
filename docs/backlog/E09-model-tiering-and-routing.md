@@ -2,7 +2,7 @@
 id: E09
 title: Model tiering & routing
 release: R2
-status: blocked
+status: done
 depends_on: [E07, E08]
 blocks: []
 wedge_critical: true
@@ -108,14 +108,67 @@ RUN_LLM_TESTS=1 <E08 harness command, targeting the production mix>
 
 Observable assertions:
 
-- [ ] A comparison table in the repo covers ≥3 candidates per path with score and cost
-- [ ] The chosen mix's cost per interaction is measurably lower than the `gpt-5.4` baseline, with the factor stated
-- [ ] The escalating pipeline's aggregate score is within the agreed threshold of the baseline
-- [ ] The money invariant score has **not** regressed at all — a cheaper model that misprorates a discount is not cheaper
-- [ ] Escalation rate is measurable from `UsageRecord` and is materially below 100%
-- [ ] Escalation is bounded to one retry, asserted by test
-- [ ] The model mix is changeable by env var, proven by changing it against a deployed revision
-- [ ] `docs/runbook.md` documents the mix, its evidence, and the rollback
+- [x] A comparison table in the repo covers ≥3 candidates per path with score and cost
+      — `docs/superpowers/evidence/eval/matrix-2026-08-15.md`. Vision: 4
+      candidates plus the pipeline. Text: 3 candidates. Three runs each.
+- [x] The chosen mix's cost per interaction is measurably lower than the
+      `gpt-5.4` baseline, with the factor stated
+      — **3.75×** ($0.0942 against $0.3530 per 15-receipt sweep).
+- [x] The escalating pipeline's aggregate score is within the agreed threshold
+      of the baseline — it is **above** it: **0.719** against 0.699, where the
+      gate was ≥ 0.631.
+- [x] The money invariant score has **not** regressed at all
+      — it **improved**: `money_ok_rate` **0.756** against the baseline's 0.711.
+- [x] Escalation rate is measurable from `UsageRecord` and is materially below
+      100% — `UsageRecord.escalation_reason` (migration 0025) records the cause
+      of every second attempt, and the harness measured **33%** (27–40% across
+      three sweeps). The operator query is in `docs/runbook.md`. Not yet
+      exercised on production traffic, because the mix has not been deployed.
+- [x] Escalation is bounded to one retry, asserted by test
+      — `test_escalation_is_bounded_to_one_retry`: both reads are bad and the
+      call count is exactly 2.
+- [ ] The model mix is changeable by env var, proven by changing it against a
+      deployed revision — **NOT MET.** Every model is env-configurable and
+      tested (`test_settings_tiers.py`, including the empty-value trap), and the
+      `gcloud` command is in the runbook. But nothing was deployed in this epic,
+      so the *proof against a deployed revision* is outstanding. Do it with the
+      next deploy and tick then.
+- [x] `docs/runbook.md` documents the mix, its evidence, and the rollback
+      — § *The production model mix (E09)*, including the escalation-rate query
+      and what each reason means.
+
+### Delivered by E07, not by this epic
+
+**S09-1** (OpenRouter as a provider) and **S09-4** (degrade instead of refusing
+at quota) were already shipped by E07 and were verified rather than rebuilt.
+`OPENROUTER_API_KEY` is in `.env.example`, the ESSENTIAL tier is
+OpenRouter-routed and degrades when the key is absent, and
+`test_a_household_out_of_credits_is_degraded_not_refused` asserts the quota
+behaviour.
+
+### Two defects found on the way, both fixed
+
+Neither was planned work. Both were found because the harness measured something
+that could not be true.
+
+- **D01** — the six-category behavioural case was unpassable by any model: the
+  fixture's items carried no category, so `propose_receipt` refused the very
+  tool the photo turn instructs the agent to call.
+- **D02** — `_resolve_by_name` was accent-**sensitive**, so a model writing
+  `Crédito C6` could not find a row stored `Credito C6`. A production bug on the
+  main path, not only a harness artefact.
+
+Together they were the whole of the behavioural deficit: with both fixed,
+`gpt-5.4` scores **1.000 (7/7)** where E08 measured 0.810. **That number was
+never about the model.** A cheaper candidate scored against 0.810 could have
+looked adequate while genuinely regressing.
+
+A third defect was in this epic's own code: `should_escalate` asked
+`receipt_is_consistent`, which is deliberately one-sided and therefore blind to
+the failure that dominates the dataset — an already-net line total reported next
+to the receipt's printed discount. It kept a read that would post R$20 for a
+R$40 purchase. Fixing it moved escalation 22% → 33% and the mix from failing the
+money gate to beating the baseline on it.
 
 ## Out of scope
 
@@ -126,10 +179,26 @@ Observable assertions:
 
 ## Open questions
 
-1. **What cost reduction target justifies the quality risk?** Set it before running the matrix, so the decision is not rationalized after the fact.
-2. **Does OpenRouter's added latency matter** for the streaming chat experience? Measure first-token latency in the matrix, not just cost.
-3. **Is a non-OpenAI vision model acceptable** for receipts, given Brazilian thermal-print receipts and pt-BR text? This is an empirical question the harness answers.
-4. **How is the escalation threshold tuned?** `ASSISTANT_RECEIPT_MIN_CONFIDENCE` currently defaults to 0.6 for a different purpose. Reusing it for escalation may need a separate, independently tunable value.
+1. **What cost reduction target justifies the quality risk?** — **ANSWERED,
+   2026-08-14, before the matrix ran: ≥3×**, with no drop at all in the money
+   invariant. Recorded in the plan's Global Constraints and in
+   `baseline-15-cases-2026-08-15.md`. The shipped mix measured 3.75×.
+2. **Does OpenRouter's added latency matter?** — **Moot for the shipped mix**,
+   which is OpenAI-direct on both vision tiers. Latency was measured anyway and
+   the mix is *faster* than the baseline: 7.0 s per call against 7.8 s. The
+   OpenRouter models that were measured are slow — `qwen3.7-flash` averaged
+   26.7 s in E08 — so if the ESSENTIAL tier is ever promoted beyond quota
+   degradation, latency needs its own look.
+3. **Is a non-OpenAI vision model acceptable for receipts?** — **Not answered,
+   and not needed.** Every candidate that cleared the gates was OpenAI-direct.
+   The one OpenRouter vision model measured (`qwen3.7-flash`, E08) answered one
+   receipt in seven. The question stays open for whenever OpenAI pricing moves.
+4. **How is the escalation threshold tuned?** — **ANSWERED: its own setting.**
+   `ASSISTANT_ESCALATE_MIN_CONFIDENCE` is separate from
+   `ASSISTANT_RECEIPT_MIN_CONFIDENCE`. They answer different questions and want
+   to move in opposite directions: asking the user field by field is cheap,
+   paying for a second model call is not. Sharing one number means tuning either
+   silently retunes the other.
 
 ## Skill pipeline
 
