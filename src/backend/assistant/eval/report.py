@@ -155,7 +155,7 @@ def render_markdown(
         if not rows:
             continue
         keys = sorted({k for r in rows for k in r.dimensions})
-        header = ["Model", "n", "Score", *keys, "In tok", "Out tok", "USD", "Avg ms"]
+        header = ["Model", "n", "Score", *keys, "In tok", "Cached", "Out tok", "USD", "Avg ms"]
         lines += [
             f"## {suite.capitalize()}",
             "",
@@ -169,6 +169,7 @@ def render_markdown(
                 _fmt(r.overall),
                 *[_fmt(r.dimensions.get(k, 0.0)) for k in keys],
                 str(r.totals.input_tokens),
+                str(r.totals.cache_read_tokens),
                 str(r.totals.output_tokens),
                 f"{r.totals.cost_usd}",
                 str(r.totals.avg_latency_ms),
@@ -211,6 +212,7 @@ def render_json(
                 "totals": {
                     "calls": r.totals.calls,
                     "input_tokens": r.totals.input_tokens,
+                    "cache_read_tokens": r.totals.cache_read_tokens,
                     "output_tokens": r.totals.output_tokens,
                     "cost_usd": encode(r.totals.cost_usd),
                     "unpriced_calls": r.totals.unpriced_calls,

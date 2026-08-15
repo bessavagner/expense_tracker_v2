@@ -25,6 +25,9 @@ class CallCost:
     output_tokens: int
     latency_ms: int
     cost_usd: Decimal | None
+    # A SUBSET of input_tokens. Last, with a default, so the field can be added
+    # without rewriting every positional construction. D03.
+    cache_read_tokens: int = 0
 
 
 def cost_of(model: str, usage, latency_ms: int) -> CallCost:
@@ -35,6 +38,7 @@ def cost_of(model: str, usage, latency_ms: int) -> CallCost:
     """
     inp = int(getattr(usage, "input_tokens", 0) or 0) if usage is not None else 0
     out = int(getattr(usage, "output_tokens", 0) or 0) if usage is not None else 0
+    cached = int(getattr(usage, "cache_read_tokens", 0) or 0) if usage is not None else 0
     cost = cost_usd_for(model, usage) if usage is not None else None
     return CallCost(
         model=model,
@@ -42,6 +46,7 @@ def cost_of(model: str, usage, latency_ms: int) -> CallCost:
         output_tokens=out,
         latency_ms=latency_ms,
         cost_usd=cost,
+        cache_read_tokens=cached,
     )
 
 
@@ -55,6 +60,7 @@ class CostTotals:
     cost_usd: Decimal
     unpriced_calls: int
     latency_ms_total: int
+    cache_read_tokens: int = 0
 
     @property
     def avg_latency_ms(self) -> int:
@@ -72,4 +78,5 @@ def total(costs: Iterable[CallCost]) -> CostTotals:
         cost_usd=sum(priced, Decimal("0")),
         unpriced_calls=sum(1 for c in costs if c.cost_usd is None),
         latency_ms_total=sum(c.latency_ms for c in costs),
+        cache_read_tokens=sum(c.cache_read_tokens for c in costs),
     )

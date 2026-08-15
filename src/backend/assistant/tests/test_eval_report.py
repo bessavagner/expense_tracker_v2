@@ -231,9 +231,10 @@ def test_a_pipeline_report_prices_each_attempt_against_its_own_model():
         )
 
     class _Usage:
-        def __init__(self, i, o):
+        def __init__(self, i, o, cached=0):
             self.input_tokens = i
             self.output_tokens = o
+            self.cache_read_tokens = cached
 
     (case,) = load_receipt_cases(["americanas-2026-06-12"])
     run = RawRun(

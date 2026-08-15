@@ -14,8 +14,8 @@ from model_bakery import baker
 from assistant.eval.costing import CallCost, cost_of, total
 
 
-def usage(inp, out):
-    return SimpleNamespace(input_tokens=inp, output_tokens=out)
+def usage(inp, out, cached=0):
+    return SimpleNamespace(input_tokens=inp, output_tokens=out, cache_read_tokens=cached)
 
 
 @pytest.mark.django_db
@@ -64,3 +64,34 @@ def test_total_sums_priced_calls_and_counts_unpriced_ones_separately():
 def test_total_of_nothing_is_zero_not_a_crash():
     t = total([])
     assert t.calls == 0 and t.cost_usd == Decimal("0") and t.avg_latency_ms == 0
+
+
+@pytest.mark.django_db
+def test_cost_of_prices_the_cached_half_at_the_cached_rate():
+    """The harness and the operator report must agree to the cent — same
+    function, same arithmetic. D03."""
+    baker.make(
+        "assistant.ModelPrice",
+        model_name="fake:cheap",
+        input_per_mtok=Decimal("1.000000"),
+        cached_input_per_mtok=Decimal("0.100000"),
+        output_per_mtok=Decimal("2.000000"),
+        effective_from="2020-01-01",
+    )
+    call = cost_of("fake:cheap", usage(1_000_000, 500_000, cached=500_000), latency_ms=1)
+    assert call.cache_read_tokens == 500_000
+    # 500k fresh @ $1 = $0.50; 500k cached @ $0.10 = $0.05; 500k out @ $2 = $1.00
+    assert call.cost_usd == Decimal("1.550000")
+
+
+@pytest.mark.django_db
+def test_usage_none_records_zero_cache_reads():
+    assert cost_of("fake:unpriced", None, latency_ms=1).cache_read_tokens == 0
+
+
+def test_total_sums_cache_reads():
+    costs = [
+        CallCost("m", 100, 50, 1000, Decimal("0.001000"), 40),
+        CallCost("m", 200, 60, 3000, Decimal("0.002000"), 60),
+    ]
+    assert total(costs).cache_read_tokens == 100

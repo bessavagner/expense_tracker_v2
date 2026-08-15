@@ -99,19 +99,22 @@ async def run_extraction_suite(cases: Sequence[ReceiptCase], model) -> list[RawR
 class _SummedUsage:
     """Both attempts' tokens as one usage object.
 
-    `cost_of` reads `input_tokens` / `output_tokens` by attribute, and a pipeline
-    that reported only the cheap call's tokens would price the retry at zero —
-    making every escalating pipeline look cheaper than the model it escalates to.
+    `cost_of` reads `input_tokens` / `output_tokens` / `cache_read_tokens` by
+    attribute, and a pipeline that reported only the cheap call's tokens would
+    price the retry at zero — making every escalating pipeline look cheaper
+    than the model it escalates to.
     """
 
     input_tokens: int
     output_tokens: int
+    cache_read_tokens: int = 0
 
 
 def _sum_usage(*usages) -> _SummedUsage:
     return _SummedUsage(
         input_tokens=sum(getattr(u, "input_tokens", 0) or 0 for u in usages if u),
         output_tokens=sum(getattr(u, "output_tokens", 0) or 0 for u in usages if u),
+        cache_read_tokens=sum(getattr(u, "cache_read_tokens", 0) or 0 for u in usages if u),
     )
 
 
