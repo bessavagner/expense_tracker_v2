@@ -515,6 +515,14 @@ CLOUD_TASKS_OIDC_SERVICE_ACCOUNT = os.environ.get("CLOUD_TASKS_OIDC_SERVICE_ACCO
 # on the task itself — this service's public base URL. A mismatch here is the
 # most common cause of a 403 on a task that looks correctly configured.
 CLOUD_TASKS_AUDIENCE = os.environ.get("CLOUD_TASKS_AUDIENCE", "")
+CLOUD_TASKS_PROJECT = os.environ.get("CLOUD_TASKS_PROJECT", "")
+# The queue must live in the same region as the service, or every dispatch
+# pays a cross-region hop it does not need.
+CLOUD_TASKS_LOCATION = os.environ.get("CLOUD_TASKS_LOCATION", "southamerica-east1")
+CLOUD_TASKS_QUEUE = os.environ.get("CLOUD_TASKS_QUEUE", "ledger-default")
+# This service's public base URL. Cloud Tasks calls back in over the internet,
+# so this is a real host name, not a loopback address.
+CLOUD_TASKS_TARGET_BASE_URL = os.environ.get("CLOUD_TASKS_TARGET_BASE_URL", "")
 
 # The abuse ceiling (E07 S07-3). These were E01's ASSISTANT_THROTTLE_* limits;
 # they are renamed, not weakened, because their JOB changed. E01 used them as
