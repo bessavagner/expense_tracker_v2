@@ -238,3 +238,80 @@ class Invitation(AuthoredHouseholdModel):
     def is_pending(self) -> bool:
         """Redeemable right now: not accepted, not revoked, not expired."""
         return self.accepted_at is None and self.revoked_at is None and not self.is_expired()
+
+
+class OnboardingStep(models.TextChoices):
+    """The guided setup, in order.
+
+    Three, against S11-3's ceiling of five. Each one removes a wall a stranger
+    would otherwise hit silently: no income means an empty projection, no card
+    means every credit purchase lands in the wrong billing month, and no photo
+    means they never see what this product is for.
+    """
+
+    INCOME = "income", "Renda"
+    CARDS = "cards", "Cartões"
+    CAPTURE = "capture", "Primeira foto"
+
+
+class OnboardingState(models.Model):
+    """How far through the guided setup a household is.
+
+    On the household rather than the user: a second person joining a household
+    that is already set up must not be walked through setting it up again.
+
+    A step is "done" whether the user filled it in or skipped it. That is
+    deliberate — S11-3 requires every step to be skippable and skipping not to
+    break anything, so the flow only needs to know it has *asked*.
+    """
+
+    household = models.OneToOneField(
+        Household,
+        on_delete=models.CASCADE,
+        related_name="onboarding",
+        primary_key=True,
+    )
+    steps_done = models.JSONField(default=list, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "início de uso"
+        verbose_name_plural = "inícios de uso"
+
+    def __str__(self):
+        return f"{self.household}: {len(self.steps_done)}/{len(OnboardingStep)}"
+
+    @classmethod
+    def for_household(cls, household):
+        """This household's progress, creating the row on first sight."""
+        state, _ = cls.objects.get_or_create(household=household)
+        return state
+
+    def next_step(self):
+        """The first step not yet asked, or ``None`` when the flow is over."""
+        done = set(self.steps_done or [])
+        for step in OnboardingStep:
+            if step.value not in done:
+                return step.value
+        return None
+
+    @property
+    def is_complete(self) -> bool:
+        return self.next_step() is None
+
+    def mark(self, step) -> None:
+        """Record that ``step`` has been asked. Idempotent."""
+        from django.utils import timezone
+
+        value = str(step)
+        steps = list(self.steps_done or [])
+        if value not in steps:
+            steps.append(value)
+            self.steps_done = steps
+        # Stamped once. A user who walks back through a finished flow has not
+        # re-onboarded, and moving this timestamp would move E14's cohort.
+        if self.completed_at is None and self.next_step() is None:
+            self.completed_at = timezone.now()
+        self.save(update_fields=["steps_done", "completed_at", "updated_at"])
