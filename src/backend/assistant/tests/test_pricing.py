@@ -189,3 +189,35 @@ def test_pricing_gaps_are_declared():
     """
     assert price_for(settings.LLM_TRANSCRIBE_MODEL) is None
     assert price_for(settings.LLM_TRANSCRIBE_FALLBACK_MODEL) is None
+
+
+@pytest.mark.parametrize(
+    "setting_name",
+    [
+        "LLM_MODEL",
+        "LLM_ASSISTANT_MODEL",
+        "LLM_VISION_MODEL",
+        "LLM_TIER_ADVANCED",
+        "LLM_TIER_STANDARD",
+        "LLM_TIER_ESSENTIAL",
+        "LLM_TIER_ESSENTIAL_FALLBACK",
+    ],
+)
+def test_every_configured_chat_model_has_a_cached_input_rate(setting_name):
+    """The D03 ratchet, twin to `test_every_configured_chat_model_has_a_seeded_price`.
+
+    A model priced without its cached rate is not broken — it falls back to the
+    full input rate and over-reports, exactly as before D03. But over-reporting
+    is the bug, so a new model arriving without a cached rate has to fail here
+    rather than quietly re-introduce it. Embeddings are excluded: the provider
+    lists no cached rate for them, and an embedding prompt is not reused.
+    """
+    name = getattr(settings, setting_name, "")
+    if not name:
+        pytest.skip(f"{setting_name} is not configured")
+    row = price_for(name)
+    assert row is not None, f"{setting_name}={name} has no ModelPrice row at all"
+    assert row.cached_input_per_mtok is not None, (
+        f"{setting_name}={name} has no cached input rate. Read it off the "
+        f"provider's live pricing page (never from memory) and add a seed row."
+    )
