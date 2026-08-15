@@ -674,7 +674,7 @@ Run:
 POSTGRES_PORT=5433 uv run pytest src/backend/assistant/tests/test_activation_event.py \
   src/backend/accounts/tests/test_signup_emits_event.py -q
 ```
-Expected: PASS (11 tests)
+Expected: PASS (10 tests)
 
 - [ ] **Step 7: Run the neighbours that touch these functions**
 
