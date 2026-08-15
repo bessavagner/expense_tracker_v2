@@ -4,7 +4,7 @@ Server-rendered surfaces only. The React cards are covered by `pnpm build`
 plus the visual-verdict pass, since this repo has no frontend test runner.
 """
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 from django.urls import reverse
@@ -51,7 +51,19 @@ class TestEmptySurfacesTeach:
         assert "Nada para projetar ainda" in body
         assert "estimar os próximos meses" in body
 
-    def test_the_projection_stops_teaching_once_there_is_data(self, logged_client, household, user):
+    def test_the_projection_stops_teaching_once_there_is_data(
+        self, logged_client, household, user, time_machine
+    ):
+        """The projection window is derived from `date.today()` (previous month,
+        14 months forward), so "today" has to be frozen for the seeded 2026-08
+        income to land inside that window — otherwise a shifted clock (see
+        `TEST_CLOCK_SHIFT` in docs/testing-conventions.md) pushes the window past
+        the seeded month, the projection sees no data again, and the assertion
+        inverts. Midday UTC per convention, since `date.today()` reads the
+        system timezone.
+        """
+        time_machine.move_to(datetime(2026, 8, 15, 12, tzinfo=UTC), tick=False)
+
         from model_bakery import baker
 
         baker.make(
