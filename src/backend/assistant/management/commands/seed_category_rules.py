@@ -17,15 +17,8 @@ from django.core.management.base import BaseCommand, CommandError
 from accounts.resolution import household_for_user
 from assistant.agents.scope import AgentScope
 from assistant.agents.tools import create_memory_rule
+from assistant.starter_rules import DEFAULT_RULES
 from finances.models import Category
-
-# (NF-token trigger, category name). Triggers are lowercased by create_memory_rule
-# and matched case-insensitively as substrings of the item description.
-DEFAULT_RULES = [
-    ("energ", "Lanche"),  # ENERG MONSTER, ENERGY MONSTER
-    ("refrig", "Lanche"),  # REFRIG LARANJA ...
-    ("monster", "Lanche"),  # energético (marca) — reforça "energ"
-]
 
 
 class Command(BaseCommand):

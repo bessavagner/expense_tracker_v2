@@ -13,6 +13,7 @@ from django.db import transaction
 from django.dispatch import receiver
 
 from accounts.models import Household, Membership, Role
+from accounts.starter_data import seed_starter_data
 from core.events import EventName, emit_once
 
 _NAME_PREFIX = "Casa de "
@@ -42,6 +43,13 @@ def create_household_for_new_user(request, user, **kwargs):
         # than from `date_joined` so that one query answers it and E14 does not
         # have to join the auth table to compute a product metric.
         emit_once(EventName.SIGNUP, household=household, user=user)
+
+    # Outside the transaction above: the household and its owner membership
+    # must be atomic with each other; the seeding must not be — see the
+    # enqueue-race note in `accounts/starter_data.py`. Seeding is idempotent
+    # and repairable by `manage.py seed_starter_data`, so a crash between the
+    # two leaves a recoverable state rather than a corrupt one.
+    seed_starter_data(household, user)
 
 
 @receiver(user_signed_up)
