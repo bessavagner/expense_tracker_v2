@@ -94,6 +94,7 @@ when it changes what another epic should do; anything smaller is a commit.
 | [D01](D01-behaviour-harness-omits-the-receipt-draft.md) | Behaviour harness omits the `ReceiptDraft`, making receipt cases unpassable | R2 | W | E08 | **done** (2026-08-15)⁵ |
 | [D02](D02-name-resolution-is-accent-sensitive.md) | Name resolution is accent-sensitive, so "Crédito C6" cannot find "Credito C6" | R2 | W | — | **done** (2026-08-15)⁶ |
 | [D03](D03-cost-report-ignores-cached-input-tokens.md) | The cost report bills cached input tokens at full price, so every USD figure is too high | R2 | | E07 | **done** (2026-08-15)⁷ |
+| [D04](D04-asgi-lifespan-error-on-every-cold-start.md) | Every cold start reports a `ValueError` to Sentry because the lifespan scope reaches Django | R2 | | E06 | ready⁸ |
 
 ### Dependency graph
 
@@ -176,6 +177,17 @@ pages, `cost_usd_for` splitting the prompt into fresh and cached halves,
 `UsageRecord.cache_read_tokens` for auditability, and a `Cached` column in the
 eval table — the E09 ratios were unaffected and the evidence documents were
 annotated rather than re-measured.
+
+⁸ **D04 was found by looking at Sentry for the first time in a day.** Checking
+that the 2026-08-15 schema-drift outage had reported correctly (it had — 7
+events, matching the 7 5xx exactly) surfaced a second issue that had been
+firing unnoticed: every cold start reports a `ValueError` because uvicorn's
+`lifespan` scope reaches Django through the E01 body-ceiling wrapper. Nothing
+breaks — uvicorn swallows it — but it is recurring noise in the tool whose job
+is to say when something is wrong, and it is exactly what trains an operator to
+skim the issue list. The same session closed E06's long-open "an exception
+raised inside the container reaches Sentry" box on real evidence, and filed
+**E16 S16-8/S16-9** for the two monitoring gaps the outage exposed.
 
 ⁶ **D02 was found by E09's re-baseline, not by review.** `_resolve_by_name` was
 case-insensitive but accent-**sensitive**, so a model writing `Crédito C6` — correct
