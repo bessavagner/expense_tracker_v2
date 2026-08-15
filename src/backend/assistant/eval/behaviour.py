@@ -230,6 +230,17 @@ AMERICANAS_PAYLOAD = {
     ],
 }
 
+# Every item carries its category, because a real extraction does: the vision
+# prompt is given the household catalogue and the photo turn tells the agent
+# "cada item já carrega sua categoria — chame propose_receipt() SEM
+# items_by_category". A payload without categories makes `propose_receipt`
+# refuse outright ("Itens sem categoria definida pela leitura"), which is a
+# world production never produces and no model can recover from (D01).
+#
+# The split is the household's own, not the obvious one: the wafer and the
+# batata palha sit in Alimentacao while only the energy drink is Lanche. That is
+# deliberate — re-sorting them into a tidier grouping is exactly the "helpful"
+# merge this case exists to catch.
 HIPERMACIONAL_PAYLOAD = {
     "store": "HIPERMACIONAL LTDA",
     "date": "2026-06-15",
@@ -239,36 +250,36 @@ HIPERMACIONAL_PAYLOAD = {
     "receipt_type": "fiscal_cupom",
     "confidence": 0.9,
     "items": [
-        {"description": d, "line_total": v}
-        for d, v in [
-            ("MASSA RAINHA PASTEL 1kg", "9.95"),
-            ("LINGUICA CHURRASCO 500G BACON", "18.95"),
-            ("LINGUICA CHURRASCO 500G BIQUINHO", "18.95"),
-            ("QUEIJO ISIS COAL Z LAC kg", "32.73"),
-            ("FILE PEITO REGINA 1kg", "24.75"),
-            ("FILEZINHO REGINA MILANESA 700G", "23.75"),
-            ("BATATA EASYCHEF PRE FRITA 2kg", "24.85"),
-            ("QUEIJO ITAMBE ZERO LAC 150G", "24.90"),
-            ("LEITE UHT PIRACANJU 1L", "10.99"),
-            ("IOG BETANIA YO BEM 170G PAPAIA", "8.30"),
-            ("IOG BETANIA YO BEM 170G MORANGO", "8.30"),
-            ("ALHO kg", "2.62"),
-            ("CEBOLA AMARELA kg", "3.32"),
-            ("EMP LEMON PEPPER kg", "4.55"),
-            ("EMP PAPRIC DEFUMADA kg", "2.58"),
-            ("EMP GERGELIM MIX kg", "4.62"),
-            ("PIMENTAO kg", "1.18"),
-            ("CR LEITE PIRACANJU ZERO LACT 200G", "12.50"),
-            ("OVOS CAIP TIJUCA 10UN", "9.95"),
-            ("BATAT PALH ELMA CHIPS 190G", "22.99"),
-            ("BISC TODDY WAFER 94G CHOC", "3.15"),
-            ("ENERG EXTR POWER 473ML MANGO", "14.50"),
-            ("RACAO CHAMP ADULTO 85G FRANGO", "9.45"),
-            ("RACAO CHAMP ADULTO 85G CARNE", "9.45"),
-            ("TOALHA PAPEL C 2 SCALA", "5.49"),
-            ("AMAC DOWNY 1L BRISA", "29.99"),
-            ("DESOD MONANGE AERO 150ML", "9.95"),
-            ("ESPUMA GILLETTE 155ML", "23.99"),
+        {"description": d, "line_total": v, "category": c}
+        for d, v, c in [
+            ("MASSA RAINHA PASTEL 1kg", "9.95", "Alimentacao"),
+            ("LINGUICA CHURRASCO 500G BACON", "18.95", "Alimentacao"),
+            ("LINGUICA CHURRASCO 500G BIQUINHO", "18.95", "Alimentacao"),
+            ("QUEIJO ISIS COAL Z LAC kg", "32.73", "Alimentacao"),
+            ("FILE PEITO REGINA 1kg", "24.75", "Alimentacao"),
+            ("FILEZINHO REGINA MILANESA 700G", "23.75", "Alimentacao"),
+            ("BATATA EASYCHEF PRE FRITA 2kg", "24.85", "Alimentacao"),
+            ("QUEIJO ITAMBE ZERO LAC 150G", "24.90", "Alimentacao"),
+            ("LEITE UHT PIRACANJU 1L", "10.99", "Alimentacao"),
+            ("IOG BETANIA YO BEM 170G PAPAIA", "8.30", "Alimentacao"),
+            ("IOG BETANIA YO BEM 170G MORANGO", "8.30", "Alimentacao"),
+            ("ALHO kg", "2.62", "Alimentacao"),
+            ("CEBOLA AMARELA kg", "3.32", "Alimentacao"),
+            ("EMP LEMON PEPPER kg", "4.55", "Alimentacao"),
+            ("EMP PAPRIC DEFUMADA kg", "2.58", "Alimentacao"),
+            ("EMP GERGELIM MIX kg", "4.62", "Alimentacao"),
+            ("PIMENTAO kg", "1.18", "Alimentacao"),
+            ("CR LEITE PIRACANJU ZERO LACT 200G", "12.50", "Alimentacao"),
+            ("OVOS CAIP TIJUCA 10UN", "9.95", "Alimentacao"),
+            ("BATAT PALH ELMA CHIPS 190G", "22.99", "Alimentacao"),
+            ("BISC TODDY WAFER 94G CHOC", "3.15", "Alimentacao"),
+            ("ENERG EXTR POWER 473ML MANGO", "14.50", "Lanche"),
+            ("RACAO CHAMP ADULTO 85G FRANGO", "9.45", "Pets"),
+            ("RACAO CHAMP ADULTO 85G CARNE", "9.45", "Pets"),
+            ("TOALHA PAPEL C 2 SCALA", "5.49", "Casa"),
+            ("AMAC DOWNY 1L BRISA", "29.99", "Limpeza"),
+            ("DESOD MONANGE AERO 150ML", "9.95", "Perfumaria"),
+            ("ESPUMA GILLETTE 155ML", "23.99", "Perfumaria"),
         ]
     ],
 }
@@ -331,7 +342,14 @@ BEHAVIOUR_CASES: tuple[BehaviourCase, ...] = (
             receipt_payload=HIPERMACIONAL_PAYLOAD,
         ),
         opening="receipt",
-        turns=("Paguei no Credito C6. Confirma, pode registrar.",),
+        # Two turns, like `americanas-split-on-request`: production's photo turn
+        # answers the payment question, shows the table and asks "Confirma?",
+        # and the confirmation arrives as a separate message. Folding both into
+        # one turn left the run ending on the proposal, with nothing committed.
+        turns=(
+            "Paguei no Credito C6.",
+            "Confirma, pode registrar.",
+        ),
         today=date(2026, 6, 20),
         expected_entries=(
             ExpectedEntry(category="Alimentacao", amount=Decimal("273.88")),

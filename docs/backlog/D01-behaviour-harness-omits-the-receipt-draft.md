@@ -2,7 +2,7 @@
 id: D01
 title: The behaviour harness omits the ReceiptDraft, making receipt cases unpassable
 release: R2
-status: ready
+status: done
 depends_on: [E08]
 blocks: [E09]
 wedge_critical: true
@@ -32,9 +32,46 @@ Three runs on 2026-08-14, `openai:gpt-5.4`, scores 0.857 / 0.714 / 0.857. The
 ledger total is **0**: the agent wrote nothing at all, rather than writing the
 wrong thing.
 
-## Root cause
+## Root cause — corrected 2026-08-15, the first diagnosis below was wrong
 
-The case is unpassable as written. No model can pass it.
+The case is unpassable as written. No model can pass it. But **not** for the
+reason first written up here, and the difference matters because the first
+diagnosis would have been "fixed" by pre-seeding a plan the agent is supposed to
+compute itself — scoring a pipeline production does not run.
+
+`build_world` (`eval/behaviour_runner.py:67-73`) **already creates** the PENDING
+`ReceiptDraft` whenever the case declares `world.receipt_payload`, and
+`build_pending_receipt_directive` only needs that row, so it fires correctly.
+Both claims in the table below were false.
+
+The real blocker is one field. `HIPERMACIONAL_PAYLOAD`'s items carried **no
+`category`**, while the photo turn instructs the agent:
+
+> *"Cada item já carrega sua categoria. Chame propose_receipt() — SEM passar
+> items_by_category, pois as categorias já estão nos itens."*
+
+`propose_receipt` derives `items_by_category` from the items and refuses when
+they have none: *"Itens sem categoria definida pela leitura."* A live run on
+`openai:gpt-5.4` confirms it — the agent obeys the instruction, the tool refuses,
+and the agent can only ask the user to categorise 28 items by hand:
+
+```
+>> TOOL CALL propose_receipt({"payment_method_name":"Credito C6", ...})
+<< TOOL RETURN Itens sem categoria definida pela leitura — me diga a categoria de cada um
+```
+
+A production extraction always carries categories: the vision agent is handed
+the household catalogue for exactly that purpose. The fixture described a read
+production cannot produce, and `commit_receipt` then had no `payload["plan"]`
+to register because `propose_receipt` never got to write one.
+
+**Secondary cause, same symptom.** The case gave one turn after the opening
+(`"Paguei no Credito C6. Confirma, pode registrar."`), and the agent spends that
+turn resolving which card was used — as production does. Even with a working
+`propose_receipt`, the run ended on the proposal with nothing committed. The
+sibling case `americanas-split-on-request` gets two turns for the same reason.
+
+### The original, incorrect diagnosis
 
 `build_opening_prompt` (`assistant/eval/behaviour_runner.py:93-96`) renders the
 receipt into prompt text and stops there:
@@ -81,19 +118,29 @@ would be picking a model with its most relevant signal switched off.
 
 ## What to do
 
-- [ ] `build_opening_prompt`'s `receipt` branch creates a PENDING `ReceiptDraft`
-      for the household, with the same `payload` shape production writes,
-      including the `plan` key that `commit_receipt` reads
-- [ ] A test asserts the draft exists and is PENDING before the first turn runs,
-      and that `build_pending_receipt_directive` returns non-empty for it
-- [ ] A test drives the case with a stub model that calls `commit_receipt` and
-      asserts rows land, so the case is provably passable without spending money
-- [ ] `hipermacional-six-categories-no-double-count` passes against
-      `openai:gpt-5.4`, or fails on the *substance* the case is about (Pets
-      double-counted, Lanche merged away) rather than on an empty ledger
-- [ ] The behavioural baseline in
-      `docs/superpowers/evidence/eval/baseline-2026-08-14.md` is re-run and
-      corrected, and the note about this case is replaced with the real number
+- [x] Every item in `HIPERMACIONAL_PAYLOAD` carries the `category` a real
+      extraction would assign, summing to the case's `expected_entries`
+- [x] The case gets a separate confirmation turn, matching
+      `americanas-split-on-request` and matching how the confirmation actually
+      reaches production (a second message, through the text path)
+- [x] A test asserts the PENDING draft exists before the first turn, that its
+      items carry categories, and that `build_pending_receipt_directive` returns
+      non-empty for it
+- [x] A test walks `propose_receipt` → `commit_receipt` with no provider and
+      asserts the six expected rows land, so the case is provably passable for
+      free and the guard runs in normal CI
+- [x] A test asserts no case declares a payload category its world never creates
+- [x] `hipermacional-six-categories-no-double-count` passes against
+      `openai:gpt-5.4`: 6 rows, R$376.70, every category exact (live run
+      2026-08-15)
+- [ ] The behavioural baseline is re-run and corrected — done by E09 Task 3,
+      which re-baselines on the wider dataset rather than patching the
+      seven-case numbers in `baseline-2026-08-14.md`
+
+**Not done, deliberately:** the draft is *not* pre-seeded with a `plan`.
+Production writes the draft with the raw extraction payload and lets the agent
+call `propose_receipt` itself; a harness that pre-computed the plan would hand
+every model a correct categorisation for free and score a pipeline nobody runs.
 
 ## Also seen, not explained by this
 
