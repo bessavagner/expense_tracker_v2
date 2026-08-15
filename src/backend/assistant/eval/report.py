@@ -55,21 +55,31 @@ def build_extraction_report(model: str, cases: Sequence[ReceiptCase], runs) -> M
     agg = aggregate_extraction(scores)
     n = len(runs)
     # Errored runs score zero and still count, so the denominator is every case
-    # attempted rather than only the ones that came back.
-    overall = round(agg.overall * len(scores) / n, 6) if n else 0.0
+    # attempted rather than only the ones that came back. The dimensions get the
+    # SAME denominator: `aggregate_extraction` only ever sees the runs that
+    # returned, so a model that answered one receipt out of seven perfectly
+    # would otherwise print 1.00 across every column next to a score of 0.14 —
+    # observed live with `qwen3.7-flash`, and it reads as the best model in the
+    # table.
+    answered = (len(scores) / n) if n else 0.0
+    overall = round(agg.overall * answered, 6) if n else 0.0
+
+    def _scaled(value: float) -> float:
+        return round(value * answered, 6)
+
     return ModelReport(
         model=model,
         suite="extraction",
         n=n,
         overall=overall,
         dimensions={
-            "money_ok_rate": agg.money_ok_rate,
-            "item_recall": agg.item_recall,
-            "item_precision": agg.item_precision,
-            "amount_accuracy": agg.amount_accuracy,
-            "category_accuracy": agg.category_accuracy,
-            "store_accuracy": agg.store_accuracy,
-            "date_accuracy": agg.date_accuracy,
+            "money_ok_rate": _scaled(agg.money_ok_rate),
+            "item_recall": _scaled(agg.item_recall),
+            "item_precision": _scaled(agg.item_precision),
+            "amount_accuracy": _scaled(agg.amount_accuracy),
+            "category_accuracy": _scaled(agg.category_accuracy),
+            "store_accuracy": _scaled(agg.store_accuracy),
+            "date_accuracy": _scaled(agg.date_accuracy),
         },
         totals=total(costs),
         failures=tuple(failures),

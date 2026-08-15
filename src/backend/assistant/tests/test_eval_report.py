@@ -81,6 +81,32 @@ def test_a_run_that_errored_is_reported_as_a_failure_not_dropped():
     assert report.totals.unpriced_calls == 1
 
 
+@pytest.mark.django_db
+def test_the_dimensions_count_errored_cases_too():
+    """A model that answered one case out of two is not 1.00 at anything.
+
+    Found live: `qwen3.7-flash` failed 6 of 7 receipts on output validation and
+    the report showed **1.00 on every dimension**, because the aggregate averaged
+    only the run that came back. `overall` already divides by every case
+    attempted; the dimensions must use the same denominator or the row reads as
+    a flawless model next to a score of 0.14.
+    """
+    from asgiref.sync import async_to_sync
+
+    from assistant.eval.extraction_runner import run_extraction_case
+
+    (case,) = load_receipt_cases(["americanas-2026-06-12"])
+    ok = async_to_sync(run_extraction_case)(case, TestModel(custom_output_args=GOOD_READ))
+    died = RawRun(case.id, None, None, 120, "RuntimeError: provider exploded")
+
+    report = build_extraction_report("fake:model", [case], [ok, died])
+
+    assert report.n == 2
+    assert report.overall == 0.5
+    assert report.dimensions["money_ok_rate"] == 0.5
+    assert report.dimensions["item_recall"] == 0.5
+
+
 def sample_report(model="a", overall=0.9):
     from assistant.eval.costing import total
 
