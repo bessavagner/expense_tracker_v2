@@ -69,14 +69,35 @@ class TestOrigin:
 
         assert projection_origin(household) == date(2026, 1, 1)
 
+    def test_no_household_at_all_does_not_raise(self):
+        """Fail closed like every other household-less path in this codebase."""
+        assert projection_origin(None) is not None
+
+
+@pytest.mark.django_db
+class TestEmptyHouseholdFallback:
+    """Split out so the clock can be frozen (global constraint 10: no
+    date-sensitive test may read the unfrozen wall clock). Frozen at midday
+    UTC — the documented default — specifically so the local and UTC
+    calendar day agree: this test is about the creation-month fallback
+    itself, not the UTC/America-Sao_Paulo day boundary that
+    `TestOriginTimezoneBoundary` below exists to cover. An unfrozen or
+    midnight-frozen clock would make this test's own two sides of the
+    assertion (`household.created_at.date()` vs. `projection_origin`'s
+    localtime result) disagree whenever the run happens to land in that
+    boundary window.
+    """
+
+    FROZEN_NOW = datetime(2026, 6, 15, 12, 0, tzinfo=UTC)
+
+    @pytest.fixture(autouse=True)
+    def _frozen_clock(self, time_machine):
+        time_machine.move_to(self.FROZEN_NOW, tick=False)
+
     def test_an_empty_household_falls_back_to_its_creation_month(self, household):
         expected = household.created_at.date().replace(day=1)
 
         assert projection_origin(household) == expected
-
-    def test_no_household_at_all_does_not_raise(self):
-        """Fail closed like every other household-less path in this codebase."""
-        assert projection_origin(None) is not None
 
 
 @pytest.mark.django_db
