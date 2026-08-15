@@ -60,8 +60,8 @@ class Command(BaseCommand):
             incomes = Income.objects.for_household(household).aggregate(
                 total=Sum("amount"), last=Max("month")
             )
-            start = entries["first"] or projection_origin()
-            start = max(start.replace(day=1), projection_origin())
+            start = entries["first"] or projection_origin(household)
+            start = max(start.replace(day=1), projection_origin(household))
             # A window that stops short of the data would compare only its head,
             # and corruption in the tail would read as "identical" (finding C1).
             tail = max(

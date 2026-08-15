@@ -7,6 +7,17 @@ from django.urls import reverse
 from model_bakery import baker
 
 
+@pytest.fixture(autouse=True)
+def _early_origin(household):
+    """This module exercises the view with dates chosen for narrative clarity,
+    not the origin floor itself. Pin the origin well before any of them so the
+    household's real creation timestamp (now) never floors the whole window
+    out from under an unrelated test.
+    """
+    household.projection_origin_month = date(2020, 1, 1)
+    household.save(update_fields=["projection_origin_month"])
+
+
 @pytest.mark.django_db
 class TestProjectionView:
     def test_requires_login(self):

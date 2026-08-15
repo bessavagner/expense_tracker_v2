@@ -64,6 +64,11 @@ class Household(models.Model):
     # The tier the household WANTS. The chokepoint may override it downward
     # when credits run out; it never overrides upward (E07 spec D2).
     preferred_tier = models.CharField(max_length=20, choices=Tier.choices, default=Tier.ADVANCED)
+    # The first month this household's projection counts. NULL means "derive it
+    # from the household's own data", which is right for everyone who signs up.
+    # It is set explicitly only for the households that predate E11, whose early
+    # months are migration and seed noise — see the data migration that fills it.
+    projection_origin_month = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -8,7 +8,6 @@ docs/superpowers/specs/2026-06-18-projection-screen-design.md.
 from datetime import date
 from decimal import Decimal
 
-from django.conf import settings
 from django.db.models import Min, Sum
 
 from finances.models import Entry, Income, SystemicExpense
@@ -28,30 +27,41 @@ def _add_months(d: date, n: int) -> date:
     return date(year, month + 1, 1)
 
 
-def _projection_origin() -> date:
-    """First month that counts. Nothing earlier enters the projection at all.
+def projection_origin(household) -> date:
+    """First month that counts for ``household``. Nothing earlier enters at all.
 
-    Configurable via ``settings.PROJECTION_ORIGIN_MONTH`` (a ``date`` or
-    ``"YYYY-MM"`` string); defaults to Nov 2025. Pre-origin records are
-    migration/seed noise and must never affect the running ``acumulado``.
+    Per household rather than global (E11). The old
+    ``settings.PROJECTION_ORIGIN_MONTH`` recorded one fact about one ledger —
+    that everything before Nov 2025 was migration and seed noise — and applying
+    it to a stranger produced a projection anchored two years before they had
+    heard of the product. Worse, it silently discarded imported history: a CSV
+    of 2024 landed below the floor and vanished from the ``acumulado``.
+
+    Resolution order:
+
+    1. ``household.projection_origin_month`` when set. The data migration set
+       it for every household that existed when E11 shipped, so their numbers
+       did not move.
+    2. The earliest month with any income or entry.
+    3. The household's own creation month, for a household with no data yet.
     """
-    raw = getattr(settings, "PROJECTION_ORIGIN_MONTH", None)
-    if isinstance(raw, date):
-        return raw.replace(day=1)
-    if isinstance(raw, str) and raw.strip():
-        try:
-            year, month = (int(p) for p in raw.split("-")[:2])
-            return date(year, month, 1)
-        except (ValueError, TypeError):
-            pass
+    if household is None:
+        return DEFAULT_PROJECTION_ORIGIN
+
+    explicit = getattr(household, "projection_origin_month", None)
+    if explicit:
+        return explicit.replace(day=1)
+
+    inc_min = Income.objects.for_household(household).aggregate(m=Min("month"))["m"]
+    ent_min = Entry.objects.for_household(household).aggregate(m=Min("billing_month"))["m"]
+    candidates = [d for d in (inc_min, ent_min) if d is not None]
+    if candidates:
+        return min(candidates).replace(day=1)
+
+    created = getattr(household, "created_at", None)
+    if created is not None:
+        return created.date().replace(day=1)
     return DEFAULT_PROJECTION_ORIGIN
-
-
-def projection_origin() -> date:
-    """Public accessor for the first month the projection counts (see
-    :func:`_projection_origin`). Lets callers detect months preceding the
-    origin, where no projection rows exist."""
-    return _projection_origin()
 
 
 def build_projection(
@@ -92,7 +102,7 @@ def build_projection(
     data_anchor = min(data_candidates).replace(day=1) if data_candidates else start_month
     # Floor at the projection origin: anything before it is excluded entirely, so
     # pre-origin records never leak into the running acumulado.
-    origin = _projection_origin()
+    origin = projection_origin(household)
     agg_start = max(min(data_anchor, start_month), origin)
 
     # Every month from the anchor through the window end (drives the running total).

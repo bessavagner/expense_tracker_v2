@@ -63,7 +63,7 @@ def compute_entry_summary(household, year, month):
             "acumulado": Decimal("0"),
             "entry_count": entry_count,
             "before_origin": True,
-            "origin_month": projection_origin(),
+            "origin_month": projection_origin(household),
         }
     row = rows[-1]
 
@@ -75,7 +75,7 @@ def compute_entry_summary(household, year, month):
         "acumulado": row["acumulado"],
         "entry_count": entry_count,
         "before_origin": False,
-        "origin_month": projection_origin(),
+        "origin_month": projection_origin(household),
     }
 
 

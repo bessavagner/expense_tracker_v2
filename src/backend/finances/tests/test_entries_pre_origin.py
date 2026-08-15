@@ -32,7 +32,11 @@ def _regular(household, d, amount, billing_month):
 @pytest.mark.django_db
 class TestPreOriginSummary:
     def test_summary_before_origin_does_not_raise(self, household):
-        # October 2025 precedes the projection origin (nov/2025).
+        # October 2025 precedes the projection origin (nov/2025). Pinned
+        # explicitly: without it, a household with no other data derives its
+        # origin from its own creation month (now), not from this test's dates.
+        household.projection_origin_month = date(2025, 11, 1)
+        household.save(update_fields=["projection_origin_month"])
         _regular(household, date(2025, 10, 15), "100.00", date(2025, 10, 1))
 
         summary = compute_entry_summary(household, 2025, 10)
@@ -55,6 +59,8 @@ class TestPreOriginSummary:
         assert summary["total_gastos"] == Decimal("100.00")
 
     def test_entries_page_before_origin_returns_200_with_notice(self, logged_client, household):
+        household.projection_origin_month = date(2025, 11, 1)
+        household.save(update_fields=["projection_origin_month"])
         _regular(household, date(2025, 10, 15), "100.00", date(2025, 10, 1))
 
         response = logged_client.get("/entries/2025/10/")

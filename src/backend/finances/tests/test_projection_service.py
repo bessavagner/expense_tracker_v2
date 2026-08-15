@@ -32,6 +32,18 @@ def pix(household):
     return baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
 
 
+@pytest.fixture(autouse=True)
+def _early_origin(household):
+    """This module exercises projection math against dates chosen for narrative
+    clarity (E11 predates most of them), not against the origin floor itself.
+    Pin the origin well before any of them so the household's real creation
+    timestamp (now) never floors a row out from under an unrelated test. The
+    one test that means to exercise the floor overrides this explicitly.
+    """
+    household.projection_origin_month = date(2020, 1, 1)
+    household.save(update_fields=["projection_origin_month"])
+
+
 @pytest.mark.django_db
 class TestBuildProjection:
     def test_returns_one_row_per_month(self, user, household):
@@ -150,7 +162,10 @@ class TestBuildProjection:
     def test_pre_origin_data_excluded_from_acumulado(self, user, household, cat, pix):
         # Data before the projection origin (Nov 2025) is migration/seed noise and
         # must NOT leak into the running total, even though acumulado is otherwise
-        # anchored at the earliest data.
+        # anchored at the earliest data. This test is about the floor itself, so
+        # it overrides the module's early-origin default.
+        household.projection_origin_month = date(2025, 11, 1)
+        household.save(update_fields=["projection_origin_month"])
         baker.make(
             "finances.Income", household=household, amount=Decimal("1000"), month=date(2025, 9, 1)
         )
