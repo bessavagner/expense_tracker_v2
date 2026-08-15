@@ -44,6 +44,26 @@ def test_the_set_covers_every_hard_case_it_claims_to():
         assert required in covered, required
 
 
+def test_every_hard_case_tag_is_documented():
+    """`docs/eval-dataset.md` claims this test asserts its table. Now it does.
+
+    The older assertion only checked that a fixed list of tags was PRESENT, so a
+    new tag could be invented in a case file and never explained anywhere. A tag
+    nobody documented is a coverage claim nobody can check.
+    """
+    import pathlib
+
+    doc = (
+        pathlib.Path(__file__).resolve().parents[3].parent / "docs" / "eval-dataset.md"
+    ).read_text(encoding="utf-8")
+    used = {h for c in load_receipt_cases() for h in c.hard_cases}
+    undocumented = sorted(tag for tag in used if f"`{tag}`" not in doc)
+    assert not undocumented, (
+        "hard-case tags used by a case but missing from the table in "
+        f"docs/eval-dataset.md: {undocumented}"
+    )
+
+
 def test_every_committed_case_is_arithmetically_consistent():
     for case in load_receipt_cases():
         assert arithmetic_error(case) is None, f"{case.id}: {arithmetic_error(case)}"

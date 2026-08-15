@@ -1,0 +1,47 @@
+{
+ "id": "ultrafarma-2026-08-12",
+ "images": [
+  "IMG_20260812_180733707_HDR.jpg"
+ ],
+ "image_source": "private",
+ "media_type": "image/jpeg",
+ "provenance": "Household receipt photographed 2026-08-12, Farmácia Ultrafarma Crateús. One line, four units at 15,00, a 20,00 (33,3%) discount, and a Total column that already shows the net 40,00. The trivial case the set never had — and it still breaks a model that copies the printed 'Desconto R$ 20,00' next to a net line, which makes 40 - 20 = 20 for a purchase of 40. Not committed: real personal data.",
+ "hard_cases": [
+  "single-item",
+  "percent-discount",
+  "embedded-line-discount",
+  "multi-unit-line"
+ ],
+ "categories": [
+  "Higiene"
+ ],
+ "payment_methods": [
+  {
+   "name": "Credito C6",
+   "type": "credit_card",
+   "closing_day": 25
+  },
+  {
+   "name": "Pix",
+   "type": "pix"
+  },
+  {
+   "name": "Dinheiro",
+   "type": "cash"
+  }
+ ],
+ "store": "FARMACIA - ULTRAFARMA",
+ "store_key": "ultrafarma",
+ "date": "2026-08-12",
+ "payment_hint": "Dinheiro",
+ "discount": "0",
+ "amount_paid": "40.00",
+ "items": [
+  {
+   "description": "LENCOS UMEDECIDOS BEBE LIMPINHO 140UN",
+   "line_total": "40.00",
+   "category": "Higiene",
+   "quantity": "4"
+  }
+ ]
+}

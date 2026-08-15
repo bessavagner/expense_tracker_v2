@@ -1660,3 +1660,90 @@ pricing only. Transcription records carry `ok`, `model` and latency but
 purpose: a transcription is roughly two orders of magnitude cheaper than a
 vision call (E01), so it does not move p50/p90/p99. `test_pricing_gaps_are_declared`
 keeps it a decision rather than an oversight. Revisit if audio volume grows.
+
+## The production model mix (E09)
+
+Which model runs where, why, and how to change it. Evidence:
+`docs/superpowers/evidence/eval/matrix-2026-08-15.md`.
+
+| Path | Setting | Model | Why |
+|---|---|---|---|
+| Text, strong | `LLM_TIER_ADVANCED` → `LLM_ASSISTANT_MODEL` | `openai:gpt-5.4` | 1.000 on the behavioural suite, spread 0.000. Both cheaper candidates dropped to 0.952 by failing the category-split case one run in three — the exact production bug the product exists to prevent. |
+| Text, standard | `LLM_TIER_STANDARD` | `openai:gpt-5.4` | Same. Deliberately equal to ADVANCED until something measures better. |
+| Text, degraded | `LLM_TIER_ESSENTIAL` | `openrouter:nvidia/nemotron-3-super-120b-a12b:free` | E07. Out of credits gets a cheap answer, never a refusal. |
+| **Vision, first read** | `LLM_VISION_MODEL` | **`openai:gpt-5.6-luna`** | Every photo. Cheap and, alone, not good enough: 0.508, reconciles 53%. |
+| **Vision, escalation** | `LLM_VISION_ESCALATION_MODEL` | **`openai:gpt-5.4-mini`** | The ~1/3 of receipts the cheap read cannot reconcile. Equals gpt-5.4 on the money invariant for 2.48× less. |
+
+**The two vision settings are one decision.** Alone, neither ships: luna scores
+0.508, and mini misses the 3× cost gate at 2.48×. Together they measured
+**0.719 at 3.75× cheaper** than gpt-5.4's 0.699 — better quality *and* lower
+cost. Changing one without the other ships half a decision, and the half that
+ships alone is the bad one.
+
+### Changing a model
+
+Every model is an environment variable, so this needs no deploy:
+
+```bash
+gcloud run services update expense-tracker \
+  --project expense-tracker-482807 --region southamerica-east1 \
+  --update-env-vars LLM_VISION_MODEL=<new model>
+```
+
+Use `--update-env-vars`, never `--set-env-vars`: the latter replaces the whole
+env list and wipes `DATABASE_URL` and friends.
+
+**Seed the `ModelPrice` row in the same change**, or the cost report reads zero
+for every call to the new model, which looks like an answer. And **measure
+before you switch** — read *Evaluating a model (E08)* above, then run three
+sweeps, not one.
+
+### Rolling back
+
+The same command with the previous value. Both together:
+
+```bash
+gcloud run services update expense-tracker \
+  --project expense-tracker-482807 --region southamerica-east1 \
+  --update-env-vars LLM_VISION_MODEL=openai:gpt-5.4,LLM_VISION_ESCALATION_MODEL=openai:gpt-5.4
+```
+
+Setting both to the same model is the pre-E09 behaviour: one model, and a second
+attempt only when the first raises. Old `ModelPrice` rows are deliberately kept,
+so historical `UsageRecord`s still price correctly.
+
+### Is escalation working?
+
+```sql
+SELECT escalation_reason, count(*)
+FROM assistant_usagerecord
+WHERE kind = 'extraction' AND created_at > now() - interval '7 days'
+GROUP BY escalation_reason;
+```
+
+Blank rows are first attempts; everything else is a second call on the same
+receipt. Divide the non-blank total by the blank total for the escalation rate.
+
+**Measured at 33% when the mix was chosen** (27–40% across three sweeps), so
+roughly 1.33 calls per receipt. What the numbers mean:
+
+| Reading | What it means | What to do |
+|---|---|---|
+| ~30–40% | Normal. This is what the 3.75× saving already accounts for. | Nothing. |
+| Near 100% | The cheap model is not cheap — you are paying for two calls on every receipt. | Roll back the mix. |
+| Near 0% | Suspect, not good. Either the cheap model got much better, or the escalation rule stopped firing. | Check `money_ok_rate` on a fresh sweep before believing it. |
+
+The **reason** matters as much as the rate, which is why it is a column:
+
+- `discount_mismatch` — the lines and the stated discount disagree with the
+  total. The pharmacy shape, and the most common reason here.
+- `inconsistent` — the lines do not cover the amount paid. A line was missed.
+- `low_confidence` — the model said so itself. Tune with
+  `ASSISTANT_ESCALATE_MIN_CONFIDENCE`, which is deliberately **not**
+  `ASSISTANT_RECEIPT_MIN_CONFIDENCE`; that one decides whether to ask the user
+  field by field, and asking is cheap where retrying is not.
+- `no_items` / `error` — the cheap read returned nothing, or raised.
+
+A rate that climbs with `low_confidence` dominating is a threshold to tune. A
+rate that climbs with `discount_mismatch` dominating is a worse cheap model, or
+a new receipt shape worth adding to the golden dataset.

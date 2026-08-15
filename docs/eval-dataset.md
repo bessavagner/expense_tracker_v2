@@ -82,37 +82,81 @@ trusting it to stay true.
 | `thermal-print` | Faded thermal paper is the common real input. |
 | `rotated` / `low-contrast` | Phone photos are not scans. |
 | `multi-category` | Where a weaker model merges categories and loses money. |
+| `many-categories` | Six categories on one receipt — the merge trap at full size. |
 | `discount` | The discount is re-derived and prorated, not read. |
 | `multi-unit-line` | The Mercado Livre bug: a 2-unit line priced as a total. |
 | `weighed-item` | Produce priced per kilo — `line_total` is not the shelf price. |
+| `fractional-unit` | Priced per square metre, three decimals: 14,140 m². |
 | `repeated-lines` | Identical descriptions on separate lines must not be merged. |
 | `long-receipt` / `multi-page` | 62 lines over two photos. |
 | `no-printed-total` / `no-printed-date` | The correct read is `null`, not a guess. |
+| `marketplace-order` | An order screen, not a fiscal cupom: no CNPJ, no printed total. |
+| `pix` | Instant payment, so `payment_hint` is not a card brand. |
+
+Added by E09, because seven cases could not separate serious candidates:
+
+| Hard case | Why it is in the set |
+|---|---|
+| `pharmacy-net-value` | The DROGASIL shape: a gross line, then `Valor Liquido` under it. |
+| `embedded-line-discount` | The discount is already inside the line total. Copying the receipt's printed discount total on top of it double-counts, and the ledger comes out short. |
+| `percent-discount` | The discount is printed as a percentage of a multi-unit line. |
+| `service-charge` | A 10% **surcharge**. The lines are LESS than what was paid — reconciliation runs the other way, and every other case in the set runs the usual way. |
+| `single-item` | A one-line receipt. The set had no trivial case, so a score of 0.0 could not be told apart from a provider outage. |
+| `non-fiscal-document` | `COMPROVANTE DE VENDA`, `PEDIDO DE VENDA`, `ORCAMENTO` — real purchases on documents that are not an NFC-e and carry none of its structure. |
+| `a4-print` | A laser-printed A4 order, not a till roll. Different layout, different failure modes. |
+| `thousand-separator` | The only receipt over R$1.000: `1.323,83` can be read as 1,32. |
+| `cropped-edge` | The photo cuts the last digit off the totals column. Every value is still recoverable from the unit-price column at quantity 1. |
 
 `already-registered` is covered by a **behavioural** case
 (`refuses-to-double-register-a-known-receipt`), not by a receipt to read.
 
-## Known shortfall: seven cases, not ten
+## The shortfall is closed: fifteen cases (E09, 2026-08-15)
 
-The epic's Definition of Done asks for **≥10** receipt cases. The set stands at
-**7**, and no more can be added honestly from the photos that exist:
+E08 recorded a shortfall of seven cases against a Definition of Done asking for
+ten. E09 needed the set wider for a harder reason than a checkbox: E08 measured a
+**run-to-run score spread of 0.14** on seven cases, wider than the gap between
+the models E09 exists to choose between. One receipt was 14% of the score. At
+fifteen it is 6.7%.
 
-- Of the seven photos originally earmarked as "private",
-  `IMG_20260612_174310143_HDR.jpg` and `IMG_20260615_072007792_HDR.jpg` turned
-  out to be **byte-identical** (same md5) to the already-committed
-  `receipt_americanas.jpg` and `receipt_hipermacional.jpg`. They are the same two
-  receipts, not new ones.
-- `IMG_20260622_191443851_HDR.jpg` and `IMG_20260622_191450110_HDR.jpg` are two
-  photos of **one** receipt, now the single `mateus-2026-06-22` case.
+Eight new cases were added from 74 previously untouched photos in
+`.data/receipts/extracted/` (gitignored). They were picked for **failure modes
+the set did not cover**, not at random — see the second hard-case table above.
+The two documents that could not become cases are recorded below rather than
+forced.
 
-That leaves five distinct new receipts on top of the two already committed. The
-gap is recorded here rather than closed with invented data: a case with no photo
-behind it can never be run against a vision model, and would make the set look
-larger than it is while contributing nothing to a score.
+### How the eight were chosen
 
-To close it, photograph three more receipts, drop them in `$EVAL_FIXTURES_DIR`
-and follow *Adding a case* above. The loader picks up new files with no code
-change, and the hard-case table above shows which kinds are already well covered.
+Every candidate photo was first read by the extraction model, and the result used
+**only to shortlist** — to find the drugstore receipts, the restaurant bill, the
+longest receipt, the one-line receipts. Ground truth was then transcribed from
+the photographs themselves.
+
+Each case's arithmetic is its own check: `items_total - discount == amount_paid`
+holds **exactly** for all eight, and for the forty-line Cosmos receipt the
+transcribed lines sum to 359,38, the figure printed on the paper. A misread line
+does not balance.
+
+### What still cannot be covered
+
+Two documents in the photo set are real household spending and still cannot
+become cases, because `ReceiptCase` requires at least one item and
+`arithmetic_error` refuses a case without one:
+
+- **A card-terminal slip** (`IMG_20260506_074224167_HDR.jpg`, O Boticário,
+  R$167,65 in 3 instalments). It prints a total and a card, and **no items at
+  all**. Production has to do something sensible with these; the harness cannot
+  score them.
+- **A PIX transfer receipt** (`650142893994608.png`, R$37,00 to a person). Same
+  shape, plus a third party's name and partial CPF.
+
+A **handwritten** case is also still missing. The one handwritten form in the set
+(`IMG_20170923_113425393_HDR.jpg`, a pousada service slip) has amounts and
+quantities but **no descriptions written in at all**, and its handwritten
+"VALOR 137.00" does not agree with its own lines. There is no honest gabarito to
+type; inventing descriptions would score models against fiction.
+
+To add more, photograph the receipts, drop them in `$EVAL_FIXTURES_DIR` and
+follow *Adding a case* above. The loader picks up new files with no code change.
 
 ## Provider quirks: models that refuse the request outright
 

@@ -1,0 +1,41 @@
+{
+  "generated_at": "2026-08-15T06:59:32-03:00",
+  "reports": [
+    {
+      "dimensions": {
+        "amount_accuracy": 0.978307,
+        "category_accuracy": 0.951805,
+        "date_accuracy": 1.0,
+        "item_precision": 0.985185,
+        "item_recall": 1.0,
+        "money_ok_rate": 0.666667,
+        "store_accuracy": 1.0
+      },
+      "failures": [
+        "casa-do-feijao-verde-2026-07-03: money invariant FAILED",
+        "cosmos-2026-06-03: partial",
+        "cosmos-2026-06-19: money invariant FAILED",
+        "drogasil-2026-07-04: money invariant FAILED",
+        "hipermacional-2026-06-15: spurious 8",
+        "hipernacional-2026-06-19: partial",
+        "hipernacional-2026-07-08: partial",
+        "mateus-2026-06-22: partial",
+        "nobre-lar-2026-05-18: money invariant FAILED",
+        "ultrafarma-2026-08-12: money invariant FAILED"
+      ],
+      "model": "openai:gpt-5.4",
+      "n": 15,
+      "overall": 0.654894,
+      "suite": "extraction",
+      "totals": {
+        "avg_latency_ms": 8102,
+        "calls": 15,
+        "cost_usd": "0.388540",
+        "input_tokens": 81088,
+        "output_tokens": 12388,
+        "unpriced_calls": 0
+      }
+    }
+  ],
+  "skipped": []
+}

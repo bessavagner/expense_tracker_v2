@@ -1,0 +1,67 @@
+{
+ "id": "drogasil-2026-07-04",
+ "images": [
+  "IMG_20260704_201053939_HDR.jpg"
+ ],
+ "image_source": "private",
+ "media_type": "image/jpeg",
+ "provenance": "Household receipt photographed 2026-07-04, Drogasil Crateús. The DROGASIL shape the production consistency check names: four of the five lines print a gross VL ITEM, then 'De X por Y desconto de -Z' and a 'Valor Liquido' underneath. The gabarito takes the NET value, because EXTRACTION_PROMPT defines line_total as the final value charged for that line, and sets discount to 0 — the receipt's printed 'VALOR TOTAL DESCONTO 27,60' is already inside those lines. Transcribing both would claim 118,86 - 27,60 = 118,86. That is exactly what gpt-5.4 did on 2026-08-15, and it is why this case is here. Not committed: real personal data.",
+ "hard_cases": [
+  "pharmacy-net-value",
+  "embedded-line-discount",
+  "multi-category",
+  "thermal-print"
+ ],
+ "categories": [
+  "Alimentacao",
+  "Saude"
+ ],
+ "payment_methods": [
+  {
+   "name": "Credito C6",
+   "type": "credit_card",
+   "closing_day": 25
+  },
+  {
+   "name": "Pix",
+   "type": "pix"
+  },
+  {
+   "name": "Dinheiro",
+   "type": "cash"
+  }
+ ],
+ "store": "Drogasil",
+ "store_key": "drogasil",
+ "date": "2026-07-04",
+ "payment_hint": "CARTEIRA DIG.",
+ "discount": "0",
+ "amount_paid": "118.86",
+ "items": [
+  {
+   "description": "PIRACANJ WH CACAU250ML",
+   "line_total": "6.99",
+   "category": "Alimentacao"
+  },
+  {
+   "description": "PROFU PURIANC CONT 150",
+   "line_total": "57.99",
+   "category": "Saude"
+  },
+  {
+   "description": "PIRACANJ WH CACAU250ML",
+   "line_total": "6.99",
+   "category": "Alimentacao"
+  },
+  {
+   "description": "NASOAR REFIL 30 ENVEL",
+   "line_total": "39.90",
+   "category": "Saude"
+  },
+  {
+   "description": "PIRACANJ WH AMEND250ML",
+   "line_total": "6.99",
+   "category": "Alimentacao"
+  }
+ ]
+}

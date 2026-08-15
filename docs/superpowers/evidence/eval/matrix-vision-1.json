@@ -1,0 +1,112 @@
+{
+  "generated_at": "2026-08-15T07:31:53-03:00",
+  "reports": [
+    {
+      "dimensions": {
+        "amount_accuracy": 0.946085,
+        "category_accuracy": 0.88981,
+        "date_accuracy": 1.0,
+        "item_precision": 0.971111,
+        "item_recall": 0.985926,
+        "money_ok_rate": 0.6,
+        "store_accuracy": 0.866667
+      },
+      "failures": [
+        "americanas-2026-06-12: money invariant FAILED",
+        "casa-do-feijao-verde-2026-07-03: money invariant FAILED",
+        "compensa-2026-05-12: missed 1, spurious 1",
+        "cosmos-2026-06-03: money invariant FAILED",
+        "cosmos-2026-06-19: missed 1, spurious 1",
+        "drogasil-2026-07-04: money invariant FAILED",
+        "hipermacional-2026-06-15: spurious 8",
+        "hipernacional-2026-06-19: partial",
+        "hipernacional-2026-07-08: partial",
+        "mateus-2026-06-22: partial",
+        "nobre-lar-2026-05-18: money invariant FAILED",
+        "ultrafarma-2026-08-12: money invariant FAILED"
+      ],
+      "model": "openai:gpt-5.6-luna",
+      "n": 15,
+      "overall": 0.564956,
+      "suite": "extraction",
+      "totals": {
+        "avg_latency_ms": 6662,
+        "calls": 15,
+        "cost_usd": "0.047075",
+        "input_tokens": 176790,
+        "output_tokens": 9764,
+        "unpriced_calls": 0
+      }
+    },
+    {
+      "dimensions": {
+        "amount_accuracy": 0.931306,
+        "category_accuracy": 0.898289,
+        "date_accuracy": 1.0,
+        "item_precision": 0.985185,
+        "item_recall": 1.0,
+        "money_ok_rate": 0.733333,
+        "store_accuracy": 0.933333
+      },
+      "failures": [
+        "casa-do-feijao-verde-2026-07-03: money invariant FAILED",
+        "cosmos-2026-06-03: partial",
+        "drogasil-2026-07-04: partial",
+        "hipermacional-2026-06-15: spurious 8",
+        "hipernacional-2026-06-19: partial",
+        "hipernacional-2026-07-08: partial",
+        "mateus-2026-06-22: money invariant FAILED",
+        "nobre-lar-2026-05-18: money invariant FAILED",
+        "ultrafarma-2026-08-12: money invariant FAILED"
+      ],
+      "model": "openai:gpt-5.4-mini",
+      "n": 15,
+      "overall": 0.696584,
+      "suite": "extraction",
+      "totals": {
+        "avg_latency_ms": 7816,
+        "calls": 15,
+        "cost_usd": "0.140820",
+        "input_tokens": 103870,
+        "output_tokens": 13982,
+        "unpriced_calls": 0
+      }
+    },
+    {
+      "dimensions": {
+        "amount_accuracy": 0.982381,
+        "category_accuracy": 0.889674,
+        "date_accuracy": 0.933333,
+        "item_precision": 0.985185,
+        "item_recall": 1.0,
+        "money_ok_rate": 0.666667,
+        "store_accuracy": 1.0
+      },
+      "failures": [
+        "casa-do-feijao-verde-2026-07-03: money invariant FAILED",
+        "cosmos-2026-06-03: money invariant FAILED",
+        "drogasil-2026-07-04: money invariant FAILED",
+        "hipermacional-2026-06-15: spurious 8",
+        "hipernacional-2026-06-19: partial",
+        "hipernacional-2026-07-08: partial",
+        "mateus-2026-06-22: partial",
+        "nobre-lar-2026-05-18: money invariant FAILED",
+        "pioneiro-2026-05-05: partial",
+        "ultrafarma-2026-08-12: money invariant FAILED"
+      ],
+      "model": "openai-responses:gpt-5.6-terra",
+      "n": 15,
+      "overall": 0.645991,
+      "suite": "extraction",
+      "totals": {
+        "avg_latency_ms": 9713,
+        "calls": 15,
+        "cost_usd": "0.570804",
+        "input_tokens": 201582,
+        "output_tokens": 13970,
+        "unpriced_calls": 0
+      }
+    }
+  ],
+  "skipped": []
+}

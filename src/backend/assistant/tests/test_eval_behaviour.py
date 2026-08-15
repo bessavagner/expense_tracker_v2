@@ -8,6 +8,8 @@ billing month or the absence of a row.
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from assistant.eval.behaviour import (
     BEHAVIOUR_CASES,
     BehaviourCase,
@@ -165,3 +167,96 @@ def test_the_iteraction_failure_is_one_of_the_cases():
 def test_load_behaviour_cases_filters_by_id():
     (one,) = load_behaviour_cases([BEHAVIOUR_CASES[0].id])
     assert one is BEHAVIOUR_CASES[0]
+
+
+# ── D01: a receipt case must be passable ────────────────────────────────────
+#
+# `hipermacional-six-categories-no-double-count` failed on every run of every
+# model with `ledger total 0`. The world it opened in was not one production can
+# produce: the payload's items carried no category, so the very first tool the
+# photo turn asks for — `propose_receipt()` with no `items_by_category` — refused
+# with "Itens sem categoria definida pela leitura" and the agent had nothing left
+# to do but ask a question. These tests pin the two halves of the fix and cost
+# nothing to run.
+
+RECEIPT_CASE = "hipermacional-six-categories-no-double-count"
+
+
+@pytest.mark.django_db
+def test_a_receipt_opening_leaves_a_draft_its_tools_can_use(household, user):
+    """The PENDING draft must exist AND its items must carry categories."""
+    from assistant.agents.scope import AgentScope
+    from assistant.agents.tools import build_pending_receipt_directive
+    from assistant.eval.behaviour import load_behaviour_cases
+    from assistant.eval.behaviour_runner import build_opening_prompt, build_world
+    from assistant.models import ReceiptDraft, ReceiptDraftStatus
+
+    (case,) = load_behaviour_cases([RECEIPT_CASE])
+    build_world(case, household, user)
+    scope = AgentScope(household=household, user=user)
+
+    build_opening_prompt(case, scope)
+
+    draft = (
+        ReceiptDraft.objects.for_household(household)
+        .filter(status=ReceiptDraftStatus.PENDING)
+        .first()
+    )
+    assert draft is not None, "commit_receipt refuses without a PENDING draft"
+    items = (draft.payload or {}).get("items") or []
+    assert items and all(i.get("category") for i in items), (
+        "propose_receipt() refuses a read whose items carry no category"
+    )
+    # Without this the directive forcing the receipt tools never reaches the agent.
+    assert build_pending_receipt_directive(scope) != ""
+
+
+@pytest.mark.django_db
+def test_every_receipt_case_declares_the_categories_its_payload_uses(household, user):
+    """A payload category the world never creates is an unpassable case."""
+    from assistant.eval.behaviour import BEHAVIOUR_CASES
+
+    for c in BEHAVIOUR_CASES:
+        payload = c.world.receipt_payload or {}
+        for item in payload.get("items") or []:
+            category = item.get("category")
+            if category:
+                assert category in c.world.categories, (c.id, category)
+
+
+@pytest.mark.django_db
+def test_the_six_category_case_is_passable_without_calling_a_provider(household, user):
+    """A stub that proposes and commits must produce exactly the expected rows.
+
+    This is the guard that keeps D01 fixed. It walks the same two tools the agent
+    is asked to call, so it fails the moment the fixture stops supporting them —
+    and it costs nothing, so it runs in normal CI.
+    """
+    from assistant.agents.scope import AgentScope
+    from assistant.agents.tools import commit_receipt, propose_receipt
+    from assistant.eval.behaviour import load_behaviour_cases
+    from assistant.eval.behaviour_runner import (
+        build_opening_prompt,
+        build_world,
+        snapshot_ledger,
+    )
+
+    (case,) = load_behaviour_cases([RECEIPT_CASE])
+    build_world(case, household, user)
+    scope = AgentScope(household=household, user=user)
+    build_opening_prompt(case, scope)
+
+    proposed = propose_receipt(scope)
+    assert "Erro" not in proposed and "sem categoria" not in proposed, proposed
+
+    result = commit_receipt(scope)
+
+    assert "Não há recibo pendente" not in result
+    rows = snapshot_ledger(household, set())
+    assert sum(r.amount for r in rows) == case.expected_total
+    by_category = {r.category: r.amount for r in rows}
+    for expected in case.expected_entries:
+        assert by_category.get(expected.category) == expected.amount, (
+            expected.category,
+            by_category,
+        )

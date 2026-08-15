@@ -204,3 +204,54 @@ def test_a_behaviour_run_that_errored_scores_zero_and_is_named():
     assert report.overall == 0.0
     assert any("rate limited" in f for f in report.failures)
     assert report.dimensions["cases_passed"] == 0.0
+
+
+@pytest.mark.django_db
+def test_a_pipeline_report_prices_each_attempt_against_its_own_model():
+    """The cost gate's integrity: a cheap first read plus a dear retry.
+
+    Reporting the pipeline under its own label finds no `ModelPrice` row and
+    prints $0 — free — for the row the 3x cost gate is decided on.
+    """
+    from datetime import date as _date
+
+    from assistant.eval.extraction_runner import Attempt, RawRun
+    from assistant.models import ModelPrice
+    from assistant.pricing import clear_price_cache
+
+    clear_price_cache()
+    for name, inp, out in (("cheap:m", "1.00", "2.00"), ("strong:m", "10.00", "20.00")):
+        ModelPrice.objects.create(
+            model_name=name,
+            input_per_mtok=Decimal(inp),
+            output_per_mtok=Decimal(out),
+            effective_from=_date(2020, 1, 1),
+            source_url="https://example.test/pricing",
+            checked_on=_date(2020, 1, 1),
+        )
+
+    class _Usage:
+        def __init__(self, i, o):
+            self.input_tokens = i
+            self.output_tokens = o
+
+    (case,) = load_receipt_cases(["americanas-2026-06-12"])
+    run = RawRun(
+        case_id=case.id,
+        extraction=None,
+        usage=_Usage(2_000_000, 0),
+        latency_ms=2,
+        error="",
+        escalated=True,
+        attempts=(
+            Attempt("cheap:m", _Usage(1_000_000, 0), 1),
+            Attempt("strong:m", _Usage(1_000_000, 0), 1),
+        ),
+    )
+
+    report = build_extraction_report("pipeline(cheap:m -> strong:m)", [case], [run])
+
+    # 1 Mtok at $1 plus 1 Mtok at $10 — not two at either price, and not zero.
+    assert report.totals.cost_usd == Decimal("11.00")
+    assert report.totals.unpriced_calls == 0
+    assert report.totals.calls == 2, "both attempts are real calls the mix pays for"

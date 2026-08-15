@@ -4,6 +4,11 @@
         --models "openai:gpt-5.4" --suite both \\
         --out docs/superpowers/evidence/eval/baseline.md
 
+``--pipeline "cheap,strong"`` scores the escalating vision pipeline end to end
+instead of (or beside) each model on its own, and prints the escalation rate.
+That is the number E09 turns on: a rate near 100% means the cheap model is not
+cheap, because every receipt is paid for twice.
+
 This command SPENDS MONEY. It is gated on ``RUN_LLM_TESTS=1`` for the same reason
 the real-LLM tests are, and it never runs in normal CI.
 
@@ -23,7 +28,7 @@ from django.utils import timezone
 from assistant.eval.behaviour import load_behaviour_cases
 from assistant.eval.behaviour_runner import build_world, run_behaviour_case
 from assistant.eval.dataset import DatasetError, available_receipt_cases
-from assistant.eval.extraction_runner import run_extraction_suite
+from assistant.eval.extraction_runner import run_extraction_suite, run_pipeline_suite
 from assistant.eval.report import (
     build_behaviour_report,
     build_extraction_report,
@@ -49,10 +54,16 @@ class Command(BaseCommand):
     help = "Score models against the E08 golden dataset. Costs money; needs RUN_LLM_TESTS=1."
 
     def add_arguments(self, parser):
-        parser.add_argument("--models", required=True, help="Comma-separated model strings.")
+        parser.add_argument("--models", default="", help="Comma-separated model strings.")
         parser.add_argument("--suite", choices=["extraction", "behaviour", "both"], default="both")
         parser.add_argument("--cases", default="", help="Comma-separated case ids.")
         parser.add_argument("--out", default="", help="Markdown path; JSON gets the same stem.")
+        parser.add_argument(
+            "--pipeline",
+            default="",
+            help='Two model strings, "cheap,strong". Scores the escalating '
+            "pipeline end to end instead of each model on its own.",
+        )
         parser.add_argument(
             "--stub",
             action="store_true",
@@ -66,8 +77,11 @@ class Command(BaseCommand):
                 "Re-run with RUN_LLM_TESTS=1 once you mean it."
             )
         models = [m.strip() for m in opts["models"].split(",") if m.strip()]
-        if not models:
+        pipeline = [m.strip() for m in opts["pipeline"].split(",") if m.strip()]
+        if not models and not pipeline:
             raise CommandError("--models needs at least one model string.")
+        if pipeline and len(pipeline) != 2:
+            raise CommandError('--pipeline needs exactly "cheap,strong".')
 
         ids = [c.strip() for c in opts["cases"].split(",") if c.strip()] or None
         suite = opts["suite"]
@@ -75,7 +89,9 @@ class Command(BaseCommand):
 
         try:
             with transaction.atomic():
-                reports, skipped = self._run(models, suite, ids, stub=opts["stub"])
+                reports, skipped = self._run(
+                    models, suite, ids, stub=opts["stub"], pipeline=pipeline
+                )
                 raise _Rollback
         except _Rollback:
             pass
@@ -111,7 +127,7 @@ class Command(BaseCommand):
 
         return TestModel(custom_output_args=STUB_READ, call_tools=[])
 
-    def _run(self, models, suite, ids, *, stub):
+    def _run(self, models, suite, ids, *, stub, pipeline=()):
         reports, skipped = [], []
         if suite in ("extraction", "both"):
             cases, skipped = available_receipt_cases(ids)
@@ -127,6 +143,24 @@ class Command(BaseCommand):
                 self.stdout.write(f"extraction · {name} · {len(cases)} case(s)…")
                 runs = async_to_sync(run_extraction_suite)(cases, self._model_for(name, stub))
                 reports.append(build_extraction_report(name, cases, runs))
+
+            if pipeline:
+                cheap_name, strong_name = pipeline
+                # Labelled as the pipeline, so the comparison table shows it as
+                # its own row beside the individual models rather than pretending
+                # to be one of them (S09-3: the pipeline's score is what ships).
+                label = f"pipeline({cheap_name} -> {strong_name})"
+                self.stdout.write(f"{label} · {len(cases)} case(s)…")
+                runs = async_to_sync(run_pipeline_suite)(
+                    cases,
+                    self._model_for(cheap_name, stub),
+                    self._model_for(strong_name, stub),
+                )
+                rate = (sum(r.escalated for r in runs) / len(runs)) if runs else 0.0
+                # An escalation rate near 100% means the cheap model is not
+                # cheap: it means paying for two calls on every receipt.
+                self.stdout.write(f"escalation rate: {rate:.0%}")
+                reports.append(build_extraction_report(label, cases, runs))
 
         if suite in ("behaviour", "both"):
             cases = load_behaviour_cases(ids)

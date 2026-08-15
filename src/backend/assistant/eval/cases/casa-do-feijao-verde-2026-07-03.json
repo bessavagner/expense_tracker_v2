@@ -1,0 +1,81 @@
+{
+ "id": "casa-do-feijao-verde-2026-07-03",
+ "images": [
+  "IMG_20260703_200655192_HDR.jpg"
+ ],
+ "image_source": "private",
+ "media_type": "image/jpeg",
+ "provenance": "Restaurant bill photographed 2026-07-03, mesa 27. The only SURCHARGE in the set: subtotal 87,50, taxa de serviço 8,75, total 96,25. Reconciliation inverts — the lines are LESS than what was paid, where every other case has them equal or more. The gabarito records the eight products and a NEGATIVE discount of -8,75, which is the only way to state 'the total exceeds the lines' in this schema. A model that adds the taxa as a ninth line also reconciles and also scores; a model that ignores it does not, and would post a ledger 8,75 short. Not committed: real personal data.",
+ "hard_cases": [
+  "service-charge",
+  "non-fiscal-document",
+  "multi-unit-line"
+ ],
+ "categories": [
+  "Lanche"
+ ],
+ "payment_methods": [
+  {
+   "name": "Credito C6",
+   "type": "credit_card",
+   "closing_day": 25
+  },
+  {
+   "name": "Pix",
+   "type": "pix"
+  },
+  {
+   "name": "Dinheiro",
+   "type": "cash"
+  }
+ ],
+ "store": "CASA DO FEIJAO VERDE",
+ "store_key": "feijao verde",
+ "date": "2026-07-03",
+ "payment_hint": null,
+ "discount": "-8.75",
+ "amount_paid": "96.25",
+ "items": [
+  {
+   "description": "SUCO DE LARANJA",
+   "line_total": "10.00",
+   "category": "Lanche"
+  },
+  {
+   "description": "FILE DE COXA DE FRANGO 100G",
+   "line_total": "21.00",
+   "category": "Lanche",
+   "quantity": "3"
+  },
+  {
+   "description": "MEIA BATATA",
+   "line_total": "13.50",
+   "category": "Lanche"
+  },
+  {
+   "description": "MEIO BAIAO CREMOSO",
+   "line_total": "14.00",
+   "category": "Lanche"
+  },
+  {
+   "description": "ESPETINHO DE GADO",
+   "line_total": "10.00",
+   "category": "Lanche"
+  },
+  {
+   "description": "ESPETINHO DE LINGUICA TOSCANA",
+   "line_total": "10.00",
+   "category": "Lanche"
+  },
+  {
+   "description": "GUARANA LATA",
+   "line_total": "7.00",
+   "category": "Lanche"
+  },
+  {
+   "description": "EMBALAGEM QUENTINHA",
+   "line_total": "2.00",
+   "category": "Lanche"
+  }
+ ]
+}

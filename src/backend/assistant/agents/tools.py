@@ -1,3 +1,4 @@
+import unicodedata
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
@@ -62,23 +63,43 @@ def list_payment_methods(scope) -> list[str]:
     )
 
 
+def _fold(text: str) -> str:
+    """Casefold and strip accents, for MATCHING only — never for display.
+
+    "Crédito C6", "credito c6" and "CREDITO C6" all fold to the same string.
+    """
+    decomposed = unicodedata.normalize("NFKD", text or "")
+    return "".join(c for c in decomposed if not unicodedata.combining(c)).casefold().strip()
+
+
 def _resolve_by_name(queryset, raw_name: str):
     """Resolve a single model instance by name, leniently.
 
-    Tries an exact case-insensitive match first, then a unique
-    case-insensitive substring match (so "c6" → "Crédito C6"). Returns a
-    tuple ``(obj, matches)``: ``obj`` is the unique match or ``None``, and
-    ``matches`` lists the candidate names (used to build an ambiguity message
-    when more than one partial match exists).
+    Tries an exact match first, then a unique substring match (so "c6" →
+    "Crédito C6"). Both ignore case AND accents. Returns a tuple
+    ``(obj, matches)``: ``obj`` is the unique match or ``None``, and ``matches``
+    lists the candidate names — the names as STORED, because folding is how we
+    match, not what we show someone.
+
+    Compared in Python rather than with `iexact`/`icontains`, because those are
+    accent-SENSITIVE in PostgreSQL: a model writing "Crédito C6" — correct
+    Portuguese — could not find a row stored as "Credito C6", and the user got
+    an error naming a list that visibly contained what they had asked for (D02).
+    The alternative, the `unaccent` extension, needs a migration and a superuser
+    grant on Supabase to fix a comparison over one household's few dozen
+    categories and payment methods.
     """
-    name = (raw_name or "").strip()
-    exact = queryset.filter(name__iexact=name).first()
-    if exact is not None:
-        return exact, [exact.name]
-    partial = list(queryset.filter(name__icontains=name)) if name else []
+    name = _fold(raw_name)
+    if not name:
+        return None, []
+    rows = list(queryset)
+    exact = [row for row in rows if _fold(row.name) == name]
+    if exact:
+        return exact[0], [exact[0].name]
+    partial = [row for row in rows if name in _fold(row.name)]
     if len(partial) == 1:
         return partial[0], [partial[0].name]
-    return None, [p.name for p in partial]
+    return None, [row.name for row in partial]
 
 
 def create_entry(

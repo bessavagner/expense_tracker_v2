@@ -1,0 +1,92 @@
+{
+ "id": "compensa-2026-05-12",
+ "images": [
+  "IMG_20260512_132446018_HDR.jpg"
+ ],
+ "image_source": "private",
+ "media_type": "image/jpeg",
+ "provenance": "Builders' merchant, photographed 2026-05-12. The photo CUTS the last digit off the VL.TOTAL column and off the printed total: the paper reads '15,9', '2,9', '3,2', '43,2'. Every value is still recoverable from the fully visible VL.UNIT column at quantity 1, and 15,90 + 5 x 2,90 + 4 x 3,20 = 43,20. Nine of the ten lines are duplicates of two products, which is the merge trap. Not committed: real personal data.",
+ "hard_cases": [
+  "cropped-edge",
+  "repeated-lines",
+  "rotated",
+  "thermal-print"
+ ],
+ "categories": [
+  "Casa",
+  "Saude"
+ ],
+ "payment_methods": [
+  {
+   "name": "Credito C6",
+   "type": "credit_card",
+   "closing_day": 25
+  },
+  {
+   "name": "Pix",
+   "type": "pix"
+  },
+  {
+   "name": "Dinheiro",
+   "type": "cash"
+  }
+ ],
+ "store": "COMPENSA MATERIAL DE CONSTRUCAO LTDA - EPP",
+ "store_key": "compensa",
+ "date": "2026-05-12",
+ "payment_hint": "Pagamento Instantaneo",
+ "discount": "0",
+ "amount_paid": "43.20",
+ "items": [
+  {
+   "description": "TELHA POLIETILENO 2 ONDA 0,50 X 0",
+   "line_total": "15.90",
+   "category": "Casa"
+  },
+  {
+   "description": "MASCARA DESC RESP PFF1 ECOAR PLAS",
+   "line_total": "2.90",
+   "category": "Saude"
+  },
+  {
+   "description": "MASCARA DESC RESP PFF1 ECOAR PLAS",
+   "line_total": "2.90",
+   "category": "Saude"
+  },
+  {
+   "description": "MASCARA DESC RESP PFF1 ECOAR PLAS",
+   "line_total": "2.90",
+   "category": "Saude"
+  },
+  {
+   "description": "MASCARA DESC RESP PFF1 ECOAR PLAS",
+   "line_total": "2.90",
+   "category": "Saude"
+  },
+  {
+   "description": "MASCARA DESC RESP PFF1 ECOAR PLAS",
+   "line_total": "2.90",
+   "category": "Saude"
+  },
+  {
+   "description": "MASCARA DESC RESP PFF2 VALV ECOAR",
+   "line_total": "3.20",
+   "category": "Saude"
+  },
+  {
+   "description": "MASCARA DESC RESP PFF2 VALV ECOAR",
+   "line_total": "3.20",
+   "category": "Saude"
+  },
+  {
+   "description": "MASCARA DESC RESP PFF2 VALV ECOAR",
+   "line_total": "3.20",
+   "category": "Saude"
+  },
+  {
+   "description": "MASCARA DESC RESP PFF2 VALV ECOAR",
+   "line_total": "3.20",
+   "category": "Saude"
+  }
+ ]
+}

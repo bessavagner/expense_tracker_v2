@@ -376,11 +376,14 @@ class TestExtractionIsMetered:
         assert UsageKind.EXTRACTION in kinds
         assert UsageKind.CHAT in kinds
 
-    def test_the_vision_retry_produces_a_second_extraction_record(
-        self, logged_client, user, household, monkeypatch, priced
+    def test_the_vision_escalation_produces_a_second_extraction_record(
+        self, logged_client, user, household, monkeypatch, priced, settings
     ):
         """The expensive retry is a separate billable call, and the attempt that
-        failed is billable too — the provider read the image either way."""
+        failed is billable too — the provider read the image either way.
+
+        The escalated record also carries WHY it escalated, which is what makes
+        the escalation rate and its causes queryable (E09)."""
         from pydantic_ai.models.test import TestModel
 
         from assistant.agents import extraction as extraction_module
@@ -388,9 +391,12 @@ class TestExtractionIsMetered:
         from assistant.agents.extraction import ReceiptExtraction
         from assistant.tests.fakes import FakeRunResult
 
+        settings.LLM_VISION_MODEL = "openai:cheap-sentinel"
+        settings.LLM_VISION_ESCALATION_MODEL = "openai:strong-sentinel"
+
         async def flaky_run(prompt, model=None, model_settings=None):
-            if model is None:
-                raise RuntimeError("primeira extração falha")
+            if model == "openai:cheap-sentinel":
+                raise RuntimeError("leitura barata falha")
             return FakeRunResult(ReceiptExtraction())
 
         monkeypatch.setattr(extraction_module.extraction_agent, "run", flaky_run)
@@ -400,6 +406,10 @@ class TestExtractionIsMetered:
         extractions = UsageRecord.objects.filter(kind=UsageKind.EXTRACTION)
         assert extractions.count() == 2
         assert sorted(extractions.values_list("ok", flat=True)) == [False, True]
+        cheap = extractions.get(model="openai:cheap-sentinel")
+        strong = extractions.get(model="openai:strong-sentinel")
+        assert cheap.escalation_reason == "", "a primeira leitura não é uma escalação"
+        assert strong.escalation_reason == "error", "a chamada barata levantou"
 
     def test_extraction_outside_a_request_is_not_metered(self):
         """`extract_receipt` is called by eval harnesses with no household. A
@@ -630,3 +640,55 @@ def test_no_unmetered_provider_call_site_exists():
     # site added under that path is never checked.
     for rel in EXEMPT:
         assert (root / rel).exists(), f"stale EXEMPT entry, no such file: {rel}"
+
+
+class TestEscalationIsRecorded:
+    """E09's DoD needs the escalation RATE and its causes, per attempt.
+
+    A column rather than a derived count: two EXTRACTION records sharing one
+    interaction could equally be a quality escalation or a retry after a
+    transient 500, and counting cannot separate them.
+    """
+
+    def test_a_normal_call_records_no_reason(self, household, user, priced):
+        async_to_sync(record_usage)(
+            household=household,
+            user=user,
+            kind=UsageKind.EXTRACTION,
+            model="openai:test",
+            usage=FakeUsage(),
+            latency_ms=10,
+            ok=True,
+        )
+        record = UsageRecord.objects.get()
+        assert record.escalation_reason == ""
+
+    def test_an_escalated_call_records_why(self, household, user, priced):
+        async_to_sync(record_usage)(
+            household=household,
+            user=user,
+            kind=UsageKind.EXTRACTION,
+            model="openai:test",
+            usage=FakeUsage(),
+            latency_ms=10,
+            ok=True,
+            escalation_reason="low_confidence",
+        )
+        record = UsageRecord.objects.get()
+        assert record.escalation_reason == "low_confidence"
+
+    def test_a_failed_escalation_is_still_recorded_as_an_escalation(self, household, user, priced):
+        """A failed escalation still cost money and still counts against the rate."""
+        async_to_sync(record_usage)(
+            household=household,
+            user=user,
+            kind=UsageKind.EXTRACTION,
+            model="openai:test",
+            usage=None,
+            latency_ms=10,
+            ok=False,
+            escalation_reason="inconsistent",
+        )
+        record = UsageRecord.objects.get()
+        assert record.ok is False
+        assert record.escalation_reason == "inconsistent"

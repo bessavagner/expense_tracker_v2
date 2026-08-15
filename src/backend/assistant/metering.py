@@ -48,6 +48,7 @@ async def record_usage(
     interaction=None,
     user=None,
     usage=None,
+    escalation_reason: str = "",
 ) -> None:
     """Persist one provider call. Never raises.
 
@@ -55,6 +56,10 @@ async def record_usage(
     PydanticAI's ``RunUsage`` is the usual one. ``None`` (a call that failed
     before returning usage) records the attempt with null tokens and null cost,
     because a failed vision call still costs money (S07-2).
+
+    ``escalation_reason`` is blank for a first attempt and names the signal that
+    triggered a second one (E09 S09-3). A failed escalation still carries its
+    reason: it cost money and it counts against the escalation rate.
     """
     try:
         # `cost_usd_for` reads `ModelPrice` on a cache miss, and a synchronous
@@ -74,6 +79,7 @@ async def record_usage(
             cost_usd=cost,
             latency_ms=latency_ms,
             ok=ok,
+            escalation_reason=escalation_reason,
         )
     except Exception:
         # Deliberately does not re-raise. See the module docstring.
