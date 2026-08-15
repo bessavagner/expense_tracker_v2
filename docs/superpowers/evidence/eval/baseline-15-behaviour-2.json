@@ -1,0 +1,26 @@
+{
+  "generated_at": "2026-08-15T06:57:40-03:00",
+  "reports": [
+    {
+      "dimensions": {
+        "cases_passed": 6.0
+      },
+      "failures": [
+        "billing-month-after-closing-day: no row satisfied Alimentacao (no rows left); ledger total 0 != expected 120.00"
+      ],
+      "model": "openai:gpt-5.4",
+      "n": 7,
+      "overall": 0.857143,
+      "suite": "behaviour",
+      "totals": {
+        "avg_latency_ms": 3818,
+        "calls": 14,
+        "cost_usd": "0.459160",
+        "input_tokens": 172636,
+        "output_tokens": 1838,
+        "unpriced_calls": 0
+      }
+    }
+  ],
+  "skipped": []
+}
