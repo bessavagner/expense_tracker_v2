@@ -32,13 +32,14 @@ def pix(household):
     return baker.make("finances.PaymentMethod", household=household, name="Pix", type="pix")
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def _early_origin(household):
-    """This module exercises projection math against dates chosen for narrative
-    clarity (E11 predates most of them), not against the origin floor itself.
-    Pin the origin well before any of them so the household's real creation
-    timestamp (now) never floors a row out from under an unrelated test. The
-    one test that means to exercise the floor overrides this explicitly.
+    """Requested explicitly by the handful of tests below whose fixed 2026
+    dates are narrative, not a test of the origin floor itself — without this,
+    the household's real creation timestamp (now) would floor the whole
+    window out from under them. NOT autouse: most of this module's tests
+    (and every new-household test) must keep exercising real derivation, or a
+    regression there would go unnoticed.
     """
     household.projection_origin_month = date(2020, 1, 1)
     household.save(update_fields=["projection_origin_month"])
@@ -46,7 +47,7 @@ def _early_origin(household):
 
 @pytest.mark.django_db
 class TestBuildProjection:
-    def test_returns_one_row_per_month(self, user, household):
+    def test_returns_one_row_per_month(self, user, household, _early_origin):
         rows = build_projection(household, date(2026, 1, 1), 3, today=date(2026, 1, 15))
         assert [r["month"] for r in rows] == [
             date(2026, 1, 1),
@@ -187,7 +188,7 @@ class TestBuildProjection:
         assert row["income"] == Decimal("0")
         assert row["pct_income"] is None
 
-    def test_scoped_to_household(self, household, other_household, cat, pix):
+    def test_scoped_to_household(self, household, other_household, cat, pix, _early_origin):
         other_cat = baker.make("finances.Category", household=other_household)
         other_pm = baker.make("finances.PaymentMethod", household=other_household, type="pix")
         _entry(other_household, other_cat, other_pm, "5000", date(2026, 5, 1), EntryType.REGULAR)
@@ -196,7 +197,7 @@ class TestBuildProjection:
         assert row["diverse"] == Decimal("0")
         assert row["total"] == Decimal("0")
 
-    def test_empty_month_is_all_zero(self, user, household):
+    def test_empty_month_is_all_zero(self, user, household, _early_origin):
         row = build_projection(household, date(2026, 5, 1), 1, today=date(2026, 6, 1))[0]
         assert row["systemic"] == Decimal("0")
         assert row["installments"] == Decimal("0")
@@ -228,7 +229,7 @@ class TestProjectionOverlay:
         assert row["saldo_projetado"] == Decimal("1500")  # 2000 - 500
         assert row["acumulado"] == Decimal("1500")
 
-    def test_overlay_income_raises_saldo(self, user, household):
+    def test_overlay_income_raises_saldo(self, user, household, _early_origin):
         m = date(2026, 6, 1)
         overlay = {(m, "income"): Decimal("1000")}
         row = build_projection(household, m, 1, today=date(2026, 6, 15), overlay=overlay)[0]
@@ -238,7 +239,7 @@ class TestProjectionOverlay:
 
 @pytest.mark.django_db
 class TestDiverseEstimator:
-    def test_ceiling_estimator_uses_total_ceiling(self, user, household, cat, pix):
+    def test_ceiling_estimator_uses_total_ceiling(self, user, household, cat, pix, _early_origin):
         baker.make("finances.Budget", household=household, name="Casa", amount=Decimal("3000"))
         baker.make(
             "finances.Category",
@@ -257,7 +258,7 @@ class TestDiverseEstimator:
         )
         assert rows[0]["diverse_estimated"] == Decimal("3500")
 
-    def test_median_is_default(self, user, household, cat, pix):
+    def test_median_is_default(self, user, household, cat, pix, _early_origin):
         rows_default = build_projection(household, date(2026, 7, 1), 1, today=date(2026, 6, 15))
         rows_median = build_projection(
             household, date(2026, 7, 1), 1, today=date(2026, 6, 15), diverse_estimator="median"
@@ -290,16 +291,31 @@ def test_projection_is_scoped_to_the_household(user, household, other_user, othe
     assert rows[0]["total"] == Decimal("10.00")
 
 
+def _month_before(d: date) -> date:
+    if d.month == 1:
+        return date(d.year - 1, 12, 1)
+    return date(d.year, d.month - 1, 1)
+
+
 @pytest.mark.django_db
 def test_a_window_entirely_before_a_brand_new_households_creation_is_empty(household):
     """A brand-new household has no explicit origin and no data yet, so it
-    derives its origin from its own creation month (E11 step 3, no autouse
-    pin here). A window requested entirely before that must come back
-    empty — there is nothing to project before the household existed.
-    """
-    long_ago = date(2000, 1, 1)
+    derives its origin from its own creation month (E11 step 3, no
+    `_early_origin` pin here). A window requested entirely before that must
+    come back empty — there is nothing to project before the household
+    existed.
 
-    rows = build_projection(household, long_ago, 1, today=date.today())
+    The window is the month immediately BEFORE the household's real creation
+    month, not an arbitrary early date like 2000: if step 3 were deleted,
+    `projection_origin` would fall through to the module default
+    (Nov/2025), which sits before an arbitrary-early window too, and this
+    test would pass whether or not derivation actually ran. Anchoring to
+    creation - 1 month makes the assertion depend on step 3 specifically.
+    """
+    creation_month = household.created_at.date().replace(day=1)
+    month_before_creation = _month_before(creation_month)
+
+    rows = build_projection(household, month_before_creation, 1, today=date.today())
 
     assert rows == []
 
