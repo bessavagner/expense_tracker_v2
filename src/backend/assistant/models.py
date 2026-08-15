@@ -321,6 +321,13 @@ class UsageRecord(HouseholdOwnedModel):
     cost_usd = models.DecimalField(max_digits=12, decimal_places=6, null=True, blank=True)
     latency_ms = models.IntegerField(null=True, blank=True)
     ok = models.BooleanField(default=True)
+    # Blank means "not an escalation", never "unknown". Two EXTRACTION records on
+    # one interaction could equally be a quality escalation or a retry after a
+    # transient 500, and the DoD needs the escalation RATE; a count cannot tell
+    # those apart. The reason is also what tunes
+    # ASSISTANT_ESCALATE_MIN_CONFIDENCE — "we escalated 40% of the time" is not
+    # actionable until you know whether it was confidence or reconciliation.
+    escalation_reason = models.CharField(max_length=32, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -630,3 +630,55 @@ def test_no_unmetered_provider_call_site_exists():
     # site added under that path is never checked.
     for rel in EXEMPT:
         assert (root / rel).exists(), f"stale EXEMPT entry, no such file: {rel}"
+
+
+class TestEscalationIsRecorded:
+    """E09's DoD needs the escalation RATE and its causes, per attempt.
+
+    A column rather than a derived count: two EXTRACTION records sharing one
+    interaction could equally be a quality escalation or a retry after a
+    transient 500, and counting cannot separate them.
+    """
+
+    def test_a_normal_call_records_no_reason(self, household, user, priced):
+        async_to_sync(record_usage)(
+            household=household,
+            user=user,
+            kind=UsageKind.EXTRACTION,
+            model="openai:test",
+            usage=FakeUsage(),
+            latency_ms=10,
+            ok=True,
+        )
+        record = UsageRecord.objects.get()
+        assert record.escalation_reason == ""
+
+    def test_an_escalated_call_records_why(self, household, user, priced):
+        async_to_sync(record_usage)(
+            household=household,
+            user=user,
+            kind=UsageKind.EXTRACTION,
+            model="openai:test",
+            usage=FakeUsage(),
+            latency_ms=10,
+            ok=True,
+            escalation_reason="low_confidence",
+        )
+        record = UsageRecord.objects.get()
+        assert record.escalation_reason == "low_confidence"
+
+    def test_a_failed_escalation_is_still_recorded_as_an_escalation(self, household, user, priced):
+        """A failed escalation still cost money and still counts against the rate."""
+        async_to_sync(record_usage)(
+            household=household,
+            user=user,
+            kind=UsageKind.EXTRACTION,
+            model="openai:test",
+            usage=None,
+            latency_ms=10,
+            ok=False,
+            escalation_reason="inconsistent",
+        )
+        record = UsageRecord.objects.get()
+        assert record.ok is False
+        assert record.escalation_reason == "inconsistent"

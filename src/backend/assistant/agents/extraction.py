@@ -200,6 +200,7 @@ async def extract_receipt(
     model=None,
     *,
     scope=None,
+    escalation_reason: str = "",
 ) -> ReceiptExtraction:
     """Lê as fotos do recibo e devolve a extração estruturada.
 
@@ -213,6 +214,9 @@ async def extract_receipt(
     linha em ``UsageRecord`` (E07 S07-2). É opcional porque esta função também
     roda fora de um request (harness de avaliação), e um registro de custo sem
     household é pior que nenhum: não dá para escopar nem cobrar de ninguém.
+
+    ``escalation_reason`` marca esta chamada como a SEGUNDA tentativa e diz qual
+    sinal a disparou (E09 S09-3). Vazio = primeira leitura.
     """
     prompt = build_extraction_prompt(images, categories, payment_methods)
 
@@ -231,13 +235,22 @@ async def extract_receipt(
     except Exception:
         # Metered before re-raising: the provider read the image and charged
         # for it whether or not it gave us usable JSON back (S07-2).
-        await _meter(scope, resolved, None, timer.ms, ok=False)
+        await _meter(scope, resolved, None, timer.ms, ok=False, escalation_reason=escalation_reason)
         raise
-    await _meter(scope, resolved, result.usage(), timer.ms, ok=True)
+    await _meter(
+        scope,
+        resolved,
+        result.usage(),
+        timer.ms,
+        ok=True,
+        escalation_reason=escalation_reason,
+    )
     return result.output
 
 
-async def _meter(scope, model: str, usage, latency_ms: int, *, ok: bool) -> None:
+async def _meter(
+    scope, model: str, usage, latency_ms: int, *, ok: bool, escalation_reason: str = ""
+) -> None:
     """Record one extraction attempt, if we know whose it was.
 
     Imported lazily: `assistant.models` pulls in `accounts.models`, and this
@@ -258,6 +271,7 @@ async def _meter(scope, model: str, usage, latency_ms: int, *, ok: bool) -> None
         usage=usage,
         latency_ms=latency_ms,
         ok=ok,
+        escalation_reason=escalation_reason,
     )
 
 
