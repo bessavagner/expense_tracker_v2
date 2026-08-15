@@ -93,7 +93,7 @@ when it changes what another epic should do; anything smaller is a commit.
 |---|---|---|---|---|---|
 | [D01](D01-behaviour-harness-omits-the-receipt-draft.md) | Behaviour harness omits the `ReceiptDraft`, making receipt cases unpassable | R2 | W | E08 | **done** (2026-08-15)⁵ |
 | [D02](D02-name-resolution-is-accent-sensitive.md) | Name resolution is accent-sensitive, so "Crédito C6" cannot find "Credito C6" | R2 | W | — | **done** (2026-08-15)⁶ |
-| [D03](D03-cost-report-ignores-cached-input-tokens.md) | The cost report bills cached input tokens at full price, so every USD figure is too high | R2 | | E07 | ready⁷ |
+| [D03](D03-cost-report-ignores-cached-input-tokens.md) | The cost report bills cached input tokens at full price, so every USD figure is too high | R2 | | E07 | **done** (2026-08-15)⁷ |
 
 ### Dependency graph
 
@@ -170,7 +170,12 @@ safe for E01's ceiling and wrong for E07's report. **E09's 3.75× factor stands*
 both sides were measured identically, and the cheap model has *more* to gain from
 caching than the one it beat. Distrust the absolute $/sweep, not the ratio.
 Nothing in the repo could have caught this — every test checks our arithmetic
-against our own inputs, and the arithmetic was self-consistent.
+against our own inputs, and the arithmetic was self-consistent. **Shipped
+2026-08-15:** `ModelPrice.cached_input_per_mtok` seeded from the live pricing
+pages, `cost_usd_for` splitting the prompt into fresh and cached halves,
+`UsageRecord.cache_read_tokens` for auditability, and a `Cached` column in the
+eval table — the E09 ratios were unaffected and the evidence documents were
+annotated rather than re-measured.
 
 ⁶ **D02 was found by E09's re-baseline, not by review.** `_resolve_by_name` was
 case-insensitive but accent-**sensitive**, so a model writing `Crédito C6` — correct

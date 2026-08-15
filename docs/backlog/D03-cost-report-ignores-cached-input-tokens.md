@@ -2,7 +2,7 @@
 id: D03
 title: The cost report bills cached input tokens at full price, so every USD figure is too high
 release: R2
-status: ready
+status: done
 depends_on: [E07]
 blocks: []
 wedge_critical: false
@@ -75,18 +75,18 @@ instruction and catalogue lists repeat on every call and will.
 
 ## What to do
 
-- [ ] `ModelPrice` grows a `cached_input_per_mtok` column, nullable, defaulting
+- [x] `ModelPrice` grows a `cached_input_per_mtok` column, nullable, defaulting
       to `input_per_mtok` so an unfilled row keeps today's (over-)estimate
       rather than silently reporting zero
-- [ ] `cost_usd_for` bills `input_tokens - cache_read_tokens` at the input rate
+- [x] `cost_usd_for` bills `input_tokens - cache_read_tokens` at the input rate
       and `cache_read_tokens` at the cached rate
-- [ ] `UsageRecord` records `cache_read_tokens`, so the discount is auditable
+- [x] `UsageRecord` records `cache_read_tokens`, so the discount is auditable
       after the fact rather than only re-derivable
-- [ ] Seed the cached rates from the provider's live pricing page, with
+- [x] Seed the cached rates from the provider's live pricing page, with
       `source_url` and `checked_on` as every other row has
-- [ ] A test with a usage object carrying cache reads asserts the cost is below
+- [x] A test with a usage object carrying cache reads asserts the cost is below
       the all-full-price figure and above the all-cached one
-- [ ] Re-state the absolute figures in the E08/E09 evidence documents, or add a
+- [x] Re-state the absolute figures in the E08/E09 evidence documents, or add a
       note to each pointing here — the factors do not change
 
 ## Out of scope
@@ -101,3 +101,29 @@ Found because the operator compared the reported spend with the provider's own
 usage dashboard. Nothing in the repo could have caught it: every test asserts
 our arithmetic against our own inputs, and the arithmetic was self-consistent.
 The only check that finds this class of bug is the bill.
+
+## Resolution — 2026-08-15
+
+`ModelPrice.cached_input_per_mtok` (migration 0026), seeded from the live
+pricing pages (0028); `cost_usd_for` bills `input_tokens - cache_read_tokens`
+at the input rate and the remainder at the cached rate, clamped so a provider
+over-reporting cache reads can never produce a negative fresh half — an
+under-statement would be worse than the over-statement being fixed.
+`UsageRecord.cache_read_tokens` (0027) makes the discount auditable, and the
+eval table grew a `Cached` column.
+
+Two things deliberately not done:
+
+- **Existing `UsageRecord` rows were not re-priced.** Costs are frozen at write
+  time; a backfill would make the ledger disagree with what was reported at the
+  time. Comparisons spanning 2026-08-15 must account for the step change.
+- **The E08/E09 evidence figures were not re-measured**, only annotated. The
+  ratios those documents argue from are unaffected, and a re-run costs money
+  that would buy no new decision.
+
+Checked while seeding, and worth recording because the plan for this defect
+assumed otherwise: `nvidia/nemotron-3-super-120b-a12b:free` (`LLM_TIER_ESSENTIAL`)
+**is** still in the OpenRouter catalogue on 2026-08-15, at 0/0 prompt and
+completion. There is no retired-model defect to file. Like every other `:free`
+entry it lists no `input_cache_read`; it is seeded at a zero cached rate, which
+cannot mis-state anything when the uncached rate is itself zero.

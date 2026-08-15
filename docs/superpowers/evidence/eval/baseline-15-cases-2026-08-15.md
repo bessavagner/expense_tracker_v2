@@ -8,6 +8,21 @@ conversations scored on the ledger rows they produced. Three runs each,
 `openai:gpt-5.4`, which is what production runs today on every path. Raw output
 is in the `baseline-15-*.json` files beside this one.
 
+> **The absolute USD figures below are over-stated — see
+> [D03](../../../backlog/D03-cost-report-ignores-cached-input-tokens.md).** They
+> were computed before cached input tokens were billed at the cached rate, so
+> every dollar figure on this page prices a cache read at up to 10× what the
+> provider charged. The real bill for the session behind these runs was $2.54
+> against roughly $11 reported.
+>
+> **The ratios are unaffected and still stand.** Every candidate here was
+> measured the same way — three sweeps over the same fifteen images, priced at
+> the same list rates — so the factor between two rows survives. If anything the
+> 3.75× is conservative: the cheap model consumes more input tokens per sweep
+> and therefore has more to gain from caching than the model it is compared
+> with. These numbers have deliberately **not** been re-run: a re-measurement
+> costs real money and would not change any decision made from this page.
+
 ## Why re-measure
 
 E09's regression threshold is "within one measured spread", and the 0.14 spread

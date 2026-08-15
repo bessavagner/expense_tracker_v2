@@ -1486,6 +1486,36 @@ than anyone's recall, and a wrong number here becomes an authoritative-looking
 figure in the report above. Same rule when choosing the Essential tier's free
 and cheapest-paid models at `openrouter.ai/models`.
 
+A price row has **three** rates, not two: `input_per_mtok`, `output_per_mtok`,
+and `cached_input_per_mtok`. Providers bill tokens they served from their
+prompt cache at a large discount — OpenAI listed 10% of the input rate across
+the gpt-5.x family on 2026-08-15 — and `input_tokens` already **includes** those
+tokens, so pricing the whole prompt at the full rate over-reports. It over-
+reported by roughly 4× on the E09 matrix, which is how D03 was found.
+
+Leaving `cached_input_per_mtok` empty is safe but wrong-ish: the call is billed
+entirely at the full input rate, exactly as before D03, so the figure errs high.
+`test_every_configured_chat_model_has_a_cached_input_rate` fails when a model in
+settings has a price row without one, so this cannot be forgotten silently.
+
+`UsageRecord.cache_read_tokens` records how much of each prompt was served from
+cache. To see the discount a household is actually getting:
+
+```sql
+SELECT model,
+       SUM(input_tokens) AS input_tokens,
+       SUM(cache_read_tokens) AS cached,
+       ROUND(100.0 * SUM(cache_read_tokens) / NULLIF(SUM(input_tokens), 0), 1) AS pct_cached
+FROM assistant_usagerecord
+WHERE created_at >= NOW() - INTERVAL '30 days'
+GROUP BY model ORDER BY input_tokens DESC;
+```
+
+Costs already written are **not** re-priced when a cached rate is added:
+`cost_usd` is frozen at write time by design, so rows created before
+2026-08-15 keep the old over-estimate. Compare periods across that date with
+that in mind.
+
 If a model appears in settings with no price row it meters at `cost_usd = NULL`
 forever and the report quietly under-reports.
 `test_every_configured_chat_model_has_a_seeded_price` is the ratchet that
