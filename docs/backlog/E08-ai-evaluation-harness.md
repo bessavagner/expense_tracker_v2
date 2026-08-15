@@ -115,13 +115,14 @@ RUN_LLM_TESTS=1 <documented harness command>
 
 Observable assertions:
 
-- [ ] The golden dataset has at least 10 receipt cases with complete ground truth
-      — **NOT MET: 7 cases.** Only 7 distinct receipts exist; two of the
-      candidate photos are byte-identical to fixtures already committed and two
-      more are pages of one receipt. Shipped as 7 with the shortfall recorded
-      rather than padded with synthesised filler. See `docs/eval-dataset.md`
-      § *Known shortfall*. Closing it is now the cheapest way to reduce the
-      run-to-run spread documented in the baseline.
+- [x] The golden dataset has at least 10 receipt cases with complete ground truth
+      — **MET at 15, closed by E09 on 2026-08-15** (it shipped at 7). The eight
+      new receipts came from 74 previously untouched photos and were chosen for
+      failure modes the set did not cover, not at random: a pharmacy net-value
+      line, a restaurant service **charge** (a surcharge, which inverts
+      reconciliation), a per-line embedded discount, a thousands separator, a
+      one-line control case, and a photo whose right edge is cropped. See
+      `docs/eval-dataset.md`.
 - [x] At least 6 behavioural cases exist, each asserting resulting ledger state
       — 7 cases, scored on the rows the agent actually wrote.
 - [x] A comparison table exists for the **current production models** — this is the baseline every future model is judged against

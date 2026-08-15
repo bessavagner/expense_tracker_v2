@@ -1,0 +1,52 @@
+{
+ "id": "pioneiro-2026-05-05",
+ "images": [
+  "IMG_20260505_074511391_HDR.jpg"
+ ],
+ "image_source": "private",
+ "media_type": "image/jpeg",
+ "provenance": "Builders' merchant, photographed 2026-05-05. Printed as an 'ORCAMENTO' — a quote — but it is what was paid, on credit card. Both lines are multi-unit with the line total in the last column (6 x 8,00 = 48,00; 2 x 47,00 = 94,00), the shape EXTRACTION_PROMPT forbids re-multiplying. Not committed: real personal data.",
+ "hard_cases": [
+  "non-fiscal-document",
+  "multi-unit-line",
+  "thermal-print"
+ ],
+ "categories": [
+  "Casa"
+ ],
+ "payment_methods": [
+  {
+   "name": "Credito C6",
+   "type": "credit_card",
+   "closing_day": 25
+  },
+  {
+   "name": "Pix",
+   "type": "pix"
+  },
+  {
+   "name": "Dinheiro",
+   "type": "cash"
+  }
+ ],
+ "store": "PIONEIRO CONSTRUCOES",
+ "store_key": "pioneiro",
+ "date": "2026-05-05",
+ "payment_hint": "CARTAO CREDITO",
+ "discount": "0",
+ "amount_paid": "142.00",
+ "items": [
+  {
+   "description": "AREIA NA LATA",
+   "line_total": "48.00",
+   "category": "Casa",
+   "quantity": "6"
+  },
+  {
+   "description": "CIMENTO APODI 50 KG",
+   "line_total": "94.00",
+   "category": "Casa",
+   "quantity": "2"
+  }
+ ]
+}

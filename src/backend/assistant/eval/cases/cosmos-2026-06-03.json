@@ -1,0 +1,255 @@
+{
+ "id": "cosmos-2026-06-03",
+ "images": [
+  "IMG_20260603_204826980_HDR.jpg"
+ ],
+ "image_source": "private",
+ "media_type": "image/jpeg",
+ "provenance": "Weekly supermarket shop photographed 2026-06-03. Forty lines across SIX categories, eight of them weighed produce priced per kilo, and three separate identical Heinz lines. The widest category spread in the set: this is the case that catches a model merging six categories into three. Every line was transcribed off the photo and the total checks: the lines sum to 359,38, the figure the receipt prints. Not committed: real personal data.",
+ "hard_cases": [
+  "long-receipt",
+  "many-categories",
+  "weighed-item",
+  "repeated-lines",
+  "thermal-print"
+ ],
+ "categories": [
+  "Alimentacao",
+  "Hortifruti",
+  "Lanche",
+  "Casa",
+  "Limpeza",
+  "Saude"
+ ],
+ "payment_methods": [
+  {
+   "name": "Credito C6",
+   "type": "credit_card",
+   "closing_day": 25
+  },
+  {
+   "name": "Pix",
+   "type": "pix"
+  },
+  {
+   "name": "Dinheiro",
+   "type": "cash"
+  }
+ ],
+ "store": "SUPERMERCADO COSMOS LTDA",
+ "store_key": "cosmos",
+ "date": "2026-06-03",
+ "payment_hint": "CARTAO TEF",
+ "discount": "0",
+ "amount_paid": "359.38",
+ "items": [
+  {
+   "description": "CORTES CONGEL FILE D",
+   "line_total": "26.25",
+   "category": "Alimentacao"
+  },
+  {
+   "description": "ISOTONICO POWER UVA",
+   "line_total": "5.79",
+   "category": "Lanche"
+  },
+  {
+   "description": "ISOTONICO POWER UVA",
+   "line_total": "5.79",
+   "category": "Lanche"
+  },
+  {
+   "description": "ALFACE HIDROPONICA UND",
+   "line_total": "3.99",
+   "category": "Hortifruti"
+  },
+  {
+   "description": "M.PASTEL/LAS MERCI 1KG",
+   "line_total": "10.39",
+   "category": "Alimentacao"
+  },
+  {
+   "description": "COXAO MOLE FRIBOI RESERVA RESF",
+   "line_total": "24.00",
+   "category": "Alimentacao",
+   "quantity": "0.500"
+  },
+  {
+   "description": "MACA NACIONAL KG",
+   "line_total": "7.07",
+   "category": "Hortifruti",
+   "quantity": "0.595"
+  },
+  {
+   "description": "PIMENTAO VERMELHO KG",
+   "line_total": "8.64",
+   "category": "Hortifruti",
+   "quantity": "0.180"
+  },
+  {
+   "description": "TOMATE KG",
+   "line_total": "6.29",
+   "category": "Hortifruti",
+   "quantity": "0.525"
+  },
+  {
+   "description": "QJO MUSSARELA FAT ITAMBE 150G Z",
+   "line_total": "13.75",
+   "category": "Alimentacao"
+  },
+  {
+   "description": "MORTADELA DEFUMADA FAT GOURMET",
+   "line_total": "6.15",
+   "category": "Alimentacao"
+  },
+  {
+   "description": "QUEIJO COALHO ZERO LACTOSE T",
+   "line_total": "22.98",
+   "category": "Alimentacao",
+   "quantity": "0.462"
+  },
+  {
+   "description": "CEBOLA BRANCA KG",
+   "line_total": "1.72",
+   "category": "Hortifruti",
+   "quantity": "0.360"
+  },
+  {
+   "description": "LING CALABR SEARA 400G",
+   "line_total": "17.39",
+   "category": "Alimentacao"
+  },
+  {
+   "description": "ALHO EM CABECA NUTRIAL",
+   "line_total": "3.00",
+   "category": "Hortifruti",
+   "quantity": "0.120"
+  },
+  {
+   "description": "PIMENTINHA DE CHEIRO",
+   "line_total": "0.80",
+   "category": "Hortifruti",
+   "quantity": "0.050"
+  },
+  {
+   "description": "NEGRESCO 120G COB CHOC",
+   "line_total": "11.69",
+   "category": "Lanche"
+  },
+  {
+   "description": "MOLHO TOM HEINZ 240G TRAD C/ PED",
+   "line_total": "3.79",
+   "category": "Alimentacao"
+  },
+  {
+   "description": "B.RECH PIRAQUE 76G CHO",
+   "line_total": "3.15",
+   "category": "Lanche"
+  },
+  {
+   "description": "MACARRAO ADRIA 500G GR",
+   "line_total": "12.45",
+   "category": "Alimentacao"
+  },
+  {
+   "description": "CHOCO BISCUIT GAROTO 78G CHOC AO",
+   "line_total": "8.89",
+   "category": "Lanche"
+  },
+  {
+   "description": "SUCO DEL VALLE 1,5L FRUT CITRICA",
+   "line_total": "6.79",
+   "category": "Lanche"
+  },
+  {
+   "description": "SUCO DEL VALLE 1,5L UVA",
+   "line_total": "6.79",
+   "category": "Lanche"
+  },
+  {
+   "description": "FEIJAO VERM NOVO 1KG",
+   "line_total": "5.75",
+   "category": "Alimentacao"
+  },
+  {
+   "description": "MOLHO TOM HEINZ 240G TRAD C/ PED",
+   "line_total": "3.79",
+   "category": "Alimentacao"
+  },
+  {
+   "description": "MOLHO TOM HEINZ 240G TRAD C/ PED",
+   "line_total": "3.79",
+   "category": "Alimentacao"
+  },
+  {
+   "description": "CALDO MAGGI 57G GALINH",
+   "line_total": "2.85",
+   "category": "Alimentacao"
+  },
+  {
+   "description": "PAO BAUDUCCO 36% INTEGRAL 390G",
+   "line_total": "10.59",
+   "category": "Alimentacao"
+  },
+  {
+   "description": "MILH MUGUNZ RAINH 500G",
+   "line_total": "2.39",
+   "category": "Alimentacao"
+  },
+  {
+   "description": "B.CREAM FORT 350G LEG",
+   "line_total": "6.69",
+   "category": "Lanche"
+  },
+  {
+   "description": "PAO HAMBURGU TRAD 240G EMP. S",
+   "line_total": "5.49",
+   "category": "Alimentacao"
+  },
+  {
+   "description": "SALG SOL HITS 80G PRES",
+   "line_total": "2.95",
+   "category": "Lanche"
+  },
+  {
+   "description": "BISCOITO ERIKA CEBOL",
+   "line_total": "8.29",
+   "category": "Lanche"
+  },
+  {
+   "description": "BATATA LAYS RUSTICA 60G CREAM CH",
+   "line_total": "10.95",
+   "category": "Lanche"
+  },
+  {
+   "description": "COCA-COLA 1,50 ZERO",
+   "line_total": "7.79",
+   "category": "Lanche"
+  },
+  {
+   "description": "MONSTER ENERGY 473ML LT ZERO SUG",
+   "line_total": "8.99",
+   "category": "Lanche"
+  },
+  {
+   "description": "MONSTER ENERGY 473ML LT ZERO SUG",
+   "line_total": "8.99",
+   "category": "Lanche"
+  },
+  {
+   "description": "SACO LIXO ROLO CONDOR 100L C 15U",
+   "line_total": "15.45",
+   "category": "Casa"
+  },
+  {
+   "description": "LAVA LOUCA BRILUX 3L NEUTRO",
+   "line_total": "11.89",
+   "category": "Limpeza"
+  },
+  {
+   "description": "REPELENTE SPRAY 100ML",
+   "line_total": "25.19",
+   "category": "Saude"
+  }
+ ]
+}

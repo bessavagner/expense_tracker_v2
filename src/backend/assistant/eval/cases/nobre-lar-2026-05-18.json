@@ -1,0 +1,60 @@
+{
+ "id": "nobre-lar-2026-05-18",
+ "images": [
+  "IMG_20260518_101248180_HDR.jpg"
+ ],
+ "image_source": "private",
+ "media_type": "image/jpeg",
+ "provenance": "Home-centre sales order photographed 2026-05-18. The only A4 laser print in the set — every other case is a thermal roll — and the only receipt over R$1.000, so it is the only one where a thousands separator can be misread ('1.323,83' as 1,32). Each line already has its share of the R$4,55 discount subtracted (3 x 12,50 = 37,50 less 0,11 = 37,39), so the gabarito's discount is 0. One line is priced per square metre with three decimals. Not committed: real personal data, including the buyer's name and CPF.",
+ "hard_cases": [
+  "thousand-separator",
+  "a4-print",
+  "non-fiscal-document",
+  "embedded-line-discount",
+  "fractional-unit"
+ ],
+ "categories": [
+  "Casa"
+ ],
+ "payment_methods": [
+  {
+   "name": "Credito C6",
+   "type": "credit_card",
+   "closing_day": 25
+  },
+  {
+   "name": "Pix",
+   "type": "pix"
+  },
+  {
+   "name": "Dinheiro",
+   "type": "cash"
+  }
+ ],
+ "store": "NOBRE LAR HOME CENTER",
+ "store_key": "nobre lar",
+ "date": "2026-05-18",
+ "payment_hint": null,
+ "discount": "0",
+ "amount_paid": "1535.00",
+ "items": [
+  {
+   "description": "REJUNTE QUARTZOLIT P/PORCELANATO CZ PLATINA 1KG",
+   "line_total": "37.39",
+   "category": "Casa",
+   "quantity": "3"
+  },
+  {
+   "description": "ARGAMASSA VARANDAS E QUINTAIS 15KG QUARTZOLIT",
+   "line_total": "173.78",
+   "category": "Casa",
+   "quantity": "7"
+  },
+  {
+   "description": "REV. ELIZABETH TEXAS 07 X 26CM ESM ACETINADO",
+   "line_total": "1323.83",
+   "category": "Casa",
+   "quantity": "14.140"
+  }
+ ]
+}

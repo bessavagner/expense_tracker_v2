@@ -1,0 +1,45 @@
+{
+ "id": "liane-cell-2026-07-09",
+ "images": [
+  "IMG_20260709_093907417_HDR.jpg"
+ ],
+ "image_source": "private",
+ "media_type": "image/jpeg",
+ "provenance": "Phone-accessory shop, photographed 2026-07-09. Deliberately the EASIEST case in the set: one line, one unit, no discount, a printed total and a printed payment method. It exists as a control — a model that fails this is broken, not merely weak, and without it a score of 0.0 cannot be told apart from a provider outage. Not committed: real personal data.",
+ "hard_cases": [
+  "single-item",
+  "non-fiscal-document",
+  "rotated"
+ ],
+ "categories": [
+  "Eletronicos"
+ ],
+ "payment_methods": [
+  {
+   "name": "Credito C6",
+   "type": "credit_card",
+   "closing_day": 25
+  },
+  {
+   "name": "Pix",
+   "type": "pix"
+  },
+  {
+   "name": "Dinheiro",
+   "type": "cash"
+  }
+ ],
+ "store": "LIANE CELL INFORMATICA",
+ "store_key": "liane cell",
+ "date": "2026-07-09",
+ "payment_hint": "PIX",
+ "discount": "0",
+ "amount_paid": "35.00",
+ "items": [
+  {
+   "description": "PELICULA DE HIDROGEL FOSCA",
+   "line_total": "35.00",
+   "category": "Eletronicos"
+  }
+ ]
+}
