@@ -1070,7 +1070,7 @@ class Command(BaseCommand):
 - [ ] **Step 7: Run the tests to verify they pass**
 
 Run: `POSTGRES_PORT=5433 uv run pytest src/backend/accounts/tests/test_starter_data.py -q`
-Expected: PASS (11 tests)
+Expected: PASS (10 tests)
 
 - [ ] **Step 8: Run the suites that could be disturbed by a seeded household**
 
