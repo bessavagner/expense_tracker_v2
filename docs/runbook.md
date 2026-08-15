@@ -1933,3 +1933,62 @@ The **reason** matters as much as the rate, which is why it is a column:
 A rate that climbs with `low_confidence` dominating is a threshold to tune. A
 rate that climbs with `discount_mismatch` dominating is a worse cheap model, or
 a new receipt shape worth adding to the golden dataset.
+
+---
+
+## Onboarding & activation
+
+### The activation report
+
+```bash
+uv run python src/backend/manage.py activation_report --days 30
+```
+
+Prints:
+
+```
+Janela: últimos 30 dia(s)
+Cadastros: 12
+Ativados: 7
+Taxa de ativação: 58.3%
+Tempo até ativação (min): p50 9 · p90 214 (n=7)
+```
+
+`Cadastros` counts `signup` events inside the window; `Ativados` counts how many
+of *those* households have ever activated, so the rate cannot exceed 100% when a
+household signs up in one window and activates in the next.
+
+**Common failure:** `Tempo até ativação: sem amostras ainda.` means signups exist
+but no household has confirmed a receipt. That is a real product result, not a
+broken command — check it against the funnel before assuming instrumentation is
+missing.
+
+The event's definition lives in `docs/architecture/activation-event.md`. Do not
+redefine it in a query.
+
+### Seeding a household that predates automatic seeding
+
+Signup seeds the starter catalogue by itself. For an account created before E11,
+or by `createsuperuser` (which never fires `user_signed_up`):
+
+```bash
+uv run python src/backend/manage.py seed_starter_data --household <uuid>
+```
+
+Prints `Casa de fulano: 14 categoria(s), 2 forma(s) de pagamento, 3 regra(s).`
+Idempotent — a second run prints zeros.
+
+**Common failure:** `Casa '<uuid>' não encontrada.` — the argument is the
+`Household` UUID, not the user's.
+
+### Replaying the guided setup
+
+To walk a household through setup again (for a walkthrough rehearsal):
+
+```bash
+uv run python src/backend/manage.py shell -c "
+from accounts.models import OnboardingState
+OnboardingState.objects.filter(household_id='<uuid>').delete()"
+```
+
+The next page load redirects that household back to `/casa/comecar/`.

@@ -115,6 +115,10 @@ Key principle: **the LLM decides intent; deterministic Python does the arithmeti
 > **[`docs/runbook.md`](docs/runbook.md)**.
 >
 > Comparing models before a swap: `docs/runbook.md` → *Evaluating a model (E08)*.
+>
+> Measuring how new users land: `docs/runbook.md` → *Onboarding & activation*.
+> What "activated" means is defined once, in
+> [`docs/architecture/activation-event.md`](docs/architecture/activation-event.md).
 
 ### Prerequisites
 
