@@ -63,17 +63,17 @@ graph LR
 | [E03](E03-query-performance-floor.md) | Query performance floor | R0 | | — | review |
 | [E04](E04-household-tenancy.md) | Household tenancy | R1 | | E02 | **done** (2026-08-13) |
 | [E05](E05-identity-invitations-admin-isolation.md) | Identity, invitations & admin isolation | R1 | | E04 | **done** (2026-08-14) |
-| [E06](E06-observability-and-agent-tracing.md) | Observability & agent tracing | R1 | | E01 | review |
-| [E07](E07-usage-metering-and-quota.md) | Usage metering & quota | R1 | W | E04, E06 | blocked |
-| [E08](E08-ai-evaluation-harness.md) | AI evaluation harness | R2 | W | E02 | ready |
-| [E09](E09-model-tiering-and-routing.md) | Model tiering & routing | R2 | W | E07, E08 | blocked |
-| [E10](E10-async-work-pipeline.md) | Async work pipeline | R2 | W | E06 | blocked |
+| [E06](E06-observability-and-agent-tracing.md) | Observability & agent tracing | R1 | | E01 | **done** (2026-08-14) |
+| [E07](E07-usage-metering-and-quota.md) | Usage metering & quota | R1 | W | E04, E06 | **done** (2026-08-14)² |
+| [E08](E08-ai-evaluation-harness.md) | AI evaluation harness | R2 | W | E02 | **done** (2026-08-14)³ |
+| [E09](E09-model-tiering-and-routing.md) | Model tiering & routing | R2 | W | E07, E08 | ready⁴ |
+| [E10](E10-async-work-pipeline.md) | Async work pipeline | R2 | W | E06 | ready |
 | [E11](E11-onboarding-and-activation.md) | Onboarding & activation | R3 | W | E05 | ready |
 | [E12](E12-durable-import-export-jobs.md) | Durable import/export jobs | R3 | | E10 | blocked |
 | [E13](E13-lgpd-compliance.md) | LGPD compliance | R3 | | E12, E18 | blocked |
-| [E14](E14-product-analytics.md) | Product analytics | R3 | | E06, E11 | blocked |
+| [E14](E14-product-analytics.md) | Product analytics | R3 | | E06, E11 | ready¹ |
 | [E15](E15-billing-and-subscription.md) | Billing & subscription | R4 | | E07, E13, E18 | blocked |
-| [E16](E16-operations-staging-deploy-recovery.md) | Operations: staging, deploy, recovery | R4 | | E06 | blocked |
+| [E16](E16-operations-staging-deploy-recovery.md) | Operations: staging, deploy, recovery | R4 | | E06 | ready |
 | [E17](E17-trust-surface.md) | Trust surface: audit, error UX, landing | R4 | | E11 | blocked |
 | [E18](E18-account-surface.md) | Account surface (Conta) | R3 | | E05 | ready |
 
@@ -120,6 +120,44 @@ graph TD
 ```
 
 **Critical path to beta:** `E02 → E04 → E05 → E11`. Everything else can proceed alongside it. **E03 and E01 are independent of everything** — start there for immediate risk reduction with no coordination cost.
+
+² **E07 closed 2026-08-14 with one box unticked**, audited against `main` after the
+E08 merge. Ten of eleven assertions map to named tests, listed inline in the epic.
+The open one is *"the operator report shows p50/p90/p99 against real beta data"*:
+the command, the percentiles and the per-kind breakdown all exist, but there is no
+beta data yet, so the percentiles describe one household. Not a code gap. It closes
+when the beta has run, which is also when the number is actually needed (to set a
+price before GA). Same shape as E06's three open boxes.
+
+³ **E08 closed 2026-08-14 with one box unticked.** The dataset has seven receipt
+cases against a DoD of ten: only seven distinct receipts exist, and padding the set
+would corrupt the baseline it produces. Baseline recorded for `openai:gpt-5.4` at
+`docs/superpowers/evidence/eval/baseline-2026-08-14.md` (extraction 0.886 over five
+runs, behaviour 0.810 over three). The harness paid for itself on its first real
+run by refuting the gpt-5.6 swap staged mid-epic and by finding two provider
+refusals that no test could reach.
+
+⁴ **E09 is open, but do not start it with routing.** E08 measured a run-to-run
+score spread of 0.14 on the seven-case set, which is *wider than the gap between
+serious candidates* — in one pair of runs the leader and loser swapped. E09's DoD
+requires "no score regression beyond an agreed threshold", and no honest threshold
+is tighter than the noise today. **Widen the dataset to 10+ cases first**; that is
+the cheapest way to shrink the spread, and every number E09 produces inherits it.
+`gpt-5.6-luna` is already a measured candidate worth a real run: 0.656 at $0.023
+per sweep against gpt-5.4's $0.187, which is the escalation-pipeline shape E09
+wants.
+
+¹ **E14 is `ready` by operator override (2026-08-14).** Its `depends_on` names E11,
+which is still `ready` rather than `done`. The override is deliberate: E14's
+*instrumentation* half depends only on E06, which is done. Its *activation-metric*
+half genuinely needs E11's activation event definition, so an agent starting E14
+before E11 lands must stop at that boundary rather than invent the event.
+
+**E06 is done, so E07, E10, E14 and E16 are all open.** E06 closed with three
+DoD boxes unticked — see its closing note; they need a real production error and
+a real alert, neither of which is manufacturable on demand. Two of those gaps
+(assistant turns/day, LLM spend/day on the golden-signals dashboard) are
+*structurally* E07's work, not E06 debt.
 
 **E05 is done, so E11 and E18 are both open.** E18 is small and off the critical path — it can run alongside E11 rather than ahead of it. Its `blocks` edges into E13 and E15 are *UI-surface* dependencies, not data ones: both later epics add a tab to E18's page instead of inventing an account surface of their own.
 
