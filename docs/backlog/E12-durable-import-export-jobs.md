@@ -2,7 +2,7 @@
 id: E12
 title: Durable import/export jobs
 release: R3
-status: review
+status: done
 depends_on: [E10]
 blocks: [E13]
 wedge_critical: false
@@ -132,19 +132,20 @@ Cloud Run runtime identity
    `GoogleCloudStorage` selected, write + read + delete round-trip under both
    `imports/` and `exports/`, and `storage.url()` carries no credentials.
 
-**One box left, and it needs a browser:** a signed-in import of a small CSV and
-a signed-in export download against `https://expense-tracker-c4xqrkvzia-rj.a.run.app`.
-Everything under it is verified — the schema, the env, the bucket, the
-permissions, the code — but only a real session proves the Cloud Run service
-account writes to the bucket as the *application*, which is the one thing a
-local probe cannot stand in for. After that:
+4. ✅ **Signed-in round-trip against the deployed revision, 2026-08-16.** An
+   import of `amostra-agosto-2.csv` — `status=done`, 2 of 2 rows created, 0
+   skipped, 0 errors — and an export, `status=done`, 186 369 bytes, with
+   `completed_at` set. `gcloud storage ls` shows exactly one object under each
+   prefix, both under the same household:
 
-```bash
-gcloud storage ls "gs://ledger-jobs-expense-tracker-482807/imports/**"
-gcloud storage ls "gs://ledger-jobs-expense-tracker-482807/exports/**"
-```
+   ```
+   imports/551e80b8-…/96212e1d-….csv
+   exports/551e80b8-…/9baef148-….zip
+   ```
 
-should each show one object. Then flip `status` to `done`.
+   This is the box a local probe could not stand in for: the objects were
+   written by the Cloud Run service account, as the application, against the
+   real bucket. **E12 is closed.**
 
 ## Out of scope
 

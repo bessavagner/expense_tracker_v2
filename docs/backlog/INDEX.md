@@ -50,20 +50,19 @@ graph LR
 | **R3 · Ready for strangers — BETA OPENS** | A new user reaches the activation event unaided. Import and export are durable. A data-subject request can be fulfilled in 15 days and a deletion honoured. Activation and D7 retention are instrumented. |
 | **R4 · GA & monetization** | Someone pays in BRL, is charged correctly, hits a quota gracefully, and you can restore the database inside your stated RTO — rehearsed, not assumed. |
 
-**R3's gate is half open as of 2026-08-16.** Two of its four conditions are
-observably true: *a new user reaches the activation event unaided* — proven by
-the E11 walkthrough, activation in 83 seconds with no help
-(`docs/superpowers/evidence/e11-walkthrough/README.md`) — and *activation and D7
-retention are instrumented*, by E14. The two that remain are **durable import and
-export (E12)** and **a data-subject request fulfilled in 15 days with deletion
-honoured (E13)**. Beta does not open until all four hold.
+**R3's gate is three-quarters open as of 2026-08-16.** Three of its four
+conditions are observably true: *a new user reaches the activation event
+unaided* — proven by the E11 walkthrough, activation in 83 seconds with no help
+(`docs/superpowers/evidence/e11-walkthrough/README.md`); *activation and D7
+retention are instrumented*, by E14; and now *durable import and export*, by
+E12 — deployed as revision `expense-tracker-00048-lgf` and exercised end to end
+against the real bucket (footnote 12). The one that remains is **a data-subject
+request fulfilled in 15 days with deletion honoured (E13)**. Beta does not open
+until all four hold.
 
-E12's third condition is **code-complete but not yet true in production**: the
-import/export machinery, its tests and its runbook all landed on 2026-08-16
-(footnote 12), and what stands between that and a ticked box is provisioning the
-GCS bucket and redeploying with `GS_BUCKET_NAME` set. E13 remains `blocked`
-regardless — it depends on **E18** as well, and E18 is `ready` rather than
-`done`.
+E13 is still `blocked`, and not on E12: it depends on **E18** as well, and E18
+is `ready` rather than `done`. E18 is small and off the critical path, so it is
+now the shortest route to opening R3's gate.
 
 **R2's gate is observably true as of 2026-08-15.** Receipt and chat quality are
 scored against fifteen real receipts and seven conversations across five models
@@ -91,7 +90,7 @@ pipeline) is still open inside R2 but is not named by this gate.
 | [E09](E09-model-tiering-and-routing.md) | Model tiering & routing | R2 | W | E07, E08 | **done** (2026-08-15)⁴ |
 | [E10](E10-async-work-pipeline.md) | Async work pipeline | R2 | W | E06 | **done** (2026-08-15)¹¹ |
 | [E11](E11-onboarding-and-activation.md) | Onboarding & activation | R3 | W | E05 | **done** (2026-08-16)⁹ |
-| [E12](E12-durable-import-export-jobs.md) | Durable import/export jobs | R3 | | E10 | **review** (2026-08-16)¹² |
+| [E12](E12-durable-import-export-jobs.md) | Durable import/export jobs | R3 | | E10 | **done** (2026-08-16)¹² |
 | [E13](E13-lgpd-compliance.md) | LGPD compliance | R3 | | E12, E18 | blocked |
 | [E14](E14-product-analytics.md) | Product analytics | R3 | | E06, E11 | **done** (2026-08-16)¹ |
 | [E15](E15-billing-and-subscription.md) | Billing & subscription | R4 | | E07, E13, E18 | blocked |
@@ -375,10 +374,13 @@ bucket round-trips through `core.storage.job_storage()`: `GoogleCloudStorage`
 selected, write/read/delete under both prefixes, no credentials in
 `storage.url()`.
 
-It stays at `review` for one box: a **signed-in** import and export against the
-deployed revision. Only a real session proves the Cloud Run service account
-writes to the bucket as the application, which a local probe cannot stand in
-for. Flip to `done` once `gcloud storage ls` shows an object under each prefix.
+**Closed the same day by a signed-in round-trip against that revision:** an
+import (`amostra-agosto-2.csv`, 2 of 2 rows, 0 errors) and an export (186 369
+bytes, `completed_at` set), leaving exactly one object under `imports/` and one
+under `exports/`, both under the household's own prefix. That is the assertion
+no local probe could make — the bytes were written by the Cloud Run service
+account, as the application. **Unlike E10, E12 closes with its cloud actually
+provisioned and exercised.**
 
 What shipped: `ImportBatch` → `ImportJob` by `RenameModel` (production rows
 intact, reversible, verified forward-back-forward); the wizard's state out of
