@@ -2,7 +2,7 @@
 id: E12
 title: Durable import/export jobs
 release: R3
-status: ready
+status: review
 depends_on: [E10]
 blocks: [E13]
 wedge_critical: false
@@ -98,15 +98,23 @@ uv run python src/backend/manage.py makemigrations --check --dry-run
 
 Observable assertions:
 
-- [ ] A test proves an import survives the wizard's steps being served by different processes — the B4 fix
-- [ ] A test proves an oversized upload is rejected before storage
-- [ ] A test proves a row raising `IntegrityError` does not abort the remaining rows — the H5 fix
-- [ ] A test proves re-running the same import creates no duplicates
-- [ ] Failed rows are individually reported with reasons
-- [ ] An export round-trips: export a household, import the result into a fresh household, and the ledger totals match
-- [ ] Export URLs expire, verified by test
-- [ ] Local development works without GCP credentials
-- [ ] `docs/runbook.md` documents the bucket, its retention rule, and how to investigate a stuck job
+- [x] A test proves an import survives the wizard's steps being served by different processes — the B4 fix — `test_import_job_wizard.py::TestTheWizardNeedsNoSession::test_each_step_can_be_served_by_a_different_session`
+- [x] A test proves an oversized upload is rejected before storage — `test_import_storage.py::test_a_refused_upload_leaves_nothing_in_storage`
+- [x] A test proves a row raising `IntegrityError` does not abort the remaining rows — the H5 fix — `test_import_runner.py::TestOneBadRowDoesNotPoisonTheRest`
+- [x] A test proves re-running the same import creates no duplicates — `test_import_runner.py::TestIdempotence`, and `test_import_double_submit.py` under two real concurrent connections
+- [x] Failed rows are individually reported with reasons — `test_import_progress.py::TestTheFailuresReport` (capped at 1000, with an exact count beyond it)
+- [x] An export round-trips: export a household, import the result into a fresh household, and the ledger totals match — `test_export_roundtrip.py::TestRoundTrip::test_the_ledger_total_matches`, plus the per-category split
+- [x] Export URLs expire, verified by test — `test_downloads.py::test_a_token_past_its_window_is_refused` and `test_export_views.py::TestDownloading::test_an_expired_link_is_a_404`
+- [x] Local development works without GCP credentials — `test_storage.py::test_no_bucket_falls_back_to_the_filesystem`
+- [x] `docs/runbook.md` documents the bucket, its retention rule, and how to investigate a stuck job — *Import and export jobs (E12)*
+
+**Not done, and deliberately outside the code:** the bucket itself is not
+provisioned and the service is not redeployed with `GS_BUCKET_NAME` set. Those
+are `gcloud` commands against the live project; they are written out verbatim in
+the runbook section above, and until they are run, production keeps writing job
+files to the instance filesystem — which works, and loses them on the next
+revision. **E12 is not closed until they are run**, because closing it any
+earlier is exactly how E10 shipped rails with no queue behind them.
 
 ## Out of scope
 
@@ -115,12 +123,24 @@ Observable assertions:
 - Open Finance / bank statement import — parked (INDEX §10)
 - Redesigning the wizard's UI beyond what durable state requires
 
-## Open questions
+## Open questions — answered
 
-1. **What is the maximum import size?** Derive from the realistic case — years of history from a spreadsheet — and set it comfortably above that, but well below anything that threatens the instance.
-2. **How long are uploaded files retained?** They contain financial data. Shortest period that still allows debugging a failed import.
-3. **Is chat history part of an export?** It is the user's data and it is also the most sensitive content in the system. E13 decides; this epic implements.
-4. **Does the export need to be encrypted at rest** beyond GCS's default, given it is a complete financial history behind a URL?
+All four were settled in the implementation plan
+(`docs/superpowers/plans/2026-08-16-E12-durable-import-export-jobs.md`) before a
+line was written, and are recorded here so the answers outlive the plan.
+
+1. **What is the maximum import size?** → **2 MB** (`MAX_CSV_UPLOAD_BYTES`, down from 10 MB). About 20 000 rows of ledger CSV. Ten years of a family's history is ≈5 000 rows ≈ 500 KB, so this is 4× the realistic worst case and 0.2% of the instance's 1 GiB.
+2. **How long are uploaded files retained?** → **7 days**, as a GCS lifecycle rule rather than as application code — a deletion that depends on our cron running is a deletion that does not happen. Shortest window that still lets a failed import reported on Monday be debugged.
+3. **Is chat history part of an export?** → **Yes, in `ledger.json` only — never in the CSVs.** It is the user's data and LGPD portability covers it. Keeping it out of the re-importable CSVs means a leaked link to `entradas.csv` is not also a chat transcript. E13 ratifies; this epic implements.
+4. **Does the export need encryption at rest beyond GCS's default?** → **No CMEK.** Google-managed AES-256 at rest, `--public-access-prevention`, uniform bucket-level access, and a 1-hour application-signed URL. CMEK adds a KMS key, its rotation, its IAM and its failure mode for a bucket whose contents live 7 days behind a private, expiring link. Recorded as a deliberate deferral to **E16**, not an oversight.
+
+**A fifth decision the implementation made:** downloads are served by our own
+view behind an application-signed token, never by a raw GCS signed URL. A GCS
+signed URL from Cloud Run needs either a key file on disk or an IAM `SignBlob`
+round-trip; a raw bucket URL cannot check `request.household`, so tenancy would
+rest on URL secrecy alone; and one signing mechanism is the only way *"export
+URLs expire, verified by test"* and *"local development works without GCP
+credentials"* can both be true at once.
 
 ## Skill pipeline
 
