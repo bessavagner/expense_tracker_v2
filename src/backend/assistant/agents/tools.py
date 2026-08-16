@@ -16,6 +16,7 @@ from assistant.agents.memory import (
     find_semantic_matches,
 )
 from assistant.agents.receipt_billing import (
+    dashboard_url_for,
     month_label,
     plan_entry_date,
     prospective_billing_month,
@@ -650,6 +651,21 @@ def propose_receipt(
     return f"{plan['table']}{_past_invoice_warning(scope, plan)}\n\nConfirma?"
 
 
+def _landing_sentence(scope, plan) -> str:
+    """Where the rows went, when that is not the month the dashboard is showing.
+
+    D05's root cause: the dashboard is silent about months it is not showing, so
+    a correct receipt filed under its own date reads as a failed capture. Fires
+    for any non-current month, past or future — both are equally invisible on
+    today's screen.
+    """
+    billing_month = prospective_billing_month(scope.household, plan)
+    if billing_month is None or billing_month == timezone.localdate().replace(day=1):
+        return ""
+    label = month_label(billing_month)
+    return f"\n\n📅 Entrou na fatura de {label}. [Ver {label}]({dashboard_url_for(billing_month)})"
+
+
 def commit_receipt(scope) -> str:
     """Grava (uma vez) o recibo PENDENTE a partir do plano salvo. Determinístico."""
     draft = (
@@ -662,10 +678,7 @@ def commit_receipt(scope) -> str:
     if draft is None or not plan:
         return "Não há recibo pendente para registrar."
 
-    try:
-        entry_date = date.fromisoformat(plan["date"])
-    except (ValueError, TypeError, KeyError):
-        entry_date = timezone.localdate()
+    entry_date = plan_entry_date(plan)
 
     created = []
     with transaction.atomic():
@@ -711,9 +724,10 @@ def commit_receipt(scope) -> str:
 
     total = sum((amt for _, amt in created), Decimal("0"))
     parts = "; ".join(f"{name} R$ {amt:.2f}" for name, amt in created)
+    landed = _landing_sentence(scope, plan)
     return (
         f"✅ Registrado de {plan['store']} em {entry_date:%d/%m/%Y} via "
-        f"{plan['payment_method_name']}: {parts} (total R$ {total:.2f})"
+        f"{plan['payment_method_name']}: {parts} (total R$ {total:.2f}){landed}"
     )
 
 

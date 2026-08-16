@@ -17,9 +17,9 @@ from assistant.agents.receipt_billing import (
     plan_entry_date,
     prospective_billing_month,
 )
-from assistant.agents.tools import propose_receipt
+from assistant.agents.tools import commit_receipt, propose_receipt
 from assistant.models import ReceiptDraft, ReceiptDraftStatus
-from finances.models import PaymentMethod
+from finances.models import Entry, PaymentMethod
 from finances.models.payment_method import PaymentType
 
 pytestmark = pytest.mark.django_db
@@ -175,3 +175,52 @@ def test_a_card_purchase_landing_in_the_future_is_not_warned_about(seeded_scope,
     answer = propose_receipt(seeded_scope, payment_method_name="Crédito C6")
 
     assert "Registrar nessa fatura?" not in answer
+
+
+# ---------------------------------------------------------------------------
+# The confirmation says which invoice it landed in (SD05-1).
+# ---------------------------------------------------------------------------
+
+
+def _planned_draft(scope, household, when="2023-06-04", payment_hint="Pix"):
+    """A draft carrying the saved plan `commit_receipt` reads.
+
+    Produced by running the real proposal rather than by hand-writing a plan, so
+    the two halves of the flow are exercised against the same object the product
+    builds.
+    """
+    _pending_draft(household, when=when, payment_hint=payment_hint)
+    propose_receipt(scope, payment_method_name=payment_hint)
+
+
+def test_the_confirmation_names_the_invoice_and_links_to_it(seeded_scope, household):
+    """The walkthrough, replayed. A stranger reading this reply knows where the
+    money went and has one thing to tap — which is the whole defect."""
+    _planned_draft(seeded_scope, household)
+
+    answer = commit_receipt(seeded_scope)
+
+    assert "junho/2023" in answer
+    assert "/?year=2023&month=6" in answer
+    # And the row really is where the reply claims it is.
+    entry = Entry.objects.for_household(household).get()
+    assert entry.billing_month == date(2023, 6, 1)
+
+
+def test_a_receipt_in_the_current_month_says_nothing_extra(seeded_scope, household):
+    _planned_draft(seeded_scope, household, when="2026-08-16")
+
+    answer = commit_receipt(seeded_scope)
+
+    assert "fatura" not in answer.lower()
+
+
+def test_a_future_invoice_is_named_too(seeded_scope, household):
+    """SD05-1 says "not the current month", not "in the past". A card purchase
+    bought on the 16th against a card that closes on the 25th is paid in
+    September, and September is just as invisible on today's dashboard."""
+    _planned_draft(seeded_scope, household, when="2026-08-16", payment_hint="Crédito C6")
+
+    answer = commit_receipt(seeded_scope)
+
+    assert "setembro/2026" in answer
