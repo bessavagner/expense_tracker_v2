@@ -95,7 +95,7 @@ when it changes what another epic should do; anything smaller is a commit.
 | [D02](D02-name-resolution-is-accent-sensitive.md) | Name resolution is accent-sensitive, so "Crédito C6" cannot find "Credito C6" | R2 | W | — | **done** (2026-08-15)⁶ |
 | [D03](D03-cost-report-ignores-cached-input-tokens.md) | The cost report bills cached input tokens at full price, so every USD figure is too high | R2 | | E07 | **done** (2026-08-15)⁷ |
 | [D04](D04-asgi-lifespan-error-on-every-cold-start.md) | Every cold start reports a `ValueError` to Sentry because the lifespan scope reaches Django | R2 | | E06 | ready⁸ |
-| [D05](D05-a-backdated-receipt-activates-into-an-invisible-month.md) | A backdated receipt activates the user into a month they are not looking at | R3 | W | E11 | ready¹⁰ |
+| [D05](D05-a-backdated-receipt-activates-into-an-invisible-month.md) | A backdated receipt activates the user into a month they are not looking at | R3 | W | E11 | **done** (2026-08-16)¹⁰ |
 
 ### Dependency graph
 
@@ -219,6 +219,20 @@ and the user still concluded it had failed. The date logic must not change
 already paid to fix); what is missing is telling the user where the receipt
 went. Wedge-critical, because a first capture that appears to do nothing
 teaches a new user that the wedge does not work.
+
+**Closed 2026-08-16** by
+`docs/superpowers/plans/2026-08-16-D05-backdated-receipt-visibility.md`, and it
+changed what the user is *told*, never where the row goes. Three surfaces: the
+proposal now names a past invoice and asks about it before writing, on the
+"Confirma?" turn that already existed; the confirmation names the month and links
+to it for any month that is not the current one; and a new
+`GET /api/dashboard/ledger-elsewhere/` lets the empty state tell "you have
+recorded nothing" apart from "nothing in *this* month", naming the nearest month
+that has data. All three read the invoice month from one module that calls
+exactly what `Entry.save()` calls — two derivations would have put a month on the
+screen the database disagreed with, which is worse than the defect. Both open
+questions are answered in the spec rather than deleted. Not fixed, and
+deliberately: the year selector still cannot reach 2023, which is **D06**.
 
 **Found on the way, not fixed here (belongs to E02):**
 `finances/tests/test_entries_live_summary.py:135,178` pair an unfrozen

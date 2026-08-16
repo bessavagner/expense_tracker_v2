@@ -224,3 +224,32 @@ def test_a_future_invoice_is_named_too(seeded_scope, household):
     answer = commit_receipt(seeded_scope)
 
     assert "setembro/2026" in answer
+
+
+# ---------------------------------------------------------------------------
+# The walkthrough, replayed end to end.
+# ---------------------------------------------------------------------------
+
+
+def test_the_walkthrough_receipt_end_to_end(seeded_scope, household):
+    """The 2026-08-16 walkthrough, replayed: a real coupon dated 2023-06-04,
+    proposed and then committed, on a dashboard showing August 2026.
+
+    Asserts the property the defect is about rather than exact copy — a stranger
+    must be told the month and be given one thing to tap, at both moments.
+    """
+    _pending_draft(household, when="2023-06-04")
+
+    proposal = propose_receipt(seeded_scope, payment_method_name="Pix")
+    confirmation = commit_receipt(seeded_scope)
+
+    # Asked before writing...
+    assert "junho/2023" in proposal
+    assert proposal.rstrip().endswith("Confirma?")
+    # ...and told after, with somewhere to go.
+    assert "junho/2023" in confirmation
+    assert "/?year=2023&month=6" in confirmation
+    # And the rows are where both strings said they would be.
+    assert (
+        Entry.objects.for_household(household).filter(billing_month=date(2023, 6, 1)).count() == 1
+    )

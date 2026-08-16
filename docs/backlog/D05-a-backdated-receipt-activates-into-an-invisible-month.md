@@ -2,7 +2,7 @@
 id: D05
 title: A backdated receipt activates the user into a month they are not looking at
 release: R3
-status: ready
+status: done
 depends_on: [E11]
 blocks: []
 wedge_critical: true
@@ -89,10 +89,10 @@ uv run ruff check src/backend/ && uv run ruff format --check src/backend/
 
 Observable assertions:
 
-- [ ] Committing a receipt into a non-current billing month says which month, in the confirmation
-- [ ] A dashboard with data in other months does not claim the ledger is empty
-- [ ] Both are covered by test, with the clock frozen
-- [ ] The 2023 receipt from the walkthrough, replayed, produces a confirmation a stranger could act on
+- [x] Committing a receipt into a non-current billing month says which month, in the confirmation
+- [x] A dashboard with data in other months does not claim the ledger is empty
+- [x] Both are covered by test, with the clock frozen
+- [x] The 2023 receipt from the walkthrough, replayed, produces a confirmation a stranger could act on
 
 ## Out of scope
 
@@ -102,13 +102,25 @@ Observable assertions:
 - Backfilling or moving the walkthrough's existing 06/2023 entries — they are
   correct where they are.
 
-## Open questions
+## Open questions — answered 2026-08-16
+
+Kept rather than deleted: a question with a recorded answer is worth more than a
+deleted one, and the next person to touch this will want the reasoning.
 
 1. **Should a receipt older than some threshold prompt rather than commit
-   silently?** "Este cupom é de junho/2023. Registrar nessa fatura?" costs a
-   turn and may be the honest thing on the first capture. Undecided.
-2. **Is the dashboard the right place, or the confirmation?** Doing both may be
-   redundant; the confirmation is cheaper and closer to the moment.
+   silently?** **Yes, prompt — and it costs no extra turn.** `propose_receipt`
+   already ends in "Confirma?", so the warning enriches the confirmation turn
+   that existed rather than adding one. The threshold is not an age in days but
+   a comparison: it fires only when the *prospective billing month is earlier
+   than the current one*. A card purchase made today lands in M+1 or M+2 by
+   design, and warning about that would nag on nearly every receipt — which is
+   exactly how a real warning stops being read.
+2. **Is the dashboard the right place, or the confirmation?** **Both**, because
+   the spec has a story for each and they fail in different places. The
+   confirmation is missed if the user looks away or scrolls the chat; the
+   dashboard is where they actually go looking, and it is where the walkthrough
+   participant was standing when they concluded the capture had failed. The
+   redundancy is the point.
 
 ## Skill pipeline
 

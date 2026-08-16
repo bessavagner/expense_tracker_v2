@@ -226,3 +226,48 @@ manage.py check                                                 → no issues
 Not run on a deployed revision — this walkthrough was against the local LAN
 server. Repeating it post-deploy is still worth doing, per the E09 precedent of
 migrations that had never reached production.
+
+## What D05 changed, 2026-08-16
+
+Shipped from `docs/superpowers/plans/2026-08-16-D05-backdated-receipt-visibility.md`.
+The 114-second detour above is now answered in two places, because the two
+failures are different failures.
+
+**Before the write.** `propose_receipt` already ended in "Confirma?" — the user
+was already being asked; the question just omitted the fact that turned out to
+matter. It now names the invoice when that invoice is in the past:
+
+> ⚠️ Este cupom é de 04/06/2023, então entra na fatura de junho/2023 — não no mês
+> atual. Registrar nessa fatura?
+
+Only for a *past* month. A card purchase made today lands in M+1 or M+2 by
+design, and warning about that would have fired on nearly every receipt, which is
+how a real warning becomes invisible.
+
+**After the write.** The confirmation names the month and offers the one thing to
+tap, for any month that is not the current one — past or future, since both are
+equally absent from the screen the user is looking at:
+
+> 📅 Entrou na fatura de junho/2023. [Ver junho/2023](/?year=2023&month=6)
+
+**On the dashboard.** A new `GET /api/dashboard/ledger-elsewhere/` answers the
+one question a month's own queryset cannot: does this household have entries
+somewhere else, and where is the nearest. `RecentEntriesCard` now tells "you have
+recorded nothing" apart from "nothing in *this* month" — the first keeps E11's
+wedge-pointing empty state, the second says *Nada neste mês · Seus lançamentos
+mais próximos estão em junho/2023* and links there.
+
+Both strings are computed by `assistant/agents/receipt_billing.py`, which calls
+exactly what `Entry.save()` calls. A second derivation would have put a month on
+the screen that the database disagreed with — a worse defect than the one D05
+described.
+
+**What did not change:** where the row goes. Overriding `billing_month` with
+today is the frozen-`billing_month` bug this codebase already paid to fix once.
+The walkthrough's 06/2023 entries are correct and were not moved.
+
+**Still open:** the year selector still cannot reach 2023 (`range(2024,
+today.year + 2)`). The links above work regardless — `DashboardView` reads
+`?year=` straight from the query string and never validates it against the
+selector — but a user who then touches the picker will find it snapping back to
+2024. That is D06's problem, deliberately left alone here.
