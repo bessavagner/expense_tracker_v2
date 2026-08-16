@@ -1,0 +1,86 @@
+{% comment %}
+Who is in this household. Shared by the Conta tab and by the standalone page
+its owner actions redirect back to — one template, so the two cannot drift.
+
+People are named by `display_name`, which falls back to the email. The
+`confirm()` text keeps the email as well as the name: removing someone is
+irreversible, and the address is the unambiguous identifier.
+
+Pending invitations show an address because there is no user to name yet.
+{% endcomment %}
+<div class="space-y-6">
+    <header>
+        <h1 class="text-2xl font-semibold">Quem vê as contas da {{ household.name }}</h1>
+        <p class="text-sm opacity-70 mt-1">
+            Todo mundo nesta lista enxerga o mesmo extrato, o mesmo saldo e as mesmas metas.
+        </p>
+    </header>
+
+    <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+            <h2 class="card-title text-lg">Membros</h2>
+            <ul class="list">
+                {% for membership in memberships %}
+                <li class="list-row">
+                    <div class="list-col-grow break-all">{{ membership.user.display_name }}</div>
+                    <span class="badge badge-sm">{% if membership.role == 'owner' %}Dono{% else %}Membro{% endif %}</span>
+                    {% if viewer_is_owner and membership.user != request.user %}
+                    {# A form, never a link: a GET that removes someone is a URL #}
+                    {# an email scanner can follow.                              #}
+                    <form method="post" action="{% url 'member_remove' membership.pk %}"
+                          onsubmit="return confirm('Remover {{ membership.user.email|escapejs }} da casa? A pessoa perde o acesso na hora.');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-ghost text-error">Remover</button>
+                    </form>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </section>
+
+    {% if invitations %}
+    <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+            <h2 class="card-title text-lg">Convites pendentes</h2>
+            <ul class="list">
+                {% for invitation in invitations %}
+                <li class="list-row">
+                    <div class="list-col-grow">
+                        <div class="break-all">{{ invitation.email }}</div>
+                        <div class="text-xs opacity-60">vale até {{ invitation.expires_at|date:"d/m/Y" }}</div>
+                    </div>
+                    {% if viewer_is_owner %}
+                    <form method="post" action="{% url 'invite_revoke' invitation.pk %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-ghost">Cancelar</button>
+                    </form>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if viewer_is_owner %}
+    <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+            <h2 class="card-title text-lg">Convidar alguém</h2>
+            <p class="text-sm opacity-70">
+                A pessoa recebe um link por e-mail. Ele vale por 7 dias e só pode ser usado uma vez.
+            </p>
+            <form method="post" action="{% url 'invite_create' %}">
+                {% csrf_token %}
+                <fieldset class="fieldset">
+                    <label class="label" for="invite-email">E-mail</label>
+                    <input type="email" name="email" id="invite-email" class="input w-full"
+                           autocomplete="email" autocapitalize="none" inputmode="email"
+                           placeholder="pessoa@exemplo.com" required>
+                </fieldset>
+                <button type="submit" class="btn btn-accent mt-4" data-pending="Enviando…">Convidar</button>
+            </form>
+        </div>
+    </section>
+    {% endif %}
+</div>

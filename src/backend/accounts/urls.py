@@ -8,7 +8,7 @@ from accounts.views import (
     MemberRemoveView,
     MembersView,
 )
-from accounts.views_account import ProfileTabView, SecurityTabView
+from accounts.views_account import MembersTabView, ProfileTabView, SecurityTabView
 
 urlpatterns = [
     path("comecar/", OnboardingView.as_view(), name="onboarding"),
@@ -16,6 +16,7 @@ urlpatterns = [
     path("comecar/<str:step>/pular/", OnboardingSkipView.as_view(), name="onboarding_skip"),
     path("conta/perfil/", ProfileTabView.as_view(), name="account_profile_tab"),
     path("conta/seguranca/", SecurityTabView.as_view(), name="account_security_tab"),
+    path("conta/membros/", MembersTabView.as_view(), name="account_members_tab"),
     path("membros/", MembersView.as_view(), name="members"),
     path("membros/<uuid:pk>/remover/", MemberRemoveView.as_view(), name="member_remove"),
     path("convites/", InvitationCreateView.as_view(), name="invite_create"),

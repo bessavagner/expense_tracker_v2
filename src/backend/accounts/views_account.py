@@ -18,6 +18,8 @@ from django.template.loader import render_to_string
 from django.views.generic import TemplateView
 
 from accounts.forms import ProfileForm
+from accounts.models import Invitation, Membership
+from accounts.permissions import is_owner
 
 
 class AccountView(LoginRequiredMixin, TemplateView):
@@ -107,4 +109,33 @@ class SecurityTabView(_TabView):
 
         context = super().get_context_data(**kwargs)
         context["mfa_enabled"] = is_mfa_enabled(self.request.user)
+        return context
+
+
+class MembersTabView(_TabView):
+    """Who is in this household, and who has been invited.
+
+    Visible to every member — knowing who can see the family's money is not a
+    privilege. Only the owner gets the controls, and that is enforced in the
+    views they post to (`OwnerRequiredMixin`), not by hiding the buttons.
+    """
+
+    fragment_template_name = "accounts/_members.html"
+    tab_title = "Membros"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        household = self.request.household
+        context["household"] = household
+        context["memberships"] = (
+            Membership.objects.filter(household=household)
+            .select_related("user")
+            .order_by("created_at")
+        )
+        context["invitations"] = [
+            invitation
+            for invitation in Invitation.objects.for_request(self.request)
+            if invitation.is_pending
+        ]
+        context["viewer_is_owner"] = is_owner(self.request.user, household)
         return context
