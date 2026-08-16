@@ -6,7 +6,7 @@ from model_bakery import baker
 from pytest_bdd import given, scenario, then, when
 
 from accounts.resolution import household_for_user
-from finances.models import Entry, ImportBatch, InstallmentPlan
+from finances.models import Entry, ImportJob, InstallmentPlan
 
 
 @scenario("import.feature", "Import regular entries from CSV")
@@ -70,6 +70,16 @@ def given_csv_installment(ctx):
     return ctx
 
 
+def _job_id(ctx):
+    """The job the upload step just minted.
+
+    The wizard is job-scoped from E12, so every step after the upload needs the
+    id. Read back from the database rather than threaded through ``ctx``,
+    because that is what the browser does too: the upload's redirect carries it.
+    """
+    return ImportJob.objects.for_household(ctx["household"]).latest("created_at").pk
+
+
 @when("I upload the CSV as regular entries")
 def when_upload_regular(ctx):
     csv_file = io.BytesIO(ctx["csv_content"])
@@ -105,12 +115,12 @@ def when_confirm_mapping(ctx):
             "category": "3",
             "payment_method": "4",
         }
-    ctx["client"].post("/import/map/", data=data)
+    ctx["client"].post(f"/import/{_job_id(ctx)}/mapear/", data=data)
 
 
 @when("I execute the import")
 def when_execute(ctx):
-    ctx["response"] = ctx["client"].post("/import/execute/")
+    ctx["response"] = ctx["client"].post(f"/import/{_job_id(ctx)}/executar/")
 
 
 @then("3 entries should exist in the database")
@@ -131,8 +141,8 @@ def then_2_entries(ctx):
 
 
 @pytest.mark.django_db
-def test_import_batch_belongs_to_the_household(ctx):
-    """The importer writes rows; an ImportBatch with no household would be a
+def test_import_job_belongs_to_the_household(ctx):
+    """The importer writes rows; an ImportJob with no household would be a
     row the family cannot see. Drives the same wizard the scenarios above do."""
     given_user_with_seed(None, ctx)
     given_csv_regular(ctx)
@@ -140,11 +150,11 @@ def test_import_batch_belongs_to_the_household(ctx):
     when_confirm_mapping(ctx)
     when_execute(ctx)
 
-    batch = ImportBatch.objects.latest("created_at")
+    job = ImportJob.objects.latest("created_at")
 
-    assert batch.household == ctx["household"]
-    assert batch.created_by == ctx["user"]
-    assert batch.created_count == 3
+    assert job.household == ctx["household"]
+    assert job.created_by == ctx["user"]
+    assert job.created_count == 3
 
     entry = Entry.objects.filter(entry_type="regular").first()
     assert entry.household == ctx["household"]

@@ -489,8 +489,13 @@ ASSISTANT_ALLOWED_AUDIO_TYPES = (
 # ASSISTANT_MAX_IMAGE_MB (10) each, plus multipart overhead. Raise both together
 # or this becomes the thing that rejects a valid upload.
 MAX_REQUEST_BODY_BYTES = int(os.environ.get("MAX_REQUEST_BODY_BYTES", str(60 * 1024 * 1024)))
-# The CSV importer never legitimately needs more than a few MB.
-MAX_CSV_UPLOAD_BYTES = int(os.environ.get("MAX_CSV_UPLOAD_BYTES", str(10 * 1024 * 1024)))
+# E12 decision 1. ~20 000 rows of ledger CSV. Ten years of a family's history
+# is around 5 000 rows -- roughly 500 KB -- so this is 4x the realistic worst
+# case and 0.2% of the instance's 1 GiB. Enforced twice: here for a request
+# that declares its length (core.middleware, core.asgi_body_limit), and again
+# while streaming in finances.services.import_storage, which is the check that
+# holds for a chunked upload declaring nothing.
+MAX_CSV_UPLOAD_BYTES = int(os.environ.get("MAX_CSV_UPLOAD_BYTES", str(2 * 1024 * 1024)))
 # Django's default is 100 files per request; nothing here wants more than the
 # assistant's five images plus slack.
 DATA_UPLOAD_MAX_NUMBER_FILES = 10
@@ -527,6 +532,29 @@ CLOUD_TASKS_QUEUE = os.environ.get("CLOUD_TASKS_QUEUE", "ledger-default")
 # This service's public base URL. Cloud Tasks calls back in over the internet,
 # so this is a real host name, not a loopback address.
 CLOUD_TASKS_TARGET_BASE_URL = os.environ.get("CLOUD_TASKS_TARGET_BASE_URL", "")
+
+# --- Job object storage (E12) -------------------------------------------
+#
+# Unset in development and in CI, and that is the whole local story: with no
+# bucket, core.storage returns a FileSystemStorage and the application needs no
+# GCP credentials to be complete. Same shape as CLOUD_TASKS_ENABLED.
+GS_BUCKET_NAME = os.environ.get("GS_BUCKET_NAME", "")
+# Where the fallback writes. Under BASE_DIR rather than /tmp so that a
+# developer can actually find yesterday's upload, and gitignored.
+JOB_STORAGE_ROOT = BASE_DIR / ".jobstore"
+# E12 decision 2. Enforced by a GCS lifecycle rule, not by application code --
+# a deletion that depends on our cron running is a deletion that does not
+# happen. docs/runbook.md carries the rule.
+IMPORT_UPLOAD_RETENTION_DAYS = int(os.environ.get("IMPORT_UPLOAD_RETENTION_DAYS", "7"))
+EXPORT_RETENTION_DAYS = int(os.environ.get("EXPORT_RETENTION_DAYS", "7"))
+# How long a download link stays valid. One hour is long enough to finish a
+# download on a phone on mobile data and short enough that a link pasted into
+# a chat is dead before it is read.
+EXPORT_URL_MAX_AGE_SECONDS = int(os.environ.get("EXPORT_URL_MAX_AGE_SECONDS", "3600"))
+# A job still RUNNING after this long lost its instance. It is reported as
+# failed rather than left spinning -- S12-5's "visible as failed rather than
+# appearing to run forever".
+IMPORT_STUCK_AFTER_MINUTES = int(os.environ.get("IMPORT_STUCK_AFTER_MINUTES", "15"))
 
 # The abuse ceiling (E07 S07-3). These were E01's ASSISTANT_THROTTLE_* limits;
 # they are renamed, not weakened, because their JOB changed. E01 used them as

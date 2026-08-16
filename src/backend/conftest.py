@@ -35,6 +35,32 @@ def shifted_clock():
         yield
 
 
+@pytest.fixture(scope="session", autouse=True)
+def isolated_job_storage(tmp_path_factory):
+    """Import uploads and export archives go to a temp dir, never the repo (E12).
+
+    Two reasons this is autouse. Without it a test that uploads a CSV writes
+    into ``BASE_DIR/.jobstore`` — the developer's real working tree — and
+    leaves it there, so the suite's tenth run has nine files of somebody's
+    ledger lying in the repo. And a test that forgets to unset
+    ``GS_BUCKET_NAME`` would reach for a real bucket, which is the one thing
+    "local development works without GCP credentials" must never do by accident.
+
+    Assigns to ``django.conf.settings`` directly rather than using the
+    ``settings`` fixture or ``override_settings``. Both of those swap in a
+    ``UserSettingsHolder``, whose ``SETTINGS_MODULE`` is ``None`` — and
+    ``core/tests/test_tiers.py`` and ``assistant/tests/test_settings_tiers.py``
+    reload the settings module by that name. An autouse override would break
+    them everywhere, for a fixture they have no interest in. Session-scoped is
+    enough: stored keys carry a UUID, so no two tests can collide.
+    """
+    from django.conf import settings as django_settings
+
+    django_settings.GS_BUCKET_NAME = ""
+    django_settings.JOB_STORAGE_ROOT = tmp_path_factory.mktemp("jobstore")
+    return django_settings.JOB_STORAGE_ROOT
+
+
 @pytest.fixture(autouse=True)
 def clean_cache():
     """Empty the cache between tests.

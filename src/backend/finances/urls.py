@@ -33,10 +33,18 @@ from finances.views.entries import (
     EntryUpdateView,
     InstallmentPreviewView,
 )
+from finances.views.exporter import (
+    ExportDownloadView,
+    ExportPageView,
+    ExportRequestView,
+)
 from finances.views.importer import (
     ImportExecuteView,
+    ImportFailuresView,
+    ImportHistoryView,
     ImportMappingView,
     ImportPreviewView,
+    ImportStatusView,
     ImportUploadView,
 )
 from finances.views.projection import (
@@ -217,9 +225,18 @@ urlpatterns = [
     ),
     # Import
     path("import/", ImportUploadView.as_view(), name="import_upload"),
-    path("import/map/", ImportMappingView.as_view(), name="import_map"),
-    path("import/preview/", ImportPreviewView.as_view(), name="import_preview"),
-    path("import/execute/", ImportExecuteView.as_view(), name="import_execute"),
+    path("import/<uuid:job_id>/mapear/", ImportMappingView.as_view(), name="import_map"),
+    path("import/<uuid:job_id>/preview/", ImportPreviewView.as_view(), name="import_preview"),
+    path("import/<uuid:job_id>/executar/", ImportExecuteView.as_view(), name="import_execute"),
+    path("import/<uuid:job_id>/status/", ImportStatusView.as_view(), name="import_status"),
+    path("import/<uuid:job_id>/falhas.csv", ImportFailuresView.as_view(), name="import_failures"),
+    # "historico" is not a UUID, so it cannot be shadowed by the job-scoped
+    # routes above whichever order they are registered in.
+    path("import/historico/", ImportHistoryView.as_view(), name="import_history"),
+    # Export
+    path("exportar/", ExportPageView.as_view(), name="export_page"),
+    path("exportar/solicitar/", ExportRequestView.as_view(), name="export_request"),
+    path("exportar/baixar/<str:token>/", ExportDownloadView.as_view(), name="export_download"),
     # Cockpit — income
     path(
         "cockpit/<int:year>/<int:month>/income/",

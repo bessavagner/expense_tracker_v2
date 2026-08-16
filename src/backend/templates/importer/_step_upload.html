@@ -20,6 +20,8 @@
                 <input type="file" name="file" accept=".csv" class="file-input file-input-bordered w-full" required>
             </div>
             <button type="submit" class="btn btn-accent" data-pending="Enviando…">Próximo →</button>
+            <a href="{% url 'finances:import_history' %}"
+               class="link link-hover text-sm block mt-4 opacity-70">Ver importações anteriores</a>
         </form>
     </div>
 </div>

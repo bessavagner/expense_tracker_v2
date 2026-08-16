@@ -24,6 +24,9 @@ dependencies = [
     # E10 / ADR-004. Brings `google-auth` transitively, which core.tasks.auth
     # uses to verify the inbound OIDC token.
     "google-cloud-tasks>=2.18",
+    # E12. GCS is production-only: with GS_BUCKET_NAME unset, core.storage falls
+    # back to FileSystemStorage and the app is complete with no GCP credentials.
+    "django-storages[google]>=1.14",
 ]
 
 [tool.pytest.ini_options]

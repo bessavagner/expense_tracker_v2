@@ -58,6 +58,13 @@ retention are instrumented*, by E14. The two that remain are **durable import an
 export (E12)** and **a data-subject request fulfilled in 15 days with deletion
 honoured (E13)**. Beta does not open until all four hold.
 
+E12's third condition is **code-complete but not yet true in production**: the
+import/export machinery, its tests and its runbook all landed on 2026-08-16
+(footnote 12), and what stands between that and a ticked box is provisioning the
+GCS bucket and redeploying with `GS_BUCKET_NAME` set. E13 remains `blocked`
+regardless — it depends on **E18** as well, and E18 is `ready` rather than
+`done`.
+
 **R2's gate is observably true as of 2026-08-15.** Receipt and chat quality are
 scored against fifteen real receipts and seven conversations across five models
 (E08, E09), and the production vision mix measures **3.75× cheaper** than
@@ -84,7 +91,7 @@ pipeline) is still open inside R2 but is not named by this gate.
 | [E09](E09-model-tiering-and-routing.md) | Model tiering & routing | R2 | W | E07, E08 | **done** (2026-08-15)⁴ |
 | [E10](E10-async-work-pipeline.md) | Async work pipeline | R2 | W | E06 | **done** (2026-08-15)¹¹ |
 | [E11](E11-onboarding-and-activation.md) | Onboarding & activation | R3 | W | E05 | **done** (2026-08-16)⁹ |
-| [E12](E12-durable-import-export-jobs.md) | Durable import/export jobs | R3 | | E10 | ready |
+| [E12](E12-durable-import-export-jobs.md) | Durable import/export jobs | R3 | | E10 | **review** (2026-08-16)¹² |
 | [E13](E13-lgpd-compliance.md) | LGPD compliance | R3 | | E12, E18 | blocked |
 | [E14](E14-product-analytics.md) | Product analytics | R3 | | E06, E11 | **done** (2026-08-16)¹ |
 | [E15](E15-billing-and-subscription.md) | Billing & subscription | R4 | | E07, E13, E18 | blocked |
@@ -351,6 +358,45 @@ command needs its own ticket.
 **Not provisioned:** the GCP queue, service account and IAM. Local mode is
 `CLOUD_TASKS_ENABLED=0` (eager, in-process). `docs/runbook.md` → *Async tasks
 (E10)* has the `gcloud` commands.
+
+¹² **E12's code is complete and its DoD commands pass** (2026-08-16): 1965 tests
+pass, coverage 93% against the 80 gate, `ruff` clean, `makemigrations --check`
+clean, `check --deploy` unchanged. It sits at `review` rather than `done` for
+one reason, and it is the reason E10 is a cautionary tale two footnotes up: **the
+GCS bucket is not provisioned and the service has not been redeployed with
+`GS_BUCKET_NAME` set.** Until it is, production writes job files to the
+instance's own filesystem — which works, and silently loses them on the next
+revision. `docs/runbook.md` → *Import and export jobs (E12)* has the exact
+`gcloud` commands. Flip to `done` after they run and one live import and one
+live export round-trip against the deployed revision.
+
+What shipped: `ImportBatch` → `ImportJob` by `RenameModel` (production rows
+intact, reversible, verified forward-back-forward); the wizard's state out of
+the session and into the job row plus object storage, so any instance can serve
+any step (**B4**); a savepoint per row, so one rejected row fails alone
+(**H5**) — proved by removing it and watching the suite fail with
+`TransactionManagementError`; execution off-request via `core.tasks`, with HTMX
+progress, a pt-BR failure message, a `sweep_stuck_import_jobs` command and a
+per-row failure report as CSV; a history page; and a full household export
+behind an application-signed 1-hour link, round-tripped back into a fresh
+household with matching totals *and* matching per-category splits.
+
+**Two latent defects the work surfaced, both pre-existing, both fixed.**
+Duplicate detection had **never** worked: `parse_csv_rows` stores a row's date
+as an ISO string while `values_list` returns a `datetime.date`, so the tuple
+comparison never matched and every re-uploaded file looked entirely new. That is
+load-bearing for this epic — "send the file again, the rows you already have
+will be marked duplicate" is the recovery offered after a failed or interrupted
+import. And the preview's "Pular" checkboxes sat outside any `<form>`, so a skip
+could never be submitted at all. Separately, the export round-trip found a real
+importer bug: a BOM-prefixed header (which is every CSV Excel writes, including
+our own exports) made the date column silently fail to auto-detect.
+
+**One accepted bound, written down before it is an incident:**
+`core/tasks/views.py` holds `select_for_update` on the `TaskRun` row for the
+whole handler, so one import holds one row lock for its run. At the 2 MB cap
+that is well inside Cloud Run's 300 s timeout; chunked execution is the fix if a
+real user ever hits it, and it is out of scope here.
 
 **E05 is done, so E11 and E18 are both open.** E18 is small and off the critical path — it can run alongside E11 rather than ahead of it. Its `blocks` edges into E13 and E15 are *UI-surface* dependencies, not data ones: both later epics add a tab to E18's page instead of inventing an account surface of their own.
 

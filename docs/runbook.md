@@ -1528,30 +1528,183 @@ findable. Nobody read "Show original", so the block above is still empty and
 the next send; it is a thirty-second job and it is the difference between
 evidence and inference.
 
-## Import batches
+## Import and export jobs (E12)
 
-Each confirmed column mapping creates one `finances_importbatch` row, and the
-execute step locks it so a double-tapped or replayed "Importar" cannot import the
-same file twice (`executed_at` records that it already ran, and the second
-request renders the first one's counts instead of importing again).
+Uploaded CSVs and generated export archives live in one GCS bucket. The
+application never names it outside `core/storage.py`, and with `GS_BUCKET_NAME`
+unset it falls back to `FileSystemStorage` under `src/backend/.jobstore/` — so
+a laptop and CI need no GCP credentials at all.
 
-Consequence for the operator: abandoned imports — someone who reached the preview
-and closed the tab — leave rows with `executed_at IS NULL` forever. They are
-tiny and harmless. Prune them if they ever bother you:
+`ImportBatch` was renamed to `ImportJob` in
+`finances/migrations/0020_importjob.py`, by `RenameModel` — the table and every
+production import record survived. `ImportJob` now carries the whole wizard
+state (the storage key, the column mapping, the skip list, the counts and the
+per-row failures), which is what lets any Cloud Run instance serve any step.
+
+### The bucket
+
+`gs://ledger-jobs-expense-tracker-482807`, `southamerica-east1`, with:
+
+- **uniform bucket-level access** — no per-object ACL can make one file public
+- **public access prevention: enforced** — no IAM change can make the bucket public
+- **a lifecycle rule deleting objects at 7 days** — E12 decision 2. These are
+  financial records; seven days is the shortest window that still lets a failed
+  import reported on Monday be investigated.
+
+Two prefixes, never mixed: `imports/<household-id>/<uuid>.csv` and
+`exports/<household-id>/<job-id>.zip`.
+
+```bash
+# Provisioning, one-off per environment
+PROJECT=expense-tracker-482807
+REGION=southamerica-east1
+BUCKET="ledger-jobs-${PROJECT}"
+
+gcloud storage buckets create "gs://${BUCKET}" \
+  --project="$PROJECT" --location="$REGION" \
+  --uniform-bucket-level-access --public-access-prevention
+
+cat > /tmp/ledger-jobs-lifecycle.json <<'JSON'
+{"rule": [{"action": {"type": "Delete"}, "condition": {"age": 7}}]}
+JSON
+gcloud storage buckets update "gs://${BUCKET}" \
+  --lifecycle-file=/tmp/ledger-jobs-lifecycle.json
+
+RUNTIME_SA="$(gcloud run services describe expense-tracker \
+  --project="$PROJECT" --region="$REGION" \
+  --format='value(spec.template.spec.serviceAccountName)')"
+gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
+  --member="serviceAccount:${RUNTIME_SA}" --role="roles/storage.objectAdmin"
+```
+
+`objectAdmin`, not `admin`: nothing in the application ever needs to change the
+bucket itself.
+
+Check the rule is still there — a bucket without it is a growing pile of other
+people's bank statements:
+
+```bash
+gcloud storage buckets describe "gs://ledger-jobs-expense-tracker-482807" \
+  --format='yaml(lifecycle,iamConfiguration)'
+```
+
+Expect `publicAccessPrevention: enforced`, `uniformBucketLevelAccess.enabled:
+true`, and a lifecycle rule with `age: 7`.
+
+### Deploy variables
+
+```
+GS_BUCKET_NAME=ledger-jobs-expense-tracker-482807
+MAX_CSV_UPLOAD_BYTES=2097152
+```
+
+`MAX_CSV_UPLOAD_BYTES` is 2 MB (E12 decision 1) and is enforced three times:
+at the ASGI layer (`core/asgi_body_limit.py`), at the Django middleware layer
+(`core/middleware.py`, which applies the CSV ceiling to anything under
+`/import/`), and while streaming the file into storage
+(`finances/services/import_storage.py`) — the only one of the three that a
+chunked request declaring no `Content-Length` cannot walk past.
+
+**Do not move the importer off the `/import/` URL prefix.**
+`core.middleware.IMPORT_PATH_PREFIX` is a literal, so a renamed path silently
+gets the 60 MB chat ceiling instead of the 2 MB one.
+
+### Why downloads go through the app and not through a GCS signed URL
+
+`core/downloads.py` mints a Django `TimestampSigner` token; `ExportDownloadView`
+verifies the signature, the age *and* `request.household` before streaming.
+A raw GCS signed URL would need either a key file on disk or a `SignBlob` call
+per download, and — the real objection — it cannot check which household is
+asking. A complete financial history is not protected by URL secrecy alone.
+
+Link lifetime is `EXPORT_URL_MAX_AGE_SECONDS` (1 hour). The `ExportJob` row
+outlives the file deliberately, so a user whose 8-day-old export 404s learns it
+expired rather than that it never existed.
+
+### Investigating a stuck import
+
+A job is stuck when it is `running` and `started_at` is older than
+`IMPORT_STUCK_AFTER_MINUTES` (15). That means the instance running it is gone —
+Cloud Run recycled it, or the task outran the request timeout. Nothing will ever
+move the row again.
+
+The status page reads `is_stuck` live, so what the user sees is already honest.
+The sweep is what makes the **stored** state honest, for the history page and
+for anything that queries by status:
+
+```bash
+POSTGRES_PORT=5433 uv run python src/backend/manage.py sweep_stuck_import_jobs
+```
+
+Expected output: `Importações interrompidas marcadas como falha: N`.
+
+Schedule it next to the keepalive ping (see *Cold starts: the keepalive job*).
+Once every 15 minutes is plenty.
+
+To see what a job actually did, without the UI:
+
+```bash
+POSTGRES_PORT=5433 uv run python src/backend/manage.py shell -c "
+from finances.models import ImportJob
+job = ImportJob.objects.get(pk='<uuid>')
+print(job.status, job.created_count, job.skipped_count, job.error_count)
+print(job.storage_key)
+for failure in job.failures[:10]:
+    print(failure)
+"
+```
+
+The `TaskRun` that carried it is findable by payload:
+
+```bash
+POSTGRES_PORT=5433 uv run python src/backend/manage.py shell -c "
+from core.models import TaskRun
+print(list(TaskRun.objects.filter(name='finances.run_import',
+      payload__job_id='<uuid>').values('status','attempts','last_error','request_id')))
+"
+```
+
+`request_id` joins straight to Cloud Logging — see *Start from the request ID*.
+
+### Abandoned jobs
+
+Someone who reaches the preview and closes the tab leaves a row that is never
+executed, plus its uploaded CSV. The CSV is deleted by the 7-day lifecycle rule
+without anyone doing anything; the row is tiny and harmless. Prune the rows if
+they ever bother you:
 
 ```bash
 POSTGRES_PORT=5433 uv run python src/backend/manage.py shell -c "
 from datetime import timedelta
 from django.utils import timezone
-from finances.models import ImportBatch
-print(ImportBatch.objects.filter(
+from finances.models import ImportJob
+print(ImportJob.objects.filter(
     executed_at__isnull=True,
     created_at__lt=timezone.now() - timedelta(days=30)).delete())"
 ```
 
-Do **not** delete executed batches that a user might still re-POST — a browser
-that replays the execute step against a missing batch is sent back to the upload
-step, which is safe but looks like the import vanished.
+Do **not** delete finished jobs — they are the history page, and they are the
+only record of what a past import actually did.
+
+### A bound worth knowing before it is an incident
+
+`core/tasks/views.py` holds `select_for_update` on the `TaskRun` row for the
+whole handler, so one import holds one row lock for its whole run. At the 2 MB
+cap that is bounded and well inside Cloud Run's 300 s request timeout. If a
+real user ever hits the timeout, the fix is chunked execution across several
+tasks — deliberately not built in E12, because at this scale it would be
+complexity with no evidence behind it.
+
+### `finances.run_import` retries once, on purpose
+
+`max_attempts=1`, against the registry's default of 5. A half-finished import
+has already written some of the household's rows, and a blind retry writes the
+rest of them twice. The durable record is the `ImportJob`; the guard is the
+conditional UPDATE in `import_runner._claim`, which moves a job to `running`
+only if nobody else already has; a genuinely failed import is retried by the
+user uploading again, which re-runs duplicate detection first.
+`finances.build_export` retries three times because it is a pure read plus one
+write.
 
 ## Usage, credits and cost (E07)
 
