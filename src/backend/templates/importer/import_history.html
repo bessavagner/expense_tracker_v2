@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Importações{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+    <h2 class="text-2xl font-bold">Importações</h2>
+    <a href="{% url 'finances:import_upload' %}" class="btn btn-accent btn-sm">Nova importação</a>
+</div>
+
+{% if not jobs %}
+<div class="card bg-base-100 shadow-sm">
+    <div class="card-body text-center">
+        <p>Nenhuma importação ainda.</p>
+        <p class="text-sm opacity-70">
+            Envie um CSV exportado do Google Sheets para trazer seu histórico.
+        </p>
+    </div>
+</div>
+{% else %}
+<div class="card bg-base-100 shadow-sm">
+    <div class="card-body">
+        <div class="overflow-x-auto">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Arquivo</th><th>Quando</th><th>Situação</th>
+                        <th>Importados</th><th>Pulados</th><th>Erros</th><th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for job in jobs %}
+                    <tr>
+                        <td>{{ job.original_filename|default:"—" }}</td>
+                        <td>{{ job.created_at|date:"d/m/Y H:i" }}</td>
+                        <td>
+                            {% if job.is_stuck %}
+                            <span class="badge badge-sm badge-error">Interrompida</span>
+                            {% elif job.status == "done" %}
+                            <span class="badge badge-sm badge-success">Concluída</span>
+                            {% elif job.status == "failed" %}
+                            <span class="badge badge-sm badge-error">Falhou</span>
+                            {% elif job.status == "running" %}
+                            <span class="badge badge-sm badge-info">Importando</span>
+                            {% else %}
+                            <span class="badge badge-sm badge-ghost">Preparada</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ job.created_count }}</td>
+                        <td>{{ job.skipped_count }}</td>
+                        <td>{{ job.error_count }}</td>
+                        <td class="flex gap-2">
+                            {% if not job.is_finished %}
+                            <a href="{% url 'finances:import_status' job_id=job.id %}"
+                               class="link link-hover text-sm">Acompanhar</a>
+                            {% endif %}
+                            {% if job.error_count %}
+                            <a href="{% url 'finances:import_failures' job_id=job.id %}"
+                               class="link link-hover text-sm">Erros</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if truncated %}
+        <p class="text-sm opacity-70 mt-2">
+            Mostrando as 50 importações mais recentes.
+        </p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

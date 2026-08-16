@@ -1,0 +1,62 @@
+{% comment %}
+The fragment HTMX swaps. `hx-trigger` is present only while there is something
+to wait for, which is what stops the page polling a finished — or a dead — job
+forever.
+{% endcomment %}
+<div id="import-progress"
+     {% if not job.is_finished and not job.is_stuck %}
+     hx-get="{% url 'finances:import_status' job_id=job.id %}"
+     hx-trigger="every 2s"
+     hx-swap="outerHTML"
+     {% endif %}>
+
+    {% if job.is_stuck %}
+    <div class="alert alert-error">
+        <div>
+            <h4 class="font-bold">Importação interrompida</h4>
+            <p>A importação parou antes de terminar. {{ job.created_count }} entrada(s)
+               foram criadas. Envie o arquivo de novo — as linhas já importadas
+               aparecerão marcadas como duplicadas e podem ser puladas.</p>
+        </div>
+    </div>
+
+    {% elif job.status == "failed" %}
+    <div class="alert alert-error">
+        <div>
+            <h4 class="font-bold">A importação falhou</h4>
+            <p>{{ job.error_message }}</p>
+        </div>
+    </div>
+
+    {% elif job.is_finished %}
+    <div class="stats shadow mb-6">
+        <div class="stat">
+            <div class="stat-title">Importados</div>
+            <div class="stat-value text-success">{{ job.created_count }}</div>
+        </div>
+        <div class="stat">
+            <div class="stat-title">Pulados</div>
+            <div class="stat-value text-warning">{{ job.skipped_count }}</div>
+        </div>
+        <div class="stat">
+            <div class="stat-title">Erros</div>
+            <div class="stat-value text-error">{{ job.error_count }}</div>
+        </div>
+    </div>
+    {% if job.error_count %}
+    <a href="{% url 'finances:import_failures' job_id=job.id %}"
+       class="btn btn-outline btn-sm mb-4">Baixar relatório de erros (CSV)</a>
+    {% endif %}
+    <div class="flex gap-2">
+        <a href="{% url 'finances:entries' %}" class="btn btn-accent">Ver entradas</a>
+        <a href="{% url 'finances:import_upload' %}" class="btn btn-ghost">Importar outro arquivo</a>
+    </div>
+
+    {% else %}
+    <p class="mb-2">Importando {{ job.processed_count }} de {{ job.total_rows }} linha(s)…</p>
+    <progress class="progress progress-accent w-full"
+              value="{{ job.progress_percent }}" max="100"
+              aria-label="Progresso da importação"></progress>
+    <p class="text-sm opacity-70 mt-2">{{ job.progress_percent }}%</p>
+    {% endif %}
+</div>

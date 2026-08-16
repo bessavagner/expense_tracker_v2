@@ -10,14 +10,14 @@
     <li class="step {% if step == 'upload' %}step-primary{% endif %}">Upload</li>
     <li class="step {% if step == 'mapping' %}step-primary{% endif %}">Mapeamento</li>
     <li class="step {% if step == 'preview' %}step-primary{% endif %}">Preview</li>
-    <li class="step {% if step == 'result' %}step-primary{% endif %}">Resultado</li>
+    <li class="step {% if step == 'status' %}step-primary{% endif %}">Resultado</li>
 </ul>
 
 <div id="import-step">
     {% if step == "upload" %}{% include "importer/_step_upload.html" %}
     {% elif step == "mapping" %}{% include "importer/_step_mapping.html" %}
     {% elif step == "preview" %}{% include "importer/_step_preview.html" %}
-    {% elif step == "result" %}{% include "importer/_step_result.html" %}
+    {% elif step == "status" %}{% include "importer/_step_status.html" %}
     {% endif %}
 </div>
 {% endblock %}

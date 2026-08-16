@@ -6,10 +6,14 @@ the job row plus the file in object storage. Nothing is kept in
 instance -- E12's B4 fix.
 """
 
+import csv
+
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
 
+from core.tasks import enqueue
 from finances.models import Category, ImportJob, ImportStatus, PaymentMethod
 from finances.services.import_rows import (
     detected_mapping,
@@ -19,6 +23,7 @@ from finances.services.import_rows import (
     unmatched_names,
 )
 from finances.services.import_storage import UploadTooLarge, store_upload
+from finances.tasks import RUN_IMPORT
 
 
 def get_job(request, job_id) -> ImportJob:
@@ -201,11 +206,89 @@ class ImportPreviewView(LoginRequiredMixin, View):
 
 
 class ImportExecuteView(LoginRequiredMixin, View):
-    """Step 4: execute the import. Task 5 moves this onto the task queue."""
+    """Step 4: hand the job to a task and send the user to the status page.
+
+    The old view did the whole import inside the request, wrapped in one
+    ``@transaction.atomic`` -- which is where H5 lived, and which also meant a
+    4000-row file held a request open for as long as it took. Enqueue is
+    idempotent by content hash, so a double-tapped button produces one TaskRun
+    and one import; the ``select_for_update`` dance the old view needed is now a
+    property of ``core.tasks.enqueue`` plus ``import_runner._claim``.
+    """
 
     def post(self, request, job_id):
         job = get_job(request, job_id)
-        from finances.services.import_runner import run_import
+        if not job.is_finished:
+            enqueue(RUN_IMPORT, {"job_id": str(job.id)})
+        return redirect("finances:import_status", job_id=job.id)
 
-        run_import(job)
-        return redirect("finances:import_preview", job_id=job.id)
+
+class ImportStatusView(LoginRequiredMixin, View):
+    """Progress while it runs; counts when it is done; a reason when it is not.
+
+    Serves the whole page normally and the progress fragment to HTMX, from one
+    place, so the two cannot drift into disagreeing about the same job.
+    """
+
+    def get(self, request, job_id):
+        job = get_job(request, job_id)
+        context = {"step": "status", "job": job, "import_type": job.import_type}
+        if request.headers.get("HX-Request"):
+            return render(request, "importer/_progress.html", context)
+        return render(request, "importer/import_page.html", context)
+
+
+# Bounded so that a household with years of imports cannot turn the history
+# page into a slow query. Old jobs stay in the database and in the admin; what
+# is capped is the render, and the page says so.
+HISTORY_LIMIT = 50
+
+
+class ImportHistoryView(LoginRequiredMixin, View):
+    """Past imports, and what each one did.
+
+    The reason durable job state is worth having: before this, an import that
+    finished was a page the user had to still be looking at.
+    """
+
+    def get(self, request):
+        jobs = list(ImportJob.objects.for_request(request)[: HISTORY_LIMIT + 1])
+        return render(
+            request,
+            "importer/import_history.html",
+            {"jobs": jobs[:HISTORY_LIMIT], "truncated": len(jobs) > HISTORY_LIMIT},
+        )
+
+
+class ImportFailuresView(LoginRequiredMixin, View):
+    """The failed rows, as a CSV the user can open next to their spreadsheet.
+
+    Generated from the job rather than stored: the failures are already on the
+    row, and writing a second artefact to the bucket would give the retention
+    rule a second thing to reason about for no gain.
+
+    UTF-8 BOM because the audience opens this in Excel, which reads a
+    BOM-less UTF-8 file as Latin-1 and renders every accent as mojibake --
+    on a report whose whole job is to be readable.
+
+    No token on this one, unlike the export. It is reached from a page the user
+    is already on, inside their own session, and it is scoped by
+    ``for_request``; a token would add nothing.
+    """
+
+    def get(self, request, job_id):
+        job = get_job(request, job_id)
+
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = f'attachment; filename="erros-importacao-{job.id}.csv"'
+        response.write("﻿")
+
+        writer = csv.writer(response)
+        writer.writerow(["linha", "motivo"])
+        for failure in job.failures:
+            writer.writerow([failure["line"], failure["reason"]])
+        if job.failures_truncated:
+            writer.writerow(
+                ["", f"...e mais {job.failures_truncated} linha(s) com erro não listadas."]
+            )
+        return response
