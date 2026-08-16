@@ -33,6 +33,11 @@ from finances.views.entries import (
     EntryUpdateView,
     InstallmentPreviewView,
 )
+from finances.views.exporter import (
+    ExportDownloadView,
+    ExportPageView,
+    ExportRequestView,
+)
 from finances.views.importer import (
     ImportExecuteView,
     ImportFailuresView,
@@ -228,6 +233,10 @@ urlpatterns = [
     # "historico" is not a UUID, so it cannot be shadowed by the job-scoped
     # routes above whichever order they are registered in.
     path("import/historico/", ImportHistoryView.as_view(), name="import_history"),
+    # Export
+    path("exportar/", ExportPageView.as_view(), name="export_page"),
+    path("exportar/solicitar/", ExportRequestView.as_view(), name="export_request"),
+    path("exportar/baixar/<str:token>/", ExportDownloadView.as_view(), name="export_download"),
     # Cockpit — income
     path(
         "cockpit/<int:year>/<int:month>/income/",

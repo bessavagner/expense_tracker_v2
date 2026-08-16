@@ -108,6 +108,7 @@ def test_registry_holds_exactly_the_seventeen_household_owned_models():
         "finances.InstallmentPlan",
         "finances.SystemicExpense",
         "finances.ImportJob",
+        "finances.ExportJob",
         "assistant.ChatMessage",
         "assistant.MemoryRule",
         "assistant.ReceiptDraft",

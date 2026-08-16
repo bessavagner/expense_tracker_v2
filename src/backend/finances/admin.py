@@ -4,6 +4,7 @@ from finances.models import (
     Budget,
     Category,
     Entry,
+    ExportJob,
     ImportJob,
     Income,
     InstallmentPlan,
@@ -100,6 +101,16 @@ class ImportJobAdmin(admin.ModelAdmin):
     list_filter = ("status", "import_type")
     search_fields = ("id", "original_filename")
     readonly_fields = [field.name for field in ImportJob._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+
+@admin.register(ExportJob)
+class ExportJobAdmin(admin.ModelAdmin):
+    list_display = ("id", "household", "status", "size_bytes", "created_at", "completed_at")
+    list_filter = ("status",)
+    readonly_fields = [field.name for field in ExportJob._meta.fields]
 
     def has_add_permission(self, request):
         return False

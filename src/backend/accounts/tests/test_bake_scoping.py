@@ -31,6 +31,7 @@ HOUSEHOLD_OWNED = {
     "InstallmentPlan",
     "SystemicExpense",
     "ImportJob",
+    "ExportJob",
     "ChatMessage",
     "MemoryRule",
     "ReceiptDraft",
