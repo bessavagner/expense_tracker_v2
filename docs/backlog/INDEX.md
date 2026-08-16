@@ -78,7 +78,7 @@ pipeline) is still open inside R2 but is not named by this gate.
 | [E11](E11-onboarding-and-activation.md) | Onboarding & activation | R3 | W | E05 | **done** (2026-08-16)⁹ |
 | [E12](E12-durable-import-export-jobs.md) | Durable import/export jobs | R3 | | E10 | blocked |
 | [E13](E13-lgpd-compliance.md) | LGPD compliance | R3 | | E12, E18 | blocked |
-| [E14](E14-product-analytics.md) | Product analytics | R3 | | E06, E11 | ready¹ |
+| [E14](E14-product-analytics.md) | Product analytics | R3 | | E06, E11 | **done** (2026-08-16)¹ |
 | [E15](E15-billing-and-subscription.md) | Billing & subscription | R4 | | E07, E13, E18 | blocked |
 | [E16](E16-operations-staging-deploy-recovery.md) | Operations: staging, deploy, recovery | R4 | | E06 | ready |
 | [E17](E17-trust-surface.md) | Trust surface: audit, error UX, landing | R4 | | E11 | blocked |
@@ -292,6 +292,32 @@ which is still `ready` rather than `done`. The override is deliberate: E14's
 *instrumentation* half depends only on E06, which is done. Its *activation-metric*
 half genuinely needs E11's activation event definition, so an agent starting E14
 before E11 lands must stop at that boundary rather than invent the event.
+
+**Closed 2026-08-16**, and it turned out to be an extension rather than a build:
+E11 had already shipped most of S14-2 — `ProductEvent`, `emit`/`emit_once`, a
+six-name funnel, `activation_report`, and a written activation definition. E14
+added three events (`entry_created` at all four write paths, `email_verified`,
+`receipt_photo`), one metrics module both readers share (`core/metrics.py`, so
+"D7 retention" cannot mean one thing on a terminal and another in a browser),
+`manage.py retention_report`, a staff-only `/metricas/`, a `Feedback` model, and
+the two documents the numbers are worth nothing without —
+`docs/architecture/product-metrics.md` and `ga-criteria.md`, the latter written
+before any beta data existed, which is the whole point of S14-6.
+
+**One DoD box is deliberately unticked:** *"Real numbers from actual beta users
+are visible, not just an empty dashboard."* Every surface runs and reports today;
+what it reports is one household, because that is who has used it. No amount of
+code satisfies that assertion — it waits on beta traffic, exactly as the spec's
+own skill pipeline says (*the evidence is real beta numbers, not a working
+dashboard*).
+
+**A constraint the spec did not anticipate, resolved rather than fudged:**
+`ProductEvent.household` is non-null, so pre-signup steps cannot be events at all
+— a visitor who has not signed up has no household, and modelling them would mean
+nullable-household events, breaking the scoping base class every other read
+depends on. **Exposure** is therefore defined now and measured at the edge (Cloud
+Run request counts on the signup URL) when E17 ships a landing page. Recorded as
+knowingly unmeasured rather than reported as zero.
 
 **E06 is done, so E07, E10, E14 and E16 are all open.** E06 closed with three
 DoD boxes unticked — see its closing note; they need a real production error and

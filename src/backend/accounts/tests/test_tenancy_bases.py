@@ -72,7 +72,7 @@ def test_created_by_survives_the_author_leaving_the_household():
     assert field.remote_field.on_delete is models.SET_NULL
 
 
-def test_registry_holds_exactly_the_sixteen_household_owned_models():
+def test_registry_holds_exactly_the_seventeen_household_owned_models():
     """A model that grows a household column without a decision, or loses one,
     changes this number. That is the point — it should be a conversation, not
     a silent diff.
@@ -92,6 +92,11 @@ def test_registry_holds_exactly_the_sixteen_household_owned_models():
     The sixteenth is E11's `core.ProductEvent`. It carries a household so an
     event is scoped and isolated exactly like every other row here — a member
     must never see a neighbour's onboarding progress or activation moment.
+
+    The seventeenth is E14's `core.Feedback`, and it is the one row in this list
+    that holds user-authored text on purpose. That is precisely why it is a
+    separate table from `ProductEvent`, whose PII rule forbids user content —
+    and why it is household-owned like everything else here rather than global.
     """
     expected = {
         "accounts.Invitation",
@@ -110,6 +115,7 @@ def test_registry_holds_exactly_the_sixteen_household_owned_models():
         "assistant.UsageInteraction",
         "assistant.UsageRecord",
         "core.ProductEvent",
+        "core.Feedback",
     }
     actual = {m._meta.label for m in household_owned_models()}
 
