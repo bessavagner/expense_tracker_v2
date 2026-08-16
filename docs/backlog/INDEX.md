@@ -361,14 +361,20 @@ command needs its own ticket.
 
 ¹² **E12's code is complete and its DoD commands pass** (2026-08-16): 1965 tests
 pass, coverage 93% against the 80 gate, `ruff` clean, `makemigrations --check`
-clean, `check --deploy` unchanged. It sits at `review` rather than `done` for
-one reason, and it is the reason E10 is a cautionary tale two footnotes up: **the
-GCS bucket is not provisioned and the service has not been redeployed with
-`GS_BUCKET_NAME` set.** Until it is, production writes job files to the
+clean, `check --deploy` unchanged. **The bucket was provisioned the same day** —
+`gs://ledger-jobs-expense-tracker-482807`, uniform bucket-level access, public
+access prevention *enforced*, a 7-day delete rule, and `objectAdmin` for the
+Cloud Run runtime identity, all confirmed by `buckets describe`.
+
+It sits at `review` rather than `done` for what is left: **the production
+migration and the redeploy have not been run.** `0020` renames
+`finances_importbatch` → `finances_importjob` on a table holding real import
+records, and the deployed revision (00047) still queries the old name, so the
+two steps go back to back. Until they do, production writes job files to the
 instance's own filesystem — which works, and silently loses them on the next
-revision. `docs/runbook.md` → *Import and export jobs (E12)* has the exact
-`gcloud` commands. Flip to `done` after they run and one live import and one
-live export round-trip against the deployed revision.
+revision. Flip to `done` after one live import and one live export round-trip
+against the new revision. `docs/runbook.md` → *Import and export jobs (E12)* has
+the commands.
 
 What shipped: `ImportBatch` → `ImportJob` by `RenameModel` (production rows
 intact, reversible, verified forward-back-forward); the wizard's state out of

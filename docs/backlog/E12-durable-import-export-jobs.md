@@ -108,13 +108,35 @@ Observable assertions:
 - [x] Local development works without GCP credentials — `test_storage.py::test_no_bucket_falls_back_to_the_filesystem`
 - [x] `docs/runbook.md` documents the bucket, its retention rule, and how to investigate a stuck job — *Import and export jobs (E12)*
 
-**Not done, and deliberately outside the code:** the bucket itself is not
-provisioned and the service is not redeployed with `GS_BUCKET_NAME` set. Those
-are `gcloud` commands against the live project; they are written out verbatim in
-the runbook section above, and until they are run, production keeps writing job
-files to the instance filesystem — which works, and loses them on the next
-revision. **E12 is not closed until they are run**, because closing it any
-earlier is exactly how E10 shipped rails with no queue behind them.
+**Provisioned on 2026-08-16.** `gs://ledger-jobs-expense-tracker-482807` exists
+in `southamerica-east1`, verified by `buckets describe`:
+`uniform_bucket_level_access: True`, `public_access_prevention: enforced`, and
+`lifecycle: {"rule":[{"action":{"type":"Delete"},"condition":{"age":7}}]}`. The
+Cloud Run runtime identity
+(`654941182076-compute@developer.gserviceaccount.com`) holds
+`roles/storage.objectAdmin` on it.
+
+**Still open, and the only thing between this epic and `done`:** the production
+migration and the redeploy.
+
+1. Apply migrations `0020_importjob` and `0021_exportjob` to Supabase over the
+   **direct connection on port 5432** (see *Applying a migration to Supabase*).
+   `0020` renames `finances_importbatch` → `finances_importjob` and backfills
+   `status='done'` for rows that already ran.
+2. Redeploy with `GS_BUCKET_NAME=ledger-jobs-expense-tracker-482807` and
+   `MAX_CSV_UPLOAD_BYTES=2097152` added to `--set-env-vars`.
+3. Against the deployed revision: import a small CSV end to end, request an
+   export and download it. Then
+   `gcloud storage ls "gs://ledger-jobs-expense-tracker-482807/imports/**"` and
+   the same for `exports/**` should each show one object.
+
+Order matters and there is a short window: step 1 renames a table the currently
+deployed revision (00047) still queries, so the importer is broken between the
+migration and the new revision going live. Minutes, on a product with one
+household — but do them back to back rather than a day apart.
+
+**E12 is not `done` until step 3 passes**, because closing it any earlier is
+exactly how E10 shipped rails with no queue behind them.
 
 ## Out of scope
 

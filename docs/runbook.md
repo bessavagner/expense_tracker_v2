@@ -1554,6 +1554,23 @@ per-row failures), which is what lets any Cloud Run instance serve any step.
 Two prefixes, never mixed: `imports/<household-id>/<uuid>.csv` and
 `exports/<household-id>/<job-id>.zip`.
 
+**Already provisioned in production (2026-08-16).** The commands below are kept
+for a second environment, or for rebuilding this one. Verify the live bucket
+rather than re-running them:
+
+```bash
+gcloud storage buckets describe gs://ledger-jobs-expense-tracker-482807 \
+  --project=expense-tracker-482807 --format=json | python3 -c "
+import json,sys; d=json.load(sys.stdin)
+print('uniform :', d.get('uniform_bucket_level_access'))
+print('public  :', d.get('public_access_prevention'))
+print('lifecycle:', json.dumps(d.get('lifecycle_config') or d.get('lifecycle')))"
+```
+
+Expect `True`, `enforced`, and a rule deleting at `age: 7`. Note that
+`--format='yaml(lifecycle,iamConfiguration)'` prints **nothing** for those two
+keys on current gcloud — the JSON form above is the one that actually answers.
+
 ```bash
 # Provisioning, one-off per environment
 PROJECT=expense-tracker-482807
