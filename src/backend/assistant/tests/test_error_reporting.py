@@ -56,25 +56,29 @@ def test_import_row_failures_are_reported_once_not_per_row(monkeypatch):
     Aggregating is not merely tidier -- a per-row report would exhaust the
     Sentry quota that ADR-005 assumed was adequate, in a single upload.
     """
-    from finances.views import importer
+    # Moved from finances.views.importer to the runner in E12: the reporting
+    # belongs with the loop that counts the failures, not with the HTTP layer.
+    from finances.services import import_runner
 
     captured = []
     monkeypatch.setattr(
-        importer.sentry_sdk, "capture_message", lambda *a, **kw: captured.append((a, kw))
+        import_runner.sentry_sdk, "capture_message", lambda *a, **kw: captured.append((a, kw))
     )
     # Drive `report_import_failures` directly: it is the unit under test, and
     # building a 1000-row import fixture to assert a counter is disproportionate.
-    importer.report_import_failures(error_count=1000, samples=[ValueError("bad date")] * 3)
+    import_runner.report_import_failures(error_count=1000, kinds={"ValueError"})
 
     assert len(captured) == 1
 
 
 @pytest.mark.django_db
 def test_no_import_failures_reports_nothing(monkeypatch):
-    from finances.views import importer
+    from finances.services import import_runner
 
     captured = []
-    monkeypatch.setattr(importer.sentry_sdk, "capture_message", lambda *a, **kw: captured.append(a))
-    importer.report_import_failures(error_count=0, samples=[])
+    monkeypatch.setattr(
+        import_runner.sentry_sdk, "capture_message", lambda *a, **kw: captured.append(a)
+    )
+    import_runner.report_import_failures(error_count=0, kinds=set())
 
     assert captured == []

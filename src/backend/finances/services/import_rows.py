@@ -86,11 +86,19 @@ def _mark_duplicates(job, rows: list[dict]) -> None:
     dates = {row["date"] for row in candidates}
 
     model = InstallmentPlan if is_installment else Entry
-    already_imported = set(
-        model.objects.for_household(job.household)
+    # ``date.isoformat()`` on the way out, because ``parse_csv_rows`` stores a
+    # row's date as an ISO *string* while ``values_list`` returns a
+    # ``datetime.date``. Comparing the two directly never matches, which is why
+    # duplicate detection silently found nothing before E12: the preview showed
+    # a re-uploaded file as entirely new. That is load-bearing here -- "send the
+    # file again, the rows you already have will be marked duplicate" is the
+    # recovery this epic offers after a failed or interrupted import.
+    already_imported = {
+        (row_date.isoformat(), amount, description)
+        for row_date, amount, description in model.objects.for_household(job.household)
         .filter(date__in=dates)
         .values_list("date", amount_field, "description")
-    )
+    }
 
     for row in candidates:
         key = (row["date"], Decimal(row[amount_field]), row["description"])
