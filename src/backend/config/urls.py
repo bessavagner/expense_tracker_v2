@@ -3,6 +3,7 @@ from django.contrib import admin
 from django.urls import include, path
 from django.views.generic import RedirectView
 
+from core.feedback import FeedbackView
 from core.views import (
     AppLoginView,
     AssetLinksView,
@@ -21,6 +22,9 @@ urlpatterns = [
     # gated by identity instead. Staff are already exempt from the onboarding
     # redirect by identity, so this needs no `_ONBOARDING_EXEMPT_PREFIXES` entry.
     path("metricas/", MetricsDashboardView.as_view(), name="metrics_dashboard"),
+    # Beta feedback (E14 S14-5). The one place the product stores user-authored
+    # text on purpose — see `core.models.Feedback`.
+    path("feedback/", FeedbackView.as_view(), name="feedback_submit"),
     # Cloud Tasks dispatch (E10). Public by necessity — the service is deployed
     # --allow-unauthenticated — so `core.tasks.auth` verifies the OIDC token
     # in-app on every request.

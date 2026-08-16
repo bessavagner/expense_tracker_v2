@@ -89,7 +89,7 @@ class MetricsDashboardView(TemplateView):
                 }
                 for household_id in set(costs) | set(turns)
             ),
-            key=lambda row: (row["cost"] or 0),
+            key=lambda row: row["cost"] or 0,
             reverse=True,
         )
 

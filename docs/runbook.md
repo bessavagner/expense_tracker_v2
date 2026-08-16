@@ -2076,3 +2076,19 @@ Not a bug. It means the step above was instrumented later than the one below, so
 households that had already passed it never emitted its event. `email_verified`
 and `receipt_photo` both shipped in E14, after the first households existed —
 expect negatives against them until the current cohorts age out.
+
+### The feedback queue
+
+`Enviar feedback` in the drawer opens a modal on every page; what it writes lands
+in `core.Feedback`, not in `ProductEvent` — that table's PII rule forbids user
+content, and this is the one place E14 stores it on purpose.
+
+Read it in the admin, at `<ADMIN_URL_PATH>/core/feedback/`. The list is ordered
+newest first and is read-only by design: what someone wrote is a record of what
+they said, and an editable record of that is worth nothing. Each row carries the
+path the person was on when they wrote it, and nothing else they typed.
+
+**Cadence: weekly, in the same sitting as `retention_report`.** The confirmation
+the user sees says *"Obrigado. Isso vai ser lido."* — a promise made in the UI has
+to be one the process keeps. Feedback nobody reads is worse than no feedback,
+because it also spends the user's goodwill.

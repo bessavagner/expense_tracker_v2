@@ -49,6 +49,14 @@
                 <li><a href="{% url 'finances:settings' %}" class="{% if request.resolver_match.url_name and 'settings' in request.resolver_match.url_name %}active{% endif %}">Configurações</a></li>
                 <li><a href="{% url 'finances:import_upload' %}" class="{% if request.resolver_match.url_name and 'import' in request.resolver_match.url_name %}active{% endif %}">Importar</a></li>
                 <li><a href="{% url 'members' %}" class="{% if request.resolver_match.url_name == 'members' %}active{% endif %}">Membros da casa</a></li>
+                {% comment %}E14 S14-5: the beta's only channel for "why". Reachable from
+                every page, because the moment someone has something to say is the moment
+                they are looking at the thing they want to say it about.{% endcomment %}
+                <li><button type="button"
+                            hx-get="{% url 'feedback_submit' %}"
+                            hx-target="#feedback-modal-content"
+                            hx-swap="innerHTML"
+                            onclick="document.getElementById('feedback-modal').showModal()">Enviar feedback</button></li>
             </ul>
         </div>
     </div>
@@ -71,6 +79,14 @@
     <!-- Modal container for entry form -->
     <dialog id="entry-modal" class="modal">
         <div class="modal-box w-11/12 max-w-lg" id="entry-modal-content">
+            <!-- Content loaded via HTMX -->
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
+    <!-- Modal container for beta feedback (E14 S14-5) -->
+    <dialog id="feedback-modal" class="modal">
+        <div class="modal-box w-11/12 max-w-lg" id="feedback-modal-content">
             <!-- Content loaded via HTMX -->
         </div>
         <form method="dialog" class="modal-backdrop"><button>close</button></form>

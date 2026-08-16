@@ -180,3 +180,36 @@ class ProductEvent(HouseholdOwnedModel):
 
     def __str__(self):
         return f"{self.name} @ {self.household} ({self.created_at:%Y-%m-%d %H:%M})"
+
+
+class Feedback(HouseholdOwnedModel):
+    """What a beta user said, in their own words.
+
+    The one place in E14 that stores user-authored text on purpose. It does NOT
+    go in `ProductEvent.metadata`, whose PII rule forbids user content — which is
+    the whole reason this is a separate table with its own entry on E13's
+    processing inventory. See `docs/architecture/product-metrics.md`.
+
+    `context` carries where they were when they wrote it, so a report is
+    actionable, and never anything they typed on another screen.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    message = models.TextField(max_length=4000)
+    context = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "feedback"
+        verbose_name_plural = "feedbacks"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.household} @ {self.created_at:%Y-%m-%d %H:%M}"

@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
-from .models import AdminAccessLog, CustomUser, ProductEvent, TaskRun
+from .models import AdminAccessLog, CustomUser, Feedback, ProductEvent, TaskRun
 
 
 @admin.register(CustomUser)
@@ -69,6 +69,29 @@ class ProductEventAdmin(admin.ModelAdmin):
     list_filter = ("name", "once")
     date_hierarchy = "created_at"
     readonly_fields = ("household", "name", "user", "once", "metadata", "created_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(Feedback)
+class FeedbackAdmin(admin.ModelAdmin):
+    """Read-only, newest first: this list IS the reading queue.
+
+    Read-only because what someone wrote is a record of what they said, and an
+    editable record of what someone said is worth nothing. The runbook says the
+    queue is reviewed weekly — the confirmation the user sees promises it will
+    be read, so the process has to keep that promise.
+    """
+
+    list_display = ("created_at", "household", "user", "message")
+    list_filter = ("created_at",)
+    search_fields = ("message",)
+    date_hierarchy = "created_at"
+    readonly_fields = ("household", "user", "message", "context", "created_at")
 
     def has_add_permission(self, request):
         return False

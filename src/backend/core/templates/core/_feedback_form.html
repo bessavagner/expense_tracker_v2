@@ -1,0 +1,25 @@
+{% comment %}Swapped into `#feedback-modal-content`, which is the `.modal-box` of the
+   dialog in base.html — so this fragment must not carry `modal` part classes of
+   its own; plain flex utilities do the same job without an orphan root.{% endcomment %}
+<h3 class="text-lg font-bold mb-2">Enviar feedback</h3>
+<form id="feedback-form"
+      hx-post="{% url 'feedback_submit' %}"
+      hx-target="#feedback-modal-content"
+      hx-swap="innerHTML"
+      class="flex flex-col gap-2">
+    {% csrf_token %}
+    <label class="label" for="{{ form.message.id_for_label }}">{{ form.message.label }}</label>
+    {{ form.message }}
+    {% if form.message.errors %}
+    <p class="text-error text-sm" role="alert">{{ form.message.errors.0 }}</p>
+    {% endif %}
+    <p class="text-xs opacity-60">
+        Vai junto a página em que você estava — nada mais do que você digitou em outro lugar.
+    </p>
+</form>
+<div class="flex justify-end gap-2 mt-4">
+    {% comment %}Its own dialog form: a nested form would not be submitted, and the button
+       has to close the dialog rather than post.{% endcomment %}
+    <form method="dialog"><button class="btn btn-sm btn-ghost">Cancelar</button></form>
+    <button type="submit" form="feedback-form" class="btn btn-sm btn-primary">Enviar</button>
+</div>
