@@ -27,6 +27,7 @@ from assistant.models import (
 from assistant.quota import decide, fallback_model_for, model_for, open_interaction
 from assistant.services.image_prep import prepare_receipt_image
 from assistant.services.transcription import transcribe_audio
+from core.events import EventName, emit
 
 logger = logging.getLogger(__name__)
 
@@ -465,6 +466,17 @@ async def _dispatch_extraction(scope, decision, chat_msg, extraction, caption, u
         payload=payload,
     )
     needs_review = receipt_needs_review(extraction, settings.ASSISTANT_RECEIPT_MIN_CONFIDENCE)
+    # Counted, not once-per-household: photos taken against receipts committed is
+    # the extraction failure rate, and it is the difference between "nobody tried
+    # the wedge" and "the wedge did not work" — opposite problems, opposite fixes.
+    # `sync_to_async` because `emit` does a synchronous ORM write and this view
+    # is async; same pattern as the other ORM calls in this module.
+    await sync_to_async(emit)(
+        EventName.RECEIPT_PHOTO,
+        household=scope.household,
+        user=scope.user,
+        metadata={"needs_review": bool(needs_review)},
+    )
     prompt = extraction_to_prompt(extraction, caption, needs_review=needs_review)
     return _sse_response(
         scope,

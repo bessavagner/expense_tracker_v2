@@ -11,6 +11,7 @@ from django.views import View
 from django.views.generic import ListView, UpdateView
 
 from accounts.mixins import HouseholdScopedMixin
+from core.events import EventName, emit
 from finances.forms import EntryForm, InstallmentForm, SystemicExpenseCreateForm
 from finances.models import Entry, Income, PaymentMethod
 from finances.models.entry import EntryType
@@ -156,6 +157,15 @@ class EntryCreateView(HtmxLoginRequiredMixin, View):
             entry.household = request.household
             entry.created_by = request.user
             entry.save()
+            # One event per submission, and this form writes exactly one row.
+            # `source="form"` is the manual side of the wedge ratio (E14 S14-3):
+            # a purchase typed in by hand is the thing a spreadsheet already does.
+            emit(
+                EventName.ENTRY_CREATED,
+                household=request.household,
+                user=request.user,
+                metadata={"source": "form"},
+            )
             html = render_to_string("entries/_entry_row.html", {"entry": entry}, request=request)
             response = HttpResponse(html)
             response["HX-Trigger"] = (

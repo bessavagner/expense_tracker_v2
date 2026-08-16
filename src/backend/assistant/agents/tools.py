@@ -24,7 +24,7 @@ from assistant.agents.receipt_billing import (
 from assistant.models import MemoryRule, MemorySource, ReceiptDraft, ReceiptDraftStatus
 from assistant.services.embedding import get_embedding
 from assistant.tasks import EMBED_MEMORY_RULE
-from core.events import EventName, emit_once
+from core.events import EventName, emit, emit_once
 from core.tasks import enqueue
 from finances.models import (
     Category,
@@ -179,6 +179,14 @@ def create_entry(
     # household — E14 turns this into the AI-versus-manual ratio.
     emit_once(
         EventName.FIRST_AI_ENTRY,
+        household=scope.household,
+        user=scope.user,
+        metadata={"source": "chat"},
+    )
+    # Counted, unlike `first_ai_entry`: the wedge ratio (E14 S14-3) needs every
+    # capture, not only the household's first one.
+    emit(
+        EventName.ENTRY_CREATED,
         household=scope.household,
         user=scope.user,
         metadata={"source": "chat"},
@@ -717,6 +725,14 @@ def commit_receipt(scope) -> str:
     )
     emit_once(
         EventName.FIRST_AI_ENTRY,
+        household=scope.household,
+        user=scope.user,
+        metadata={"source": "receipt"},
+    )
+    # One event per confirmed receipt — a household's tenth receipt is exactly
+    # the evidence the wedge is landing, and `first_ai_entry` throws it away.
+    emit(
+        EventName.ENTRY_CREATED,
         household=scope.household,
         user=scope.user,
         metadata={"source": "receipt"},

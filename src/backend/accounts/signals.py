@@ -8,11 +8,12 @@ the household something its owner recognises.
 """
 
 from allauth.account.models import EmailAddress
-from allauth.account.signals import user_signed_up
+from allauth.account.signals import email_confirmed, user_signed_up
 from django.db import transaction
 from django.dispatch import receiver
 
 from accounts.models import Household, Membership, Role
+from accounts.resolution import household_for_user
 from accounts.starter_data import seed_starter_data
 from core.events import EventName, emit_once
 
@@ -50,6 +51,25 @@ def create_household_for_new_user(request, user, **kwargs):
     # and repairable by `manage.py seed_starter_data`, so a crash between the
     # two leaves a recoverable state rather than a corrupt one.
     seed_starter_data(household, user)
+
+
+@receiver(email_confirmed)
+def record_email_verified(request, email_address, **kwargs):
+    """The funnel step between signing up and being able to do anything.
+
+    E14 S14-2: drop-off is only derivable if every step emits, and email
+    verification is where a real funnel loses people.
+
+    ``emit_once`` rather than ``emit``: allauth fires this again if a user
+    re-confirms an address, and a second row would make the funnel report more
+    verifications than signups — a number that is impossible on its face is
+    worse than a missing one.
+    """
+    emit_once(
+        EventName.EMAIL_VERIFIED,
+        household=household_for_user(email_address.user),
+        user=email_address.user,
+    )
 
 
 @receiver(user_signed_up)

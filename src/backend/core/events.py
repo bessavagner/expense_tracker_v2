@@ -14,17 +14,29 @@ from core.models import ProductEvent
 class EventName(models.TextChoices):
     """The funnel, from arrival to the moment the wedge lands.
 
-    E14 (S14-2) extends this list. The values are stable strings because they
-    are stored in rows that outlive any refactor — renaming one is a data
-    migration, not an edit.
+    The values are stable strings because they are stored in rows that outlive
+    any refactor — renaming one is a data migration, not an edit.
+
+    ``ENTRY_CREATED`` is deliberately NOT once-per-household: it is the only
+    event that counts, and the AI-versus-manual ratio (E14 S14-3) is a GROUP BY
+    over its ``metadata.source``. ``RECEIPT_PHOTO`` is not once either, for
+    the same kind of reason — photos taken against receipts committed is the
+    extraction failure rate, and it separates "nobody tried the wedge" from
+    "the wedge did not work".
+
+    Every name here is documented in ``docs/architecture/product-metrics.md``,
+    and ``core/tests/test_metrics_doc.py`` fails if one is added without it.
     """
 
     SIGNUP = "signup", "Cadastro"
+    EMAIL_VERIFIED = "email_verified", "E-mail verificado"
     HOUSEHOLD_SEEDED = "household_seeded", "Casa preparada"
     ONBOARDING_STEP = "onboarding_step", "Passo do início"
     ONBOARDING_DONE = "onboarding_done", "Início concluído"
+    RECEIPT_PHOTO = "receipt_photo", "Foto de cupom enviada"
     FIRST_AI_ENTRY = "first_ai_entry", "Primeiro lançamento por IA"
     ACTIVATED = "activated", "Ativado"
+    ENTRY_CREATED = "entry_created", "Lançamento criado"
 
 
 #: Events that may happen at most once per household. Anything here is written
@@ -32,6 +44,7 @@ class EventName(models.TextChoices):
 ONCE_PER_HOUSEHOLD = frozenset(
     {
         EventName.SIGNUP,
+        EventName.EMAIL_VERIFIED,
         EventName.HOUSEHOLD_SEEDED,
         EventName.ONBOARDING_DONE,
         EventName.FIRST_AI_ENTRY,

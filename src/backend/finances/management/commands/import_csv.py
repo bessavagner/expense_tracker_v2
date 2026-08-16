@@ -19,6 +19,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from accounts.resolution import household_for_user
+from core.events import EventName, emit
 from core.models import CustomUser
 from finances.models import (
     Category,
@@ -76,6 +77,20 @@ class Command(BaseCommand):
         self._import_systemics()
         self._import_installments()
         self._import_regular_entries()
+
+        # ONE event per run, never one per row: a CSV backfill of two thousand
+        # rows would otherwise swamp both the event table and the wedge ratio.
+        # `docs/architecture/product-metrics.md` excludes `import` from that
+        # ratio for the same reason — a backfill is migration, not capture.
+        emit(
+            EventName.ENTRY_CREATED,
+            household=self.household,
+            user=self.user,
+            metadata={
+                "source": "import",
+                "count": Entry.objects.for_household(self.household).count(),
+            },
+        )
 
     # ---- helpers --------------------------------------------------------
 
