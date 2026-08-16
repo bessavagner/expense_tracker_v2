@@ -1,13 +1,13 @@
 # E11 · Unaided walkthrough
 
-**Status: PERFORMED 2026-08-16 — activation reached.** The timings and the
-ledger contents below are read straight from the instrumentation, not from
-memory. The sections marked **[observer]** are the ones only the person in the
-room can fill in; they are deliberately left blank rather than guessed.
+**Status: PERFORMED 2026-08-16 — activation reached, unaided.** The timings and
+the ledger contents below are read straight from the instrumentation, not from
+memory. The observer's answers were added on 2026-08-16 after the fact; the one
+section still marked **[observer]** is deliberately blank rather than guessed.
 
 **Date:** 2026-08-16
-**Participant:** first-time user, had not seen the product before
-**Device:** Android phone, Chrome, PWA installed from `http://192.168.1.12:8701`
+**Participant:** wife — first-time user, had not seen the product before
+**Device:** Motorola ("Signature"), Android, Chrome, PWA installed from `http://192.168.1.12:8701`
 **Build:** `92dde29` (local LAN server, not a deployed revision)
 
 ## What the instrumentation recorded
@@ -122,29 +122,82 @@ stall anyone. The skip paths therefore remain **unexercised by a real user**.
 
 ## [observer] Friction points
 
-Verbatim quotes where possible — a paraphrase loses the thing that made it
-friction.
+Still blank. The observer's notes came back as answers to "what was NOT
+understood" rather than as moments of friction, and they are recorded in that
+section below rather than duplicated here. Left as an open section rather than
+deleted: a second session should fill it, and an empty heading is a more honest
+record than a removed one.
 
 1.
 2.
 3.
 
-## [observer] What was NOT understood
+## What was NOT understood
+
+Answered by the observer after the session. Recorded in the participant's own
+language where they said it.
+
+- **"Entradas" reads as income, not as spending.** *O nome "Entradas" confunde,
+  pois parece se referir apenas a receita.* The nav labels the ledger
+  `Entradas`, which in everyday pt-BR means money coming **in** — but the screen
+  is mostly money going out. Not filed anywhere before this walkthrough; see
+  "Follow-ups this raises" below.
+- **The 2023 receipt could not be navigated to.** *O recibo foi de 2023. Não há
+  seletor para esse ano, apesar de o registro ter sido feito.* This is finding 1
+  seen from the other side, and it is worse than finding 1 assumed: the dashboard
+  does not merely *default* to the current month, it **cannot reach 2023 at all**.
+  `DashboardView` builds its year options as `range(2024, today.year + 2)`
+  (`finances/views/dashboard.py:18`) — 2024 to 2027. A URL with `?year=2023`
+  still works, because the view reads the query string directly; the *selector*
+  is what cannot get there.
+- **The guided setup did not register as a walkthrough.** *Falta um
+  wizard/walkthrough após o registro e log in: registrar renda, saldo inicial,
+  tutorial, etc.* Recorded verbatim because it is uncomfortable: the log shows
+  they went **through** E11's three-step setup and filled in every step. So
+  either the flow did not read as an onboarding while it was happening, or it
+  ended too early — note that **saldo inicial (opening balance) is genuinely not
+  one of the steps**, and it is the one they named that does not exist.
+
+Still unanswered, and worth asking if there is a second session:
 
 - Did the closing-day sentence land? They entered day 25 for Banco do Brasil in
   15 seconds, which suggests either that it was clear or that they already knew
   the concept — those look identical from the log.
 - Did they know the chat could read a photo before being told?
 - Did they find the importer link, and did they want it?
-- **Why the second, manual entry at 12:38:57?** See finding 1 — this is the
-  single most valuable thing the observer can answer.
+- **Why the second, manual entry at 12:38:57?** Finding 1 reads it as a retry
+  after the ledger looked empty; the observer's note about the missing 2023
+  selector supports that reading but does not confirm it.
 
-## [observer] Verdict
+## Verdict
 
-- [ ] Reached activation unaided
-- [x] Needed one hint — the email verification link, because of the console-backend
-      configuration described in finding 2. Unaided from the guided setup onward.
+- [x] **Reached activation unaided** — the observer's verdict, and it governs:
+      they were in the room.
+- [ ] Needed one hint
 - [ ] Did not reach activation
+
+**Reconciling this with finding 2.** A verification link *was* handed over
+mid-session. The observer's judgement is that this does not make the run aided,
+and the reasoning holds: `EMAIL_HOST` was empty in `.env`, so the console backend
+swallowed the message — a dev-environment misconfiguration, not a thing the
+product does to a real user. Everything the walkthrough was testing, from the
+guided setup to activation, was reached with no help at all.
+
+The caveat that survives regardless: this run still did **not** answer E05's open
+question about whether a mandatory-verification wall costs activation for someone
+waiting on a real email. That needs a run with real SMTP from the first second.
+
+## Follow-ups this raises
+
+What the observer's notes turn into, so none of it is lost in a document nobody
+re-reads. Filed status as of 2026-08-16.
+
+| Finding | Status |
+|---|---|
+| A backdated receipt activates into an invisible month | **Filed as D05**, plan at `docs/superpowers/plans/2026-08-16-D05-backdated-receipt-visibility.md`. Its remedy is a link to that month, which works — the view honours `?year=2023`. |
+| The year selector cannot reach 2023 | **Not filed.** Distinct from D05, whose Out of scope says "a month-picker redesign → not this". A one-line fix to `year_range`, but it needs a decision about the lower bound — the earliest year with data, rather than a hardcoded 2024. Candidate: **D06**. |
+| "Entradas" reads as income-only | **Not filed.** A naming problem, not a bug: the fix is a word, and the word is user-facing in several templates plus the nav. Worth deciding before beta, since it is the label on the product's main screen. Candidate: **D07**, or fold into E17's trust-surface copy pass. |
+| Opening balance is not an onboarding step | **Not filed.** E11 shipped three steps against S11-3's ceiling of five, so there is room. Whether it belongs there is a product decision, not a defect. |
 
 ## Known gaps watched for, from the build
 
