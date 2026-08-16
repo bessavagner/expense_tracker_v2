@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% comment %}
+Conta. The container E13 (Privacidade) and E15 (Plano) add a tab to rather
+than each inventing an account page of their own.
+
+The mechanics are `templates/settings/settings_page.html`, copied deliberately
+and not improved on: tabs `hx-get` a fragment into `#account-content`, the
+first one arrives on `hx-trigger="load"`. Two tab mechanics in one product
+would be one too many.
+
+Two deliberate departures from that file's markup, both because the settings
+page predates daisyUI 5:
+
+  * `tabs-border`, not `tabs-bordered`. The v4 name was dropped in v5 and
+    generates nothing at all — `tabs-bordered` appears nowhere in the built
+    `tailwind.css`, so the settings tabs are currently unstyled. Copying a
+    dead class forward would ship the same bug twice.
+  * `<button role="tab">` inside `role="tablist"`, not a bare `<a>`. An `<a>`
+    with no `href` takes no keyboard focus, so the settings tabs cannot be
+    reached by keyboard at all. HTMX drives a button identically.
+
+No `?tab=` deep-linking — the settings page does not do it either, and
+consistency wins. E15 may revisit that when "ir para o seu plano" needs it.
+{% endcomment %}
+
+{% block title %}Conta{% endblock %}
+
+{% block content %}
+<h2 class="text-2xl font-bold mb-4">Conta</h2>
+
+<div role="tablist" class="tabs tabs-border mb-4">
+    <button type="button" role="tab" class="tab tab-active" id="tab-perfil" aria-selected="true"
+            hx-get="{% url 'account_profile_tab' %}"
+            hx-target="#account-content"
+            hx-swap="innerHTML"
+            @click="document.querySelectorAll('.tabs .tab').forEach(t => { t.classList.remove('tab-active'); t.setAttribute('aria-selected', 'false'); }); $el.classList.add('tab-active'); $el.setAttribute('aria-selected', 'true')">Perfil</button>
+    <button type="button" role="tab" class="tab" id="tab-seguranca" aria-selected="false"
+            hx-get="{% url 'account_security_tab' %}"
+            hx-target="#account-content"
+            hx-swap="innerHTML"
+            @click="document.querySelectorAll('.tabs .tab').forEach(t => { t.classList.remove('tab-active'); t.setAttribute('aria-selected', 'false'); }); $el.classList.add('tab-active'); $el.setAttribute('aria-selected', 'true')">Segurança</button>
+    <button type="button" role="tab" class="tab" id="tab-membros" aria-selected="false"
+            hx-get="{% url 'account_members_tab' %}"
+            hx-target="#account-content"
+            hx-swap="innerHTML"
+            @click="document.querySelectorAll('.tabs .tab').forEach(t => { t.classList.remove('tab-active'); t.setAttribute('aria-selected', 'false'); }); $el.classList.add('tab-active'); $el.setAttribute('aria-selected', 'true')">Membros</button>
+</div>
+
+<div id="account-content"
+     hx-get="{% url 'account_profile_tab' %}"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+</div>
+{% endblock %}

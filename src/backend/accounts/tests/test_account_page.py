@@ -77,3 +77,63 @@ class TestPeopleAreNamedByName:
         assert member.first_name == ""
         body = logged_client.get(reverse("account_members_tab")).content.decode()
         assert "socia@example.com" in body
+
+
+@pytest.mark.django_db
+class TestTheContaShell:
+    def test_it_requires_login(self):
+        response = Client().get(reverse("account"))
+        assert response.status_code == 302
+        assert "/accounts/login/" in response["Location"]
+
+    def test_it_offers_three_tabs(self, logged_client, household):
+        body = logged_client.get(reverse("account")).content.decode()
+        assert reverse("account_profile_tab") in body
+        assert reverse("account_security_tab") in body
+        assert reverse("account_members_tab") in body
+        assert "Perfil" in body
+        assert "Segurança" in body
+        assert "Membros" in body
+
+    def test_it_loads_the_first_tab_by_itself(self, logged_client, household):
+        """`hx-trigger="load"` — the same idiom as the settings page."""
+        body = logged_client.get(reverse("account")).content.decode()
+        assert 'hx-trigger="load"' in body
+        assert 'id="account-content"' in body
+
+
+@pytest.mark.django_db
+class TestTheDrawerAndTheOldUrl:
+    def test_the_drawer_offers_conta_and_no_longer_offers_membros_da_casa(
+        self, logged_client, household
+    ):
+        """A net removal, not an addition (spec D2)."""
+        body = logged_client.get("/", follow=True).content.decode()
+        assert reverse("account") in body
+        assert "Membros da casa" not in body
+
+    def test_the_old_members_url_redirects_permanently_to_conta(self, logged_client, household):
+        response = logged_client.get("/casa/membros/")
+        assert response.status_code == 301
+        assert response["Location"] == reverse("account")
+
+    def test_the_redirect_survives_a_signed_out_visitor(self):
+        """It is a URL on an installed phone app — it must not 500 for anyone."""
+        response = Client().get("/casa/membros/")
+        assert response.status_code == 301
+
+
+@pytest.mark.django_db
+class TestOwnerActionsStillLandSomewhereUseful:
+    def test_inviting_redirects_to_the_members_page(self, logged_client, household):
+        response = logged_client.post(reverse("invite_create"), {"email": "nova@example.com"})
+        assert response.status_code == 302
+        assert response["Location"] == reverse("account_members_tab")
+
+    def test_the_success_message_is_actually_rendered(self, logged_client, household):
+        """Before E18 `base.html` rendered `messages` nowhere, so every one of
+        these was written and thrown away."""
+        response = logged_client.post(
+            reverse("invite_create"), {"email": "nova@example.com"}, follow=True
+        )
+        assert "Convite enviado para nova@example.com." in response.content.decode()
