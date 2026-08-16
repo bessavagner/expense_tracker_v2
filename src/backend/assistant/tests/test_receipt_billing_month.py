@@ -17,6 +17,8 @@ from assistant.agents.receipt_billing import (
     plan_entry_date,
     prospective_billing_month,
 )
+from assistant.agents.tools import propose_receipt
+from assistant.models import ReceiptDraft, ReceiptDraftStatus
 from finances.models import PaymentMethod
 from finances.models.payment_method import PaymentType
 
@@ -28,11 +30,6 @@ FROZEN_NOW = datetime(2026, 8, 16, 12, 0, tzinfo=UTC)
 @pytest.fixture(autouse=True)
 def _frozen_clock(time_machine):
     time_machine.move_to(FROZEN_NOW, tick=False)
-
-
-@pytest.fixture
-def household():
-    return baker.make(Household, name="Casa de teste")
 
 
 def _plan(payment_method, when="2023-06-04"):
@@ -120,3 +117,61 @@ def test_another_households_payment_method_is_not_visible(household):
     )
 
     assert prospective_billing_month(household, _plan(card)) is None
+
+
+# ---------------------------------------------------------------------------
+# The proposal warns when the invoice is already behind us, and asks.
+# ---------------------------------------------------------------------------
+
+
+def _pending_draft(household, when="2023-06-04", payment_hint="Pix"):
+    """A pending photo draft in the shape `propose_receipt` re-plans from.
+
+    Deliberately the *raw* payload rather than a pre-baked plan: `propose_receipt`
+    recomputes the plan from `items`, so a fixture that skipped straight to a plan
+    would exercise nothing.
+    """
+    return ReceiptDraft.objects.create(
+        household=household,
+        status=ReceiptDraftStatus.PENDING,
+        payload={
+            "store": "HIPERMACIONAL",
+            "date": when,
+            "discount": None,
+            "amount_paid": "376.70",
+            "payment_hint": payment_hint,
+            "items": [
+                {"description": "ARROZ 5KG", "line_total": "376.70", "category": "Alimentação"}
+            ],
+        },
+    )
+
+
+def test_a_past_invoice_is_named_and_asked_about(seeded_scope, household):
+    _pending_draft(household)
+
+    answer = propose_receipt(seeded_scope, payment_method_name="Pix")
+
+    assert "junho/2023" in answer
+    assert "Registrar nessa fatura?" in answer
+    assert answer.endswith("Confirma?")
+
+
+def test_a_receipt_from_this_month_is_not_second_guessed(seeded_scope, household):
+    """No warning for the ordinary case. A prompt on every receipt is noise, and
+    noise is what makes a real warning invisible."""
+    _pending_draft(household, when="2026-08-16")
+
+    answer = propose_receipt(seeded_scope, payment_method_name="Pix")
+
+    assert "fatura" not in answer.lower()
+
+
+def test_a_card_purchase_landing_in_the_future_is_not_warned_about(seeded_scope, household):
+    """Bought today on a card that closes on the 25th: this lands in September and
+    that is the product working. Warning here would fire on every card purchase."""
+    _pending_draft(household, when="2026-08-16", payment_hint="Crédito C6")
+
+    answer = propose_receipt(seeded_scope, payment_method_name="Crédito C6")
+
+    assert "Registrar nessa fatura?" not in answer

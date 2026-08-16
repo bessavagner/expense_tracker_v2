@@ -15,6 +15,11 @@ from assistant.agents.memory import (
     find_matching_rules,
     find_semantic_matches,
 )
+from assistant.agents.receipt_billing import (
+    month_label,
+    plan_entry_date,
+    prospective_billing_month,
+)
 from assistant.models import MemoryRule, MemorySource, ReceiptDraft, ReceiptDraftStatus
 from assistant.services.embedding import get_embedding
 from assistant.tasks import EMBED_MEMORY_RULE
@@ -595,6 +600,26 @@ def _resolve_receipt_plan(
     return plan, ""
 
 
+def _past_invoice_warning(scope, plan) -> str:
+    """A sentence naming the invoice, when that invoice is already behind us.
+
+    D05: the walkthrough participant photographed a 2023 coupon, everything
+    worked, and they were then looking at an empty August dashboard. Only a
+    *past* month earns this — a card purchase made today lands in M+1 or M+2 by
+    design, and warning about that would fire on nearly every receipt.
+    """
+    billing_month = prospective_billing_month(scope.household, plan)
+    if billing_month is None:
+        return ""
+    if billing_month >= timezone.localdate().replace(day=1):
+        return ""
+    entry_date = plan_entry_date(plan)
+    return (
+        f"\n\n⚠️ Este cupom é de {entry_date:%d/%m/%Y}, então entra na fatura de "
+        f"{month_label(billing_month)} — não no mês atual. Registrar nessa fatura?"
+    )
+
+
 def propose_receipt(
     scope, items_by_category=None, payment_method_name="", summaries=None, store_name=""
 ) -> str:
@@ -622,7 +647,7 @@ def propose_receipt(
     payload["plan"] = plan
     draft.payload = payload
     draft.save(update_fields=["payload", "updated_at"])
-    return f"{plan['table']}\n\nConfirma?"
+    return f"{plan['table']}{_past_invoice_warning(scope, plan)}\n\nConfirma?"
 
 
 def commit_receipt(scope) -> str:
