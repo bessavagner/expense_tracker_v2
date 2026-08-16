@@ -1640,10 +1640,29 @@ expired rather than that it never existed.
 
 ### Investigating a stuck import
 
-A job is stuck when it is `running` and `started_at` is older than
-`IMPORT_STUCK_AFTER_MINUTES` (15). That means the instance running it is gone —
-Cloud Run recycled it, or the task outran the request timeout. Nothing will ever
-move the row again.
+A job is stuck when it is **in flight** — `queued` or `running` — and
+`started_at` is older than `IMPORT_STUCK_AFTER_MINUTES` (15). That means the
+instance that had it is gone: Cloud Run recycled it, or the task outran the
+request timeout. Nothing will ever move the row again.
+
+**Why `queued` counts, and not just `running`.** `core/tasks/views.py` runs the
+handler inside `transaction.atomic()` holding `select_for_update` on the
+`TaskRun`. Everything the runner writes about itself — `status=running`, the
+progress counter — is therefore uncommitted until the handler returns, and is
+rolled back wholesale if the instance dies mid-import. A job that only ever
+became `running` in there leaves no trace at all: `is_stuck` would never see
+it, the sweep could never select it, and the user's page would poll forever.
+`queued` is written by the request that enqueued the job, which is a different
+transaction that has already committed, so it survives.
+
+The same mechanism is why the status page shows "Na fila" without a percentage
+rather than a bar sitting at 0%: under Cloud Tasks the progress counter is not
+readable until the run finishes. Under the eager backend
+(`CLOUD_TASKS_ENABLED=0`, which is production today) each save commits as it
+goes and the bar moves normally. If fine-grained progress under Cloud Tasks
+ever matters, the fix is a second `DATABASES` alias for the progress writes so
+they land outside the handler's transaction — deliberately not built, because
+at one household it would be complexity with no evidence behind it.
 
 The status page reads `is_stuck` live, so what the user sees is already honest.
 The sweep is what makes the **stored** state honest, for the history page and

@@ -119,10 +119,12 @@ Cloud Run runtime identity
 **Still open, and the only thing between this epic and `done`:** the production
 migration and the redeploy.
 
-1. Apply migrations `0020_importjob` and `0021_exportjob` to Supabase over the
-   **direct connection on port 5432** (see *Applying a migration to Supabase*).
-   `0020` renames `finances_importbatch` → `finances_importjob` and backfills
-   `status='done'` for rows that already ran.
+1. Apply migrations `0020_importjob`, `0021_exportjob` and `0022_importjob_queued`
+   to Supabase over the **direct connection on port 5432** (see *Applying a
+   migration to Supabase*). `0020` renames `finances_importbatch` →
+   `finances_importjob` and backfills `status='done'` for rows that already ran.
+   Production's `finances_importbatch` was verified empty (0 rows) before the
+   rename, so nothing rode on it.
 2. Redeploy with `GS_BUCKET_NAME=ledger-jobs-expense-tracker-482807` and
    `MAX_CSV_UPLOAD_BYTES=2097152` added to `--set-env-vars`.
 3. Against the deployed revision: import a small CSV end to end, request an

@@ -398,6 +398,20 @@ could never be submitted at all. Separately, the export round-trip found a real
 importer bug: a BOM-prefixed header (which is every CSV Excel writes, including
 our own exports) made the date column silently fail to auto-detect.
 
+**A review of the merged branch found six more defects, all fixed before
+deploy** (`86b3ec3`). Two mattered: rows the preview badged "Dup" were still
+imported while the button read "Importar N entradas" with duplicates excluded
+from N — so the re-send-the-file recovery this epic advertises would have
+doubled the ledger; and the preview's three forms all POST to one handler that
+reassigned all three pieces of state, so resolving a payment method erased the
+category resolution applied a moment earlier. The rest: a job that only became
+`running` inside the task handler's transaction vanished if the instance died,
+leaving a page that polled forever and a row the sweep could never see (now a
+committed `queued` state, migration `0022`); re-posting the mapping reopened a
+finished job that could never be dispatched again; the status page polled jobs
+never executed at all; and a rejected upload orphaned its object while a
+double-tapped export walked every table twice.
+
 **One accepted bound, written down before it is an incident:**
 `core/tasks/views.py` holds `select_for_update` on the `TaskRun` row for the
 whole handler, so one import holds one row lock for its run. At the 2 MB cap
