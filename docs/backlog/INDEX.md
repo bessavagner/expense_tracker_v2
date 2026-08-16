@@ -366,15 +366,19 @@ clean, `check --deploy` unchanged. **The bucket was provisioned the same day** �
 access prevention *enforced*, a 7-day delete rule, and `objectAdmin` for the
 Cloud Run runtime identity, all confirmed by `buckets describe`.
 
-It sits at `review` rather than `done` for what is left: **the production
-migration and the redeploy have not been run.** `0020` renames
-`finances_importbatch` → `finances_importjob` on a table holding real import
-records, and the deployed revision (00047) still queries the old name, so the
-two steps go back to back. Until they do, production writes job files to the
-instance's own filesystem — which works, and silently loses them on the next
-revision. Flip to `done` after one live import and one live export round-trip
-against the new revision. `docs/runbook.md` → *Import and export jobs (E12)* has
-the commands.
+**It was deployed the same day** as revision `expense-tracker-00048-lgf`:
+migrations `0020`–`0022` applied over the session pooler (a `pg_dump` taken
+first and destroyed after; `finances_importbatch` verified empty, so the rename
+carried no data), then a redeploy with `--update-env-vars` — env count 18 → 20,
+every existing secret intact, no warnings in the revision's logs. The real
+bucket round-trips through `core.storage.job_storage()`: `GoogleCloudStorage`
+selected, write/read/delete under both prefixes, no credentials in
+`storage.url()`.
+
+It stays at `review` for one box: a **signed-in** import and export against the
+deployed revision. Only a real session proves the Cloud Run service account
+writes to the bucket as the application, which a local probe cannot stand in
+for. Flip to `done` once `gcloud storage ls` shows an object under each prefix.
 
 What shipped: `ImportBatch` → `ImportJob` by `RenameModel` (production rows
 intact, reversible, verified forward-back-forward); the wizard's state out of

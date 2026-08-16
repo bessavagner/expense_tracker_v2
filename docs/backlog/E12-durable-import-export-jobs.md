@@ -116,29 +116,35 @@ Cloud Run runtime identity
 (`654941182076-compute@developer.gserviceaccount.com`) holds
 `roles/storage.objectAdmin` on it.
 
-**Still open, and the only thing between this epic and `done`:** the production
-migration and the redeploy.
+**Deployed 2026-08-16 as revision `expense-tracker-00048-lgf`.**
 
-1. Apply migrations `0020_importjob`, `0021_exportjob` and `0022_importjob_queued`
-   to Supabase over the **direct connection on port 5432** (see *Applying a
-   migration to Supabase*). `0020` renames `finances_importbatch` →
-   `finances_importjob` and backfills `status='done'` for rows that already ran.
-   Production's `finances_importbatch` was verified empty (0 rows) before the
-   rename, so nothing rode on it.
-2. Redeploy with `GS_BUCKET_NAME=ledger-jobs-expense-tracker-482807` and
-   `MAX_CSV_UPLOAD_BYTES=2097152` added to `--set-env-vars`.
-3. Against the deployed revision: import a small CSV end to end, request an
-   export and download it. Then
-   `gcloud storage ls "gs://ledger-jobs-expense-tracker-482807/imports/**"` and
-   the same for `exports/**` should each show one object.
+1. ✅ Migrations `0020_importjob`, `0021_exportjob` and `0022_importjob_queued`
+   applied to Supabase over the session pooler on **port 5432**. A `pg_dump`
+   was taken first and destroyed afterwards. `finances_importbatch` was
+   verified **empty (0 rows)** before the rename, so nothing rode on it;
+   afterwards `to_regclass` confirms the old name gone and
+   `finances_importjob` + `finances_exportjob` present.
+2. ✅ Redeployed with `--update-env-vars` (never `--set-env-vars`, which
+   replaces the whole list and would wipe `DATABASE_URL`). Env count 18 → 20;
+   `GS_BUCKET_NAME` and `MAX_CSV_UPLOAD_BYTES=2097152` present, every existing
+   secret still there. No warnings or errors in the revision's logs.
+3. ✅ `core.storage.job_storage()` verified against the **real bucket**:
+   `GoogleCloudStorage` selected, write + read + delete round-trip under both
+   `imports/` and `exports/`, and `storage.url()` carries no credentials.
 
-Order matters and there is a short window: step 1 renames a table the currently
-deployed revision (00047) still queries, so the importer is broken between the
-migration and the new revision going live. Minutes, on a product with one
-household — but do them back to back rather than a day apart.
+**One box left, and it needs a browser:** a signed-in import of a small CSV and
+a signed-in export download against `https://expense-tracker-c4xqrkvzia-rj.a.run.app`.
+Everything under it is verified — the schema, the env, the bucket, the
+permissions, the code — but only a real session proves the Cloud Run service
+account writes to the bucket as the *application*, which is the one thing a
+local probe cannot stand in for. After that:
 
-**E12 is not `done` until step 3 passes**, because closing it any earlier is
-exactly how E10 shipped rails with no queue behind them.
+```bash
+gcloud storage ls "gs://ledger-jobs-expense-tracker-482807/imports/**"
+gcloud storage ls "gs://ledger-jobs-expense-tracker-482807/exports/**"
+```
+
+should each show one object. Then flip `status` to `done`.
 
 ## Out of scope
 
