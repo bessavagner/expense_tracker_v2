@@ -6,7 +6,7 @@ from model_bakery import baker
 from pytest_bdd import given, scenario, then, when
 
 from accounts.resolution import household_for_user
-from finances.models import Entry, ImportBatch, InstallmentPlan
+from finances.models import Entry, ImportJob, InstallmentPlan
 
 
 @scenario("import.feature", "Import regular entries from CSV")
@@ -131,8 +131,8 @@ def then_2_entries(ctx):
 
 
 @pytest.mark.django_db
-def test_import_batch_belongs_to_the_household(ctx):
-    """The importer writes rows; an ImportBatch with no household would be a
+def test_import_job_belongs_to_the_household(ctx):
+    """The importer writes rows; an ImportJob with no household would be a
     row the family cannot see. Drives the same wizard the scenarios above do."""
     given_user_with_seed(None, ctx)
     given_csv_regular(ctx)
@@ -140,11 +140,11 @@ def test_import_batch_belongs_to_the_household(ctx):
     when_confirm_mapping(ctx)
     when_execute(ctx)
 
-    batch = ImportBatch.objects.latest("created_at")
+    job = ImportJob.objects.latest("created_at")
 
-    assert batch.household == ctx["household"]
-    assert batch.created_by == ctx["user"]
-    assert batch.created_count == 3
+    assert job.household == ctx["household"]
+    assert job.created_by == ctx["user"]
+    assert job.created_count == 3
 
     entry = Entry.objects.filter(entry_type="regular").first()
     assert entry.household == ctx["household"]

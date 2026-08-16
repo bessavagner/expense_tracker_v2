@@ -68,7 +68,7 @@ FINANCES_HOUSEHOLD_MODELS = [
     "finances.Budget",
     "finances.InstallmentPlan",
     "finances.SystemicExpense",
-    "finances.ImportBatch",
+    "finances.ImportJob",
 ]
 
 

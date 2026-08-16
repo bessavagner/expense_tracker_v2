@@ -4,6 +4,7 @@ from finances.models import (
     Budget,
     Category,
     Entry,
+    ImportJob,
     Income,
     InstallmentPlan,
     PaymentMethod,
@@ -80,3 +81,25 @@ class SystemicExpenseAdmin(admin.ModelAdmin):
     list_filter = ("is_active", "category")
     search_fields = ("name",)
     ordering = ("name",)
+
+
+@admin.register(ImportJob)
+class ImportJobAdmin(admin.ModelAdmin):
+    """Read-only on purpose: this is the record of what an import did, and an
+    editable count is a record that can be made to lie."""
+
+    list_display = (
+        "id",
+        "household",
+        "status",
+        "import_type",
+        "created_count",
+        "error_count",
+        "created_at",
+    )
+    list_filter = ("status", "import_type")
+    search_fields = ("id", "original_filename")
+    readonly_fields = [field.name for field in ImportJob._meta.fields]
+
+    def has_add_permission(self, request):
+        return False

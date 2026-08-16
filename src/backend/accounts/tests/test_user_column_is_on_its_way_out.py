@@ -16,7 +16,7 @@ LOST_USER = [
     "finances.Budget",
     "finances.InstallmentPlan",
     "finances.SystemicExpense",
-    "finances.ImportBatch",
+    "finances.ImportJob",
     "assistant.ChatMessage",
     "assistant.MemoryRule",
     "assistant.ReceiptDraft",

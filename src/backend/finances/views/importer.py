@@ -15,7 +15,7 @@ from finances.models import (
     Category,
     Entry,
     EntryType,
-    ImportBatch,
+    ImportJob,
     InstallmentPlan,
     PaymentMethod,
 )
@@ -211,8 +211,8 @@ class ImportMappingView(LoginRequiredMixin, View):
                 duplicate_indices.append(i)
 
         # Mint the batch here, where a ready-to-execute row list first exists.
-        # Its id is what makes the execute step idempotent — see ImportBatch.
-        batch = ImportBatch.objects.create(
+        # Its id is what makes the execute step idempotent — see ImportJob.
+        batch = ImportJob.objects.create(
             household=household,
             created_by=user,
             import_type=import_type,
@@ -338,7 +338,7 @@ class ImportExecuteView(LoginRequiredMixin, View):
         # mid-import blocks here until the first commits, then reads the row
         # again and finds executed_at set.
         batch = (
-            ImportBatch.objects.for_request(request).select_for_update().filter(pk=batch_id).first()
+            ImportJob.objects.for_request(request).select_for_update().filter(pk=batch_id).first()
         )
         if batch is None:
             return redirect("finances:import_upload")

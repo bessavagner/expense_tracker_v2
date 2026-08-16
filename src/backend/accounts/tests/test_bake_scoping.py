@@ -30,7 +30,7 @@ HOUSEHOLD_OWNED = {
     "Budget",
     "InstallmentPlan",
     "SystemicExpense",
-    "ImportBatch",
+    "ImportJob",
     "ChatMessage",
     "MemoryRule",
     "ReceiptDraft",
