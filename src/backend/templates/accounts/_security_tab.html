@@ -1,0 +1,43 @@
+{% comment %}
+Segurança. A hub: it says what the state is and where to go. The flows
+themselves are allauth's, styled through template overrides — see spec D3.
+{% endcomment %}
+<div class="space-y-6">
+    <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+            <h2 class="card-title text-lg">Senha</h2>
+            <p class="text-sm opacity-70">
+                Trocar a senha não desconecta os seus outros aparelhos.
+            </p>
+            <div class="card-actions mt-4">
+                <a href="{% url 'account_change_password' %}" class="btn btn-outline btn-sm">Alterar senha</a>
+            </div>
+        </div>
+    </section>
+
+    <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+            <div class="flex items-center gap-2 flex-wrap">
+                <h2 class="card-title text-lg">Verificação em duas etapas</h2>
+                {% if mfa_enabled %}
+                <span class="badge badge-success badge-sm">Ativa</span>
+                {% else %}
+                <span class="badge badge-ghost badge-sm">Inativa</span>
+                {% endif %}
+            </div>
+            <p class="text-sm opacity-70">
+                Além da senha, o aplicativo pede um código de seis dígitos gerado no seu
+                celular. É a proteção que vale a pena para um lugar que guarda as contas da casa.
+            </p>
+            {% if mfa_enabled %}
+            <div class="card-actions mt-4">
+                <a href="{% url 'mfa_index' %}" class="btn btn-outline btn-sm">Gerenciar</a>
+            </div>
+            {% else %}
+            <div class="card-actions mt-4">
+                <a href="{% url 'mfa_activate_totp' %}" class="btn btn-accent btn-sm">Ativar</a>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+</div>

@@ -86,3 +86,25 @@ class ProfileTabView(_TabView):
             request=request,
         )
         return HttpResponse(html)
+
+
+class SecurityTabView(_TabView):
+    """Password and second factor — status and links, never the forms.
+
+    Spec D3, and it is the load-bearing decision of this epic: reimplementing
+    a security-critical flow so it looks nicer is how it gets subtly wrong.
+
+    No "senha alterada em ..." line, deliberately. `AbstractUser` has no
+    password-changed timestamp, and adding one means a migration this epic is
+    committed to not having.
+    """
+
+    fragment_template_name = "accounts/_security_tab.html"
+    tab_title = "Segurança"
+
+    def get_context_data(self, **kwargs):
+        from allauth.mfa.utils import is_mfa_enabled
+
+        context = super().get_context_data(**kwargs)
+        context["mfa_enabled"] = is_mfa_enabled(self.request.user)
+        return context
