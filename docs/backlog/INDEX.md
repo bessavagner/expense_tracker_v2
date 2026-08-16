@@ -75,7 +75,7 @@ pipeline) is still open inside R2 but is not named by this gate.
 | [E08](E08-ai-evaluation-harness.md) | AI evaluation harness | R2 | W | E02 | **done** (2026-08-14)³ |
 | [E09](E09-model-tiering-and-routing.md) | Model tiering & routing | R2 | W | E07, E08 | **done** (2026-08-15)⁴ |
 | [E10](E10-async-work-pipeline.md) | Async work pipeline | R2 | W | E06 | ready |
-| [E11](E11-onboarding-and-activation.md) | Onboarding & activation | R3 | W | E05 | review⁹ |
+| [E11](E11-onboarding-and-activation.md) | Onboarding & activation | R3 | W | E05 | **done** (2026-08-16)⁹ |
 | [E12](E12-durable-import-export-jobs.md) | Durable import/export jobs | R3 | | E10 | blocked |
 | [E13](E13-lgpd-compliance.md) | LGPD compliance | R3 | | E12, E18 | blocked |
 | [E14](E14-product-analytics.md) | Product analytics | R3 | | E06, E11 | ready¹ |
@@ -95,6 +95,7 @@ when it changes what another epic should do; anything smaller is a commit.
 | [D02](D02-name-resolution-is-accent-sensitive.md) | Name resolution is accent-sensitive, so "Crédito C6" cannot find "Credito C6" | R2 | W | — | **done** (2026-08-15)⁶ |
 | [D03](D03-cost-report-ignores-cached-input-tokens.md) | The cost report bills cached input tokens at full price, so every USD figure is too high | R2 | | E07 | **done** (2026-08-15)⁷ |
 | [D04](D04-asgi-lifespan-error-on-every-cold-start.md) | Every cold start reports a `ValueError` to Sentry because the lifespan scope reaches Django | R2 | | E06 | ready⁸ |
+| [D05](D05-a-backdated-receipt-activates-into-an-invisible-month.md) | A backdated receipt activates the user into a month they are not looking at | R3 | W | E11 | ready¹⁰ |
 
 ### Dependency graph
 
@@ -178,12 +179,23 @@ pages, `cost_usd_for` splitting the prompt into fresh and cached halves,
 eval table — the E09 ratios were unaffected and the evidence documents were
 annotated rather than re-measured.
 
-⁹ **E11 is `review`, not `done`, and the gap is deliberate.** Every machine-
-checkable assertion passes — 1787 tests, coverage 92% against a gate of 80%,
-lint clean, migrations reversible and rehearsed. The two open boxes are the
-unaided walkthrough on a phone, which is the evidence the epic actually asked
-for and which no agent can supply. Protocol and empty record at
-`docs/superpowers/evidence/e11-walkthrough/`.
+⁹ **E11 closed 2026-08-16, and the walkthrough is why.** Every machine-checkable
+assertion passed first — 1787 tests, coverage 92% against a gate of 80%, lint
+clean, migrations reversible and rehearsed — but the epic said in its own words
+that a passing suite is not the evidence. The evidence: a first-time user on an
+Android phone reached activation in **83 seconds** from the guided setup,
+filling in every step, and one supermarket coupon became three correctly-split
+entries. Record at `docs/superpowers/evidence/e11-walkthrough/`.
+
+Two honest qualifications. **One hint was given** — the local `.env` had
+`EMAIL_HOST` empty, so verification went to the console backend and the
+confirmation link was handed over; everything after the guided setup was
+unaided. That also means E05's open question — whether a mandatory-verification
+wall costs activation for someone waiting on real email — is **still
+unanswered**, and the **skip paths were never exercised by a human**.
+
+**The walkthrough earned its keep by finding D05** (below), which no test could
+have found: the wedge worked and then looked like it hadn't.
 
 Two things this epic learned that outlive it. First, **the activation event is
 household-scoped and an invited member has two households** — their own,
@@ -195,6 +207,18 @@ that fact rather than guessed; it is written down in
 is now per household** and the env var only seeds a one-time backfill — the
 old global floor silently discarded imported history, so a CSV of 2024 landed
 below it and vanished from the acumulado.
+
+¹⁰ **D05 was found by a stranger, not by a test, and that is the point.** The
+participant photographed a coupon dated 2023-06-04. Extraction read the date
+correctly, the split was correct, `billing_month` computed to 06/2023 correctly
+— and the dashboard shows the *current* month, so a successful activation
+presented as an empty screen. 114 seconds later they hand-created an entry in
+the current month that nobody had asked for. Every layer behaved as designed
+and the user still concluded it had failed. The date logic must not change
+(overriding it with today is the frozen-`billing_month` bug this codebase
+already paid to fix); what is missing is telling the user where the receipt
+went. Wedge-critical, because a first capture that appears to do nothing
+teaches a new user that the wedge does not work.
 
 **Found on the way, not fixed here (belongs to E02):**
 `finances/tests/test_entries_live_summary.py:135,178` pair an unfrozen

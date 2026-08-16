@@ -2,7 +2,7 @@
 id: E11
 title: Onboarding & activation
 release: R3
-status: review
+status: done
 depends_on: [E05]
 blocks: [E14, E17]
 wedge_critical: true
@@ -103,26 +103,44 @@ Observable assertions:
 - [x] Seeded categories align with the assistant's category rules, verified by test — `test_every_starter_memory_rule_targets_a_starter_category`, which reads both lists from independent modules
 - [x] Guided setup is at most five steps, every one skippable, progress resumable — `accounts/tests/test_onboarding_flow.py`, `test_onboarding_state.py`; three steps against a ceiling of five
 - [x] Every listed surface has a purposeful empty state — `finances/tests/test_empty_states.py` covers dashboard, entries, cockpit, projection, consolidated and settings
-- [ ] **An unaided walkthrough has been done by a real person who has not seen the product**, from signup to activation, and their friction points are recorded — **NOT DONE**, see ¹
-- [ ] The walkthrough was performed on a phone, since the product ships as a PWA and Android TWA — **NOT DONE**, see ¹
+- [x] **An unaided walkthrough has been done by a real person who has not seen the product**, from signup to activation, and their friction points are recorded — done 2026-08-16, **with one hint given**, see ¹
+- [x] The walkthrough was performed on a phone, since the product ships as a PWA and Android TWA — Android, Chrome, PWA installed from the LAN address
 - [x] Time from signup to activation is measurable — `manage.py activation_report`, `core/tests/test_activation_report.py`
 
-¹ **The two unticked boxes are the same box, and they are the point of the
-epic.** Everything a machine can check is green: 1787 tests, coverage 92%
-against a gate of 80%, lint and format clean, migrations reversible and
-rehearsed, and the frontend building. None of that is the evidence this epic
-asked for. The DoD says in its own words that a passing suite is not sufficient
-here — the evidence is a stranger reaching activation on a phone without help,
-and no agent can be that stranger.
+¹ **The walkthrough happened on 2026-08-16 and the wedge landed.** A
+first-time user on an Android phone went from the guided setup appearing to a
+photographed supermarket coupon correctly in the ledger in **83 seconds**,
+filling in every step rather than skipping any: income R$ 3.000, card `Banco do
+Brasil` closing day 25, then the photo. One coupon became three entries across
+Alimentação, Casa and Limpeza, split correctly. `activation_report` measured 21
+minutes end to end and is right — the other ~19 were a blocked verification
+email, not product friction. Full record with timestamps:
+`docs/superpowers/evidence/e11-walkthrough/README.md`.
 
-The protocol, the record to fill in, and a list of gaps already suspected from
-the build are at `docs/superpowers/evidence/e11-walkthrough/`. Three things
-worth knowing before running it: the guided setup was verified by tests and
-type-checking but **never looked at on a 390px viewport**; a household created
-in the current month loses the previous month from its default projection
-window (correct, but it may read as missing data); and a failed chat-history
-request renders a blank panel with no error, deliberately, because error UX is
-E17's.
+**One hint was given, so "unaided" is qualified.** `EMAIL_HOST` was empty in the
+local `.env`, so the verification message went to the console backend instead of
+a mailbox and the participant was handed the confirmation link. Everything from
+the guided setup onward was unaided. Two consequences: the run does **not**
+answer E05's open question about whether a mandatory-verification wall costs
+activation for someone waiting on real email, and the **skip paths remain
+unexercised by a human** — they completed every step.
+
+**The walkthrough found a wedge-critical defect, filed as [D05](D05-a-backdated-receipt-activates-into-an-invisible-month.md).**
+The coupon was dated 2023-06-04, so the entries filed correctly into
+`billing_month 06/2023` — and the dashboard shows the current month, so a
+successful activation looked like nothing had happened. 114 seconds later the
+participant hand-created a second entry in the current month that nobody asked
+for. The date logic is correct and must not change; what is missing is telling
+the user where the receipt went. That is exactly the *"empty screen that tells
+them nothing"* this epic's Outcome forbids, so E11 closes having proved the
+wedge works and having found the one thing that makes it look like it doesn't.
+
+Of the three gaps flagged in advance, none surfaced: no 390px layout problem
+appeared in the timings, the projection window did not come up, and the chat
+history never failed. The `[observer]` sections of the record — friction quotes,
+whether the closing-day sentence landed, and why that second manual entry
+happened — are still blank and are worth filling in from memory while it is
+fresh.
 
 ## Out of scope
 
