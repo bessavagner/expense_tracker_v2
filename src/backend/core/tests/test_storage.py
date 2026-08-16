@@ -27,6 +27,24 @@ def test_the_fallback_round_trips_bytes(tmp_path):
             assert handle.read() == b"data,valor\n"
 
 
+@override_settings(GS_BUCKET_NAME="ledger-jobs-test")
+def test_the_gcs_backend_is_constructed_privately():
+    """The one branch that never runs locally, and the one where a mistake is
+    a public bucket full of other people's bank statements.
+
+    Asserted on the constructor rather than against a real bucket, because the
+    value here is the *posture*: no per-object ACL (uniform bucket-level access
+    rejects it), no credentials in a URL (downloads go through core.downloads
+    and a household check), and no silent overwrite of an existing object.
+    """
+    storage = job_storage()
+
+    assert storage.bucket_name == "ledger-jobs-test"
+    assert storage.default_acl is None
+    assert storage.querystring_auth is False
+    assert storage.file_overwrite is False
+
+
 def test_the_prefixes_are_distinct():
     """Uploads and exports share a bucket but never a namespace: the retention
     rule and the audit story differ, and a shared prefix makes both ambiguous."""
