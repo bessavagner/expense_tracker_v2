@@ -1,3 +1,23 @@
+> ## ⚠️ SUPERSEDED — historical record, do not plan from this file
+>
+> **Superseded on 2026-08-07** by [`docs/backlog/INDEX.md`](../backlog/INDEX.md),
+> which replaced sprints with **release gates** (R0–R4) and self-contained epic
+> files. Planning moved there; this file was last accurate on 2026-06-10.
+>
+> Where the Sprint 7–12 work ended up:
+>
+> | Sprint | Now tracked as |
+> |---|---|
+> | 7 · Prontidão de produção | E01 (spend & abuse), E02 (CI gates) — both **done** |
+> | 8 · Supabase | shipped; operational facts live in [`docs/runbook.md`](../runbook.md) |
+> | 9 · Cloud Run / CI-CD | E02 (**done**); deploy/recovery hardening is E16 (`ready`) |
+> | 10 · PWA | shipped 2026-06 |
+> | 11 · TWA / Play Store | shipped; sideloaded APK, `assetlinks.json` live |
+> | 12 · Hardening & observabilidade | E06 (**done**), E16 (`ready`) |
+>
+> Kept because the *reasoning* in it — why Supabase, why Cloud Run, the cost
+> notes — is still the record of those decisions. The **status** in it is not.
+
 # Backlog de Deploy — Expense Tracker v2
 
 > **Objetivo:** levar o sistema a produção de forma barata e estável, com servidor no

@@ -2,7 +2,7 @@
 id: E12
 title: Durable import/export jobs
 release: R3
-status: blocked
+status: ready
 depends_on: [E10]
 blocks: [E13]
 wedge_critical: false

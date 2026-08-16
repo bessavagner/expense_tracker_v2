@@ -2,7 +2,7 @@
 id: E08
 title: AI evaluation harness
 release: R2
-status: ready
+status: done
 depends_on: [E02]
 blocks: [E09]
 wedge_critical: true

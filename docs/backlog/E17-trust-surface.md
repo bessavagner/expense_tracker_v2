@@ -2,7 +2,7 @@
 id: E17
 title: "Trust surface: audit, error UX & landing"
 release: R4
-status: blocked
+status: ready
 depends_on: [E11]
 blocks: []
 wedge_critical: false

@@ -2,7 +2,7 @@
 id: E07
 title: Usage metering & quota
 release: R1
-status: ready
+status: done
 depends_on: [E04, E06]
 blocks: [E09, E15]
 wedge_critical: true

@@ -50,6 +50,14 @@ graph LR
 | **R3 · Ready for strangers — BETA OPENS** | A new user reaches the activation event unaided. Import and export are durable. A data-subject request can be fulfilled in 15 days and a deletion honoured. Activation and D7 retention are instrumented. |
 | **R4 · GA & monetization** | Someone pays in BRL, is charged correctly, hits a quota gracefully, and you can restore the database inside your stated RTO — rehearsed, not assumed. |
 
+**R3's gate is half open as of 2026-08-16.** Two of its four conditions are
+observably true: *a new user reaches the activation event unaided* — proven by
+the E11 walkthrough, activation in 83 seconds with no help
+(`docs/superpowers/evidence/e11-walkthrough/README.md`) — and *activation and D7
+retention are instrumented*, by E14. The two that remain are **durable import and
+export (E12)** and **a data-subject request fulfilled in 15 days with deletion
+honoured (E13)**. Beta does not open until all four hold.
+
 **R2's gate is observably true as of 2026-08-15.** Receipt and chat quality are
 scored against fifteen real receipts and seven conversations across five models
 (E08, E09), and the production vision mix measures **3.75× cheaper** than
@@ -74,14 +82,14 @@ pipeline) is still open inside R2 but is not named by this gate.
 | [E07](E07-usage-metering-and-quota.md) | Usage metering & quota | R1 | W | E04, E06 | **done** (2026-08-14)² |
 | [E08](E08-ai-evaluation-harness.md) | AI evaluation harness | R2 | W | E02 | **done** (2026-08-14)³ |
 | [E09](E09-model-tiering-and-routing.md) | Model tiering & routing | R2 | W | E07, E08 | **done** (2026-08-15)⁴ |
-| [E10](E10-async-work-pipeline.md) | Async work pipeline | R2 | W | E06 | ready |
+| [E10](E10-async-work-pipeline.md) | Async work pipeline | R2 | W | E06 | **done** (2026-08-15)¹¹ |
 | [E11](E11-onboarding-and-activation.md) | Onboarding & activation | R3 | W | E05 | **done** (2026-08-16)⁹ |
-| [E12](E12-durable-import-export-jobs.md) | Durable import/export jobs | R3 | | E10 | blocked |
+| [E12](E12-durable-import-export-jobs.md) | Durable import/export jobs | R3 | | E10 | ready |
 | [E13](E13-lgpd-compliance.md) | LGPD compliance | R3 | | E12, E18 | blocked |
 | [E14](E14-product-analytics.md) | Product analytics | R3 | | E06, E11 | **done** (2026-08-16)¹ |
 | [E15](E15-billing-and-subscription.md) | Billing & subscription | R4 | | E07, E13, E18 | blocked |
 | [E16](E16-operations-staging-deploy-recovery.md) | Operations: staging, deploy, recovery | R4 | | E06 | ready |
-| [E17](E17-trust-surface.md) | Trust surface: audit, error UX, landing | R4 | | E11 | blocked |
+| [E17](E17-trust-surface.md) | Trust surface: audit, error UX, landing | R4 | | E11 | ready |
 | [E18](E18-account-surface.md) | Account surface (Conta) | R3 | | E05 | ready |
 
 ### Defects
@@ -324,6 +332,25 @@ DoD boxes unticked — see its closing note; they need a real production error a
 a real alert, neither of which is manufacturable on demand. Two of those gaps
 (assistant turns/day, LLM spend/day on the golden-signals dashboard) are
 *structurally* E07's work, not E06 debt.
+
+¹¹ **E10 was done on 2026-08-15 and the status was never flipped** — the merge
+is `99aa66c`, and `core/tasks/` (auth, backends, cloud, enqueue, execution,
+registry, views) has been on `main` since. Corrected 2026-08-16.
+
+**It shipped the rails only, and its own DoD says so.** Cloud Tasks caps a task
+at **1 MiB**, a fixed system limit, so audio (25 MB) and prepared receipt JPEGs
+(several MB) cannot move off-request until E12 lands object storage. Two
+Observable assertions are therefore ticked as **deferred to E12** rather than
+done — the one-pending-draft invariant under concurrent uploads, and a retried
+transcription. The one workload actually moved is memory-rule embedding, and
+moving it exposed that `create_memory_rule` had **never** generated an
+embedding: `MemoryEmbedding` was empty outside `seed_perf_data`, so semantic
+recall was searching nothing. Pre-E10 rules still have no vector and a backfill
+command needs its own ticket.
+
+**Not provisioned:** the GCP queue, service account and IAM. Local mode is
+`CLOUD_TASKS_ENABLED=0` (eager, in-process). `docs/runbook.md` → *Async tasks
+(E10)* has the `gcloud` commands.
 
 **E05 is done, so E11 and E18 are both open.** E18 is small and off the critical path — it can run alongside E11 rather than ahead of it. Its `blocks` edges into E13 and E15 are *UI-surface* dependencies, not data ones: both later epics add a tab to E18's page instead of inventing an account surface of their own.
 

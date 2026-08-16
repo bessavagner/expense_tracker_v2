@@ -1,3 +1,15 @@
+> ## ⚠️ STALE — written 2026-06-12, do not start a session from this file
+>
+> Every concrete fact below has moved on: it names revision `00005` (now
+> `00046`+), `main` at `29cc999` (217+ commits ago), and says there is no git
+> remote — there is one, `bessavagner/expense_tracker_v2` (PD-5).
+>
+> **To start a session, read [`docs/backlog/INDEX.md`](../backlog/INDEX.md)**
+> — the release map, the epic index, and the gate that is currently open. Then
+> the one epic file you intend to work on; each is self-contained by design.
+>
+> Kept as a record of how the June "backlog maior" was framed.
+
 # Kickoff — próxima sessão: "backlog maior" (CI/CD, PWA→Android, hardening)
 
 > Cole o conteúdo abaixo (ou aponte a sessão nova para este arquivo) para continuar o projeto.
