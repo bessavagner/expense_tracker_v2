@@ -193,3 +193,32 @@ class TestTheExportPage:
 
     def test_unauthenticated_is_redirected(self):
         assert Client().get("/exportar/").status_code == 302
+
+
+@pytest.mark.django_db
+class TestReviewFixes:
+    def test_a_second_request_while_one_is_pending_does_not_pile_up(self, logged_client, populated):
+        """Review finding 6. Each POST mints a new ExportJob id, so enqueue's
+        content hash can never collide — a double-tapped button would walk
+        every table in the household twice and write two zips."""
+        baker.make(ExportJob, household=populated, status=ExportStatus.PENDING)
+        logged_client.post("/exportar/solicitar/")
+
+        assert ExportJob.objects.for_household(populated).count() == 1
+
+    def test_a_finished_export_does_not_block_a_new_one(self, logged_client, populated):
+        """The guard is on *in-flight* jobs only. The household's data changes,
+        so a completed export must never be a reason to refuse a fresh one."""
+        logged_client.post("/exportar/solicitar/")
+        assert ExportJob.objects.for_household(populated).count() == 1
+
+        logged_client.post("/exportar/solicitar/")
+        assert ExportJob.objects.for_household(populated).count() == 2
+
+    def test_another_households_pending_export_does_not_block_mine(
+        self, logged_client, populated, other_household
+    ):
+        baker.make(ExportJob, household=other_household, status=ExportStatus.PENDING)
+        logged_client.post("/exportar/solicitar/")
+
+        assert ExportJob.objects.for_household(populated).count() == 1

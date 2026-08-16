@@ -179,3 +179,100 @@ class TestUploadRejection:
         assert response.status_code == 200
         assert "UTF-8" in response.content.decode()
         assert not ImportJob.objects.exists()
+
+
+@pytest.mark.django_db
+class TestThePreviewFormsDoNotClobberEachOther:
+    """Review finding 2. `_step_preview.html` posts three separate forms to the
+    same URL — categories, payment methods, and the skip checkboxes. Each one
+    carries only its own fields, so a handler that reassigns all three pieces
+    of state on every POST erases whatever the user did last.
+    """
+
+    @pytest.fixture
+    def mapped_job(self, logged_client, seeded):
+        _upload(logged_client)
+        job = ImportJob.objects.for_household(seeded).get()
+        logged_client.post(f"/import/{job.id}/mapear/", data=_MAPPING)
+        return job
+
+    def test_resolving_a_payment_method_keeps_the_category_resolution(
+        self, logged_client, mapped_job
+    ):
+        logged_client.post(
+            f"/import/{mapped_job.id}/preview/",
+            data={"form_section": "categories", "cat_resolve_Farmácia": "__new__"},
+        )
+        logged_client.post(
+            f"/import/{mapped_job.id}/preview/",
+            data={"form_section": "payment_methods", "pm_resolve_Nubank": "__new__"},
+        )
+        mapped_job.refresh_from_db()
+
+        assert mapped_job.category_resolutions == {"Farmácia": "__new__"}
+        assert mapped_job.pm_resolutions == {"Nubank": "__new__"}
+
+    def test_ticking_skips_keeps_both_resolutions(self, logged_client, mapped_job):
+        logged_client.post(
+            f"/import/{mapped_job.id}/preview/",
+            data={"form_section": "categories", "cat_resolve_Farmácia": "__new__"},
+        )
+        logged_client.post(
+            f"/import/{mapped_job.id}/preview/",
+            data={"form_section": "skips", "skip_3": "on"},
+        )
+        mapped_job.refresh_from_db()
+
+        assert mapped_job.category_resolutions == {"Farmácia": "__new__"}
+        assert mapped_job.skip_lines == [3]
+
+    def test_resolving_a_category_does_not_clear_the_skips(self, logged_client, mapped_job):
+        logged_client.post(
+            f"/import/{mapped_job.id}/preview/",
+            data={"form_section": "skips", "skip_2": "on", "skip_3": "on"},
+        )
+        logged_client.post(
+            f"/import/{mapped_job.id}/preview/",
+            data={"form_section": "categories", "cat_resolve_Farmácia": "__new__"},
+        )
+        mapped_job.refresh_from_db()
+
+        assert mapped_job.skip_lines == [2, 3]
+        assert mapped_job.category_resolutions == {"Farmácia": "__new__"}
+
+    def test_unticking_every_box_still_clears_the_skips(self, logged_client, mapped_job):
+        """An empty skip form means "none", not "leave it alone" — otherwise a
+        box could be ticked but never unticked."""
+        logged_client.post(
+            f"/import/{mapped_job.id}/preview/",
+            data={"form_section": "skips", "skip_2": "on"},
+        )
+        logged_client.post(f"/import/{mapped_job.id}/preview/", data={"form_section": "skips"})
+        mapped_job.refresh_from_db()
+
+        assert mapped_job.skip_lines == []
+
+
+@pytest.mark.django_db
+class TestARejectedUploadLeavesNothingBehind:
+    def test_a_non_utf8_upload_does_not_orphan_its_object(self, logged_client, seeded, settings):
+        """Review finding 5. The file is stored before the header is read, so
+        the rejection path has to remove it — otherwise a user re-exporting a
+        Latin-1 file three times leaves three copies of their financial data in
+        the bucket, referenced by no row, for the seven days the lifecycle rule
+        takes to notice.
+        """
+        from core.storage import job_storage
+
+        root = settings.JOB_STORAGE_ROOT
+        before = {str(p) for p in root.rglob("*.csv")} if root.exists() else set()
+
+        handle = io.BytesIO("data,valor,descrição\n01/03/2026,42,café\n".encode("latin-1"))
+        handle.name = "latin.csv"
+        response = logged_client.post("/import/", data={"file": handle, "import_type": "regular"})
+
+        assert response.status_code == 200
+        assert not ImportJob.objects.exists()
+        after = {str(p) for p in root.rglob("*.csv")} if root.exists() else set()
+        assert after == before, "the rejected upload was left in storage"
+        assert job_storage() is not None

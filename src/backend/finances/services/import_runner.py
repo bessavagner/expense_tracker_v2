@@ -17,6 +17,8 @@ from decimal import Decimal
 
 import sentry_sdk
 from django.db import transaction
+from django.db.models import DateTimeField, Value
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from finances.models import (
@@ -115,7 +117,13 @@ def _claim(job) -> bool:
         .exclude(status__in=[ImportStatus.RUNNING, ImportStatus.DONE, ImportStatus.FAILED])
         .update(
             status=ImportStatus.RUNNING,
-            started_at=now,
+            # Kept if it is already there, set if it is not. The enqueueing
+            # request stamps it, and that stamp is what the stuck sweep
+            # measures from -- restamping here would restart the clock inside
+            # the very transaction a dying instance rolls back. But the runner
+            # is also called directly (a management command, a test), and a job
+            # with no stamp at all could never be seen as stuck.
+            started_at=Coalesce("started_at", Value(now, output_field=DateTimeField())),
             processed_count=0,
             created_count=0,
             skipped_count=0,
@@ -137,7 +145,17 @@ def _claim(job) -> bool:
 def _execute(job) -> None:
     household = job.household
     user = job.created_by
-    rows = rows_for(job, mark_duplicates=False)
+    # Marked, not ignored. The preview badges these rows "Dup" and leaves them
+    # out of "Importar N entradas →"; if the runner created them anyway the
+    # button would be a lie and re-sending a file after a half-finished import
+    # -- the recovery this epic advertises in two separate error messages --
+    # would double the household's ledger.
+    #
+    # Computed once, here, before a single row is written, so it answers "was
+    # this already in the ledger before the run?" A file that legitimately
+    # repeats a row (two genuine R$ 20 fuel purchases on one day) still lands
+    # both, because neither was in the table when the question was asked.
+    rows = rows_for(job, mark_duplicates=True)
     skip_lines = set(job.skip_lines)
 
     category_map = {c.name.lower(): c for c in Category.objects.for_household(household)}
@@ -158,7 +176,7 @@ def _execute(job) -> None:
     for index, row in enumerate(rows, start=1):
         line = row.get("line", index + 1)
 
-        if line in skip_lines:
+        if line in skip_lines or row["status"] == "duplicate":
             job.skipped_count += 1
         elif row["status"] == "error":
             job.error_count += 1

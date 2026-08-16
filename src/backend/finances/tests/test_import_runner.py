@@ -207,3 +207,63 @@ class TestWholeJobFailure:
         assert job.status == ImportStatus.FAILED
         assert job.executed_at is not None
         assert "Envie a planilha novamente" in job.error_message
+
+
+@pytest.mark.django_db
+class TestDuplicatesAreNotImported:
+    """Review finding 3. The preview badges a row "Dup" and excludes it from
+    "Importar N entradas →"; the runner must agree, or the button lies and the
+    family's ledger doubles.
+
+    This is the recovery flow the stuck-import and failed-import messages both
+    advertise — "send the file again, the rows you already have will be marked
+    as duplicates" — so it has to hold without the user ticking 400 checkboxes.
+    """
+
+    def test_a_row_already_in_the_ledger_is_skipped_not_created(self, seeded, user):
+        first = _job(seeded, user, '01/03/2026,"R$ 10,00",A,Alimentação,Pix\n')
+        run_import(first)
+        assert Entry.objects.for_household(seeded).count() == 1
+
+        second = _job(seeded, user, '01/03/2026,"R$ 10,00",A,Alimentação,Pix\n')
+        run_import(second)
+        second.refresh_from_db()
+
+        assert Entry.objects.for_household(seeded).count() == 1, "the duplicate was imported"
+        assert (second.created_count, second.skipped_count, second.error_count) == (0, 1, 0)
+
+    def test_a_partial_re_upload_imports_only_what_is_new(self, seeded, user):
+        """The real shape of the recovery: an import died halfway, the user
+        sends the whole file again, and only the missing rows land."""
+        first = _job(seeded, user, '01/03/2026,"R$ 10,00",A,Alimentação,Pix\n')
+        run_import(first)
+
+        second = _job(
+            seeded,
+            user,
+            '01/03/2026,"R$ 10,00",A,Alimentação,Pix\n'
+            '02/03/2026,"R$ 20,00",B,Alimentação,Pix\n'
+            '03/03/2026,"R$ 30,00",C,Alimentação,Pix\n',
+        )
+        run_import(second)
+        second.refresh_from_db()
+
+        assert Entry.objects.for_household(seeded).count() == 3
+        assert (second.created_count, second.skipped_count) == (2, 1)
+
+    def test_two_identical_rows_in_one_file_both_land(self, seeded, user):
+        """Not everything that looks like a duplicate is one. Production holds
+        two genuine R$ 20 fuel purchases on the same day with the same
+        description; duplicates are judged against what was in the ledger
+        *before* the run, so a file may legitimately repeat itself."""
+        job = _job(
+            seeded,
+            user,
+            '01/03/2026,"R$ 20,00",Gasolina,Alimentação,Pix\n'
+            '01/03/2026,"R$ 20,00",Gasolina,Alimentação,Pix\n',
+        )
+        run_import(job)
+        job.refresh_from_db()
+
+        assert Entry.objects.for_household(seeded).count() == 2
+        assert (job.created_count, job.skipped_count) == (2, 0)

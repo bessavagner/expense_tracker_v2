@@ -2,7 +2,7 @@ from finances.models.budget import Budget
 from finances.models.category import Category
 from finances.models.entry import Entry, EntryType
 from finances.models.export_job import ExportJob, ExportStatus
-from finances.models.import_job import ImportJob, ImportStatus
+from finances.models.import_job import IN_FLIGHT_STATUSES, ImportJob, ImportStatus
 from finances.models.income import Income
 from finances.models.installment_plan import InstallmentPlan
 from finances.models.payment_method import PaymentMethod, PaymentType
@@ -18,6 +18,7 @@ __all__ = [
     "ExportStatus",
     "ImportJob",
     "ImportStatus",
+    "IN_FLIGHT_STATUSES",
     "Income",
     "InstallmentPlan",
     "PaymentMethod",

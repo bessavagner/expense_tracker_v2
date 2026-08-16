@@ -161,45 +161,27 @@ class TestRoundTrip:
         # The runner already ran; re-derive the preview's view of the file.
         assert {row["status"] for row in rows_for(second)} == {"duplicate"}
 
-    def test_skipping_the_flagged_duplicates_leaves_the_ledger_unchanged(
+    def test_re_importing_the_same_export_changes_nothing(
         self, source, destination, destination_client
     ):
         """The consequence of the line above, stated as money rather than as
-        row status: a user who re-imports their own export and accepts what the
-        preview tells them does not double their ledger.
+        row status: re-importing your own export does not double your ledger.
 
-        It is the duplicate *marking* that carries this, not the runner -- the
-        second job is a genuinely new job and would happily write four more
-        rows if the preview had not marked them. Which is exactly why the
-        marking had to start working: it compared an ISO string against a
-        ``datetime.date`` and therefore never matched anything before E12.
+        And it holds **without the user ticking anything**. That is the point:
+        the recovery this epic advertises after a failed or interrupted import
+        is "send the file again", and a recovery that silently doubles the
+        ledger unless the user notices 400 unchecked boxes is not a recovery.
+        A review of the merged branch caught exactly that -- the preview badged
+        the rows "Dup" and excluded them from "Importar N entradas →" while the
+        runner created them anyway.
         """
-        from finances.services.import_rows import rows_for
-
         exported = build_export(source)
         self._import_entries(destination_client, destination, exported)
         before = Entry.objects.for_household(destination).count()
         assert before == 4
 
-        # Second pass: upload and map, but stop at the preview.
-        archive = zipfile.ZipFile(io.BytesIO(exported))
-        handle = io.BytesIO(archive.read("entradas.csv"))
-        handle.name = "entradas.csv"
-        destination_client.post("/import/", data={"file": handle, "import_type": "regular"})
-        second = ImportJob.objects.for_household(destination).latest("created_at")
-        destination_client.post(f"/import/{second.id}/mapear/", data=_MAPPING)
-        second.refresh_from_db()  # the mapping was written by that request
-
-        # Skip exactly the lines the preview flagged, the way the checkbox does.
-        duplicates = [row["line"] for row in rows_for(second) if row["status"] == "duplicate"]
-        assert duplicates, "nothing was flagged, so this test would prove nothing"
-        destination_client.post(
-            f"/import/{second.id}/preview/",
-            data={f"skip_{line}": "on" for line in duplicates},
-        )
-        destination_client.post(f"/import/{second.id}/executar/")
-        second.refresh_from_db()
+        second = self._import_entries(destination_client, destination, exported)
 
         assert Entry.objects.for_household(destination).count() == before
         assert second.created_count == 0
-        assert second.skipped_count == len(duplicates)
+        assert second.skipped_count == 4

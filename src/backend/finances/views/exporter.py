@@ -34,7 +34,23 @@ class ExportPageView(LoginRequiredMixin, View):
 
 
 class ExportRequestView(LoginRequiredMixin, View):
+    """Ask for an archive, unless one is already being built.
+
+    ``enqueue`` is idempotent by content hash, but the payload carries a fresh
+    ExportJob id every time, so it can never collide here — a double-tapped
+    button would walk every table in the household twice and write two zips.
+    The guard has to be on the household's in-flight job instead.
+    """
+
     def post(self, request):
+        existing = (
+            ExportJob.objects.for_request(request)
+            .filter(status__in=[ExportStatus.PENDING, ExportStatus.RUNNING])
+            .first()
+        )
+        if existing is not None:
+            return redirect("finances:export_page")
+
         job = ExportJob.objects.create(
             household=request.household,
             created_by=request.user,
