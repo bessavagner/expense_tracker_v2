@@ -274,6 +274,13 @@ ADMIN_URL_PATH = os.environ.get("ADMIN_URL_PATH", "gestao-dev/").strip("/") + "/
 ACCOUNT_LOGIN_METHODS = {"email"}
 ACCOUNT_SIGNUP_FIELDS = ["email*", "email2*", "password1*", "password2*"]
 ACCOUNT_UNIQUE_EMAIL = True
+# One address, not a collection. allauth's single-address flow adds a
+# *temporary* second address and promotes it to primary only once it is
+# verified — so the address the user logs in with keeps working right up to
+# the moment the new one is proven. Exposing allauth's multi-address manager
+# instead would put "Make Primary" and "Remove" in front of a consumer, for a
+# product where email is the only login method (E18, spec D4).
+ACCOUNT_CHANGE_EMAIL = True
 # Mandatory rather than optional: a half-verified account is a state every
 # downstream feature would have to reason about, and E11's activation funnel
 # would inherit the ambiguity. Decided with E11, per the epic's question 3.
