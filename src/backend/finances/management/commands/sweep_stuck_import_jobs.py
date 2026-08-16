@@ -13,7 +13,7 @@ Run it from Cloud Scheduler alongside the keepalive ping. See docs/runbook.md.
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from finances.models import ImportJob, ImportStatus
+from finances.models import IN_FLIGHT_STATUSES, ImportJob, ImportStatus
 
 
 class Command(BaseCommand):
@@ -23,7 +23,7 @@ class Command(BaseCommand):
         swept = 0
         # Not a bulk update: is_stuck reads a setting and a timestamp per row,
         # and the number of RUNNING jobs at any moment is single digits.
-        for job in ImportJob.objects.filter(status=ImportStatus.RUNNING):
+        for job in ImportJob.objects.filter(status__in=IN_FLIGHT_STATUSES):
             if not job.is_stuck:
                 continue
             job.status = ImportStatus.FAILED

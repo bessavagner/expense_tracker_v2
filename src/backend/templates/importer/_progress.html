@@ -1,10 +1,12 @@
 {% comment %}
-The fragment HTMX swaps. `hx-trigger` is present only while there is something
-to wait for, which is what stops the page polling a finished — or a dead — job
-forever.
+The fragment HTMX swaps. `hx-trigger` is present only while the job is
+genuinely in flight — queued or running — and not already stuck. A job that was
+uploaded or mapped but never executed has nothing coming, and polling a
+finished or dead job is a request every two seconds for as long as the tab
+stays open.
 {% endcomment %}
 <div id="import-progress"
-     {% if not job.is_finished and not job.is_stuck %}
+     {% if job.is_in_flight and not job.is_stuck %}
      hx-get="{% url 'finances:import_status' job_id=job.id %}"
      hx-trigger="every 2s"
      hx-swap="outerHTML"
@@ -51,6 +53,15 @@ forever.
         <a href="{% url 'finances:entries' %}" class="btn btn-accent">Ver entradas</a>
         <a href="{% url 'finances:import_upload' %}" class="btn btn-ghost">Importar outro arquivo</a>
     </div>
+
+    {% elif job.status == "queued" %}
+    {# Deliberately no percentage. Under the Cloud Tasks backend the runner's
+       progress writes are not committed until the whole handler returns, so a
+       bar here would sit at 0% and then jump to done — worse than saying
+       plainly that the work has not started yet. #}
+    <p class="mb-2">Na fila — a importação começa em instantes…</p>
+    <progress class="progress progress-accent w-full"
+              aria-label="Importação na fila"></progress>
 
     {% else %}
     <p class="mb-2">Importando {{ job.processed_count }} de {{ job.total_rows }} linha(s)…</p>

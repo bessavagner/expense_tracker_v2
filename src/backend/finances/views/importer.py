@@ -11,8 +11,10 @@ import csv
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views import View
 
+from core.storage import job_storage
 from core.tasks import enqueue
 from finances.models import Category, ImportJob, ImportStatus, PaymentMethod
 from finances.services.import_rows import (
@@ -82,6 +84,11 @@ class ImportUploadView(LoginRequiredMixin, View):
             headers_for(job)
         except (UnicodeDecodeError, StopIteration):
             job.delete()
+            # And the bytes with it. The 7-day lifecycle rule would reclaim
+            # them eventually, but leaving an object no row points at means a
+            # user re-exporting a Latin-1 file three times quietly leaves three
+            # copies of their financial data in the bucket for a week.
+            job_storage().delete(storage_key)
             return self._error(
                 request,
                 "Arquivo não está em formato UTF-8, ou está vazio. "
@@ -113,6 +120,15 @@ class ImportMappingView(LoginRequiredMixin, View):
 
     def post(self, request, job_id):
         job = get_job(request, job_id)
+
+        # A job that has run, or is running, is not re-mappable. Without this,
+        # a browser Back-then-resubmit put a finished job back to `mapped` with
+        # its counts intact -- and `enqueue` is idempotent on a content hash
+        # that includes only the job id, so the already-DONE TaskRun meant
+        # nothing was ever dispatched again. The user then watched a status
+        # page poll a job that no longer had anything coming.
+        if job.is_finished or job.is_in_flight:
+            return redirect("finances:import_status", job_id=job.id)
 
         mapping = {}
         for field in fields_for(job.import_type):
@@ -170,38 +186,53 @@ class ImportPreviewView(LoginRequiredMixin, View):
     def post(self, request, job_id):
         """Record skips and conflict resolutions on the job.
 
-        Keyed by CSV *line number* rather than by list index. An index only
-        means anything relative to a particular parse; a line number is a fact
-        about the file, and it is what a failure report has to name for the
-        user to find the row in their spreadsheet.
+        Updates only the section that actually posted. The preview renders
+        three separate forms to this one URL -- unmatched categories, unmatched
+        payment methods, and the skip checkboxes -- and each submits only its
+        own fields. Reassigning all three from every POST meant resolving a
+        payment method silently erased the category resolution applied a moment
+        earlier, so every row then failed with "Categoria X não encontrada".
+        An absent section is "not part of this submission"; an *empty* section
+        is a real "none", which is what lets the last ticked box be unticked.
+
+        Skips are keyed by CSV *line number* rather than by list index. An index
+        only means anything relative to a particular parse; a line number is a
+        fact about the file, and it is what a failure report has to name for
+        the user to find the row in their spreadsheet.
         """
         job = get_job(request, job_id)
+        section = request.POST.get("form_section", "")
+        updated = []
 
-        skip_lines = []
-        category_resolutions = {}
-        pm_resolutions = {}
-        for key, value in request.POST.items():
-            if key.startswith("skip_") and value == "on":
-                try:
-                    skip_lines.append(int(key.removeprefix("skip_")))
-                except ValueError:
-                    continue
-            elif key.startswith("cat_resolve_") and value:
-                category_resolutions[key.removeprefix("cat_resolve_")] = value
-            elif key.startswith("pm_resolve_") and value:
-                pm_resolutions[key.removeprefix("pm_resolve_")] = value
+        if section == "skips":
+            skip_lines = []
+            for key, value in request.POST.items():
+                if key.startswith("skip_") and value == "on":
+                    try:
+                        skip_lines.append(int(key.removeprefix("skip_")))
+                    except ValueError:
+                        continue
+            job.skip_lines = sorted(skip_lines)
+            updated.append("skip_lines")
 
-        job.skip_lines = sorted(skip_lines)
-        job.category_resolutions = category_resolutions
-        job.pm_resolutions = pm_resolutions
-        job.save(
-            update_fields=[
-                "skip_lines",
-                "category_resolutions",
-                "pm_resolutions",
-                "updated_at",
-            ]
-        )
+        elif section == "categories":
+            job.category_resolutions = {
+                key.removeprefix("cat_resolve_"): value
+                for key, value in request.POST.items()
+                if key.startswith("cat_resolve_") and value
+            }
+            updated.append("category_resolutions")
+
+        elif section == "payment_methods":
+            job.pm_resolutions = {
+                key.removeprefix("pm_resolve_"): value
+                for key, value in request.POST.items()
+                if key.startswith("pm_resolve_") and value
+            }
+            updated.append("pm_resolutions")
+
+        if updated:
+            job.save(update_fields=[*updated, "updated_at"])
         return redirect("finances:import_preview", job_id=job.id)
 
 
@@ -218,7 +249,16 @@ class ImportExecuteView(LoginRequiredMixin, View):
 
     def post(self, request, job_id):
         job = get_job(request, job_id)
-        if not job.is_finished:
+        if not job.is_finished and not job.is_in_flight:
+            # Committed by *this* request, before the task is handed off. Under
+            # the Cloud Tasks backend the handler runs inside its own
+            # transaction, which is rolled back wholesale if the instance dies
+            # -- so a status written only in there leaves no trace, and the job
+            # would poll forever without ever looking stuck. This row does
+            # survive, and `started_at` is what the stuck sweep measures from.
+            job.status = ImportStatus.QUEUED
+            job.started_at = timezone.now()
+            job.save(update_fields=["status", "started_at", "updated_at"])
             enqueue(RUN_IMPORT, {"job_id": str(job.id)})
         return redirect("finances:import_status", job_id=job.id)
 

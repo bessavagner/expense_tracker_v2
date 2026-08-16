@@ -225,7 +225,9 @@ class TestImportExecuteView:
         logged_client.post(f"/import/{job_id}/mapear/", data=_MAPPING_REGULAR)
         # Mark the duplicate for skip. Line 2, because line 1 is the header --
         # the skip is keyed by CSV line number now, not by list index.
-        logged_client.post(f"/import/{job_id}/preview/", data={"skip_2": "on"})
+        logged_client.post(
+            f"/import/{job_id}/preview/", data={"form_section": "skips", "skip_2": "on"}
+        )
 
         response = logged_client.post(f"/import/{job_id}/executar/")
         assert response.status_code == 302

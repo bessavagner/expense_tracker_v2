@@ -260,3 +260,94 @@ class TestTheFailuresReport:
             ImportJob, household=other_household, failures=[{"line": 2, "reason": "x"}]
         )
         assert logged_client.get(f"/import/{job.id}/falhas.csv").status_code == 404
+
+
+@pytest.mark.django_db
+class TestAJobCanNeverPollForever:
+    """Review findings 1 and 4: every state the status page can be in either
+    moves on its own or is reachable by the stuck sweep.
+
+    Finding 1's mechanism: under the Cloud Tasks backend, `task_dispatch_view`
+    runs the handler inside `transaction.atomic()` holding `select_for_update`
+    on the TaskRun. If the instance dies mid-import that transaction rolls
+    back — so anything the runner wrote about itself, including
+    `status=RUNNING` and `started_at`, is gone. A job that only ever became
+    RUNNING *inside* that transaction is therefore invisible to `is_stuck` and
+    to `sweep_stuck_import_jobs`, and the page polls it forever.
+
+    The fix is to commit QUEUED in the request that enqueues, which is a
+    different transaction and survives.
+    """
+
+    def test_enqueuing_marks_the_job_queued_and_stamps_it(self, logged_client, seeded):
+        job = _to_preview(logged_client, seeded)
+        logged_client.post(f"/import/{job.id}/executar/")
+        job.refresh_from_db()
+
+        # The eager backend has already finished it; what matters is that
+        # started_at was stamped by the enqueueing request, not by the runner.
+        assert job.started_at is not None
+
+    @time_machine.travel("2026-08-16 12:00:00+00:00", tick=False)
+    def test_a_job_whose_handler_never_committed_is_still_swept(self, seeded, settings):
+        """The exact aftermath of a rolled-back dispatch: QUEUED, stamped, and
+        nothing will ever move it again."""
+        settings.IMPORT_STUCK_AFTER_MINUTES = 15
+        job = baker.make(
+            ImportJob,
+            household=seeded,
+            status=ImportStatus.QUEUED,
+            started_at=timezone.now() - timedelta(minutes=30),
+        )
+        assert job.is_stuck
+
+        call_command("sweep_stuck_import_jobs")
+        job.refresh_from_db()
+        assert job.status == ImportStatus.FAILED
+        assert job.error_message
+
+    @time_machine.travel("2026-08-16 12:00:00+00:00", tick=False)
+    def test_a_freshly_queued_job_is_not_stuck(self, seeded, settings):
+        settings.IMPORT_STUCK_AFTER_MINUTES = 15
+        job = baker.make(
+            ImportJob,
+            household=seeded,
+            status=ImportStatus.QUEUED,
+            started_at=timezone.now() - timedelta(minutes=2),
+        )
+        assert not job.is_stuck
+
+    def test_a_job_that_was_never_executed_does_not_poll(self, logged_client, seeded):
+        """Finding 4's other half. A `mapped` job has not been handed to
+        anything, so there is no progress coming — the page must not sit there
+        asking every two seconds until the tab is closed."""
+        job = baker.make(ImportJob, household=seeded, status=ImportStatus.MAPPED, total_rows=5)
+        body = logged_client.get(f"/import/{job.id}/status/").content.decode()
+        assert "hx-trigger" not in body
+
+    def test_a_queued_job_does_poll(self, logged_client, seeded):
+        job = baker.make(
+            ImportJob,
+            household=seeded,
+            status=ImportStatus.QUEUED,
+            total_rows=5,
+            started_at=timezone.now(),
+        )
+        assert "hx-trigger" in logged_client.get(f"/import/{job.id}/status/").content.decode()
+
+    def test_remapping_a_finished_job_is_refused(self, logged_client, seeded):
+        """Finding 4. Re-posting the mapping used to reset `done` → `mapped`;
+        enqueue is idempotent on a permanent content hash, so nothing would
+        ever dispatch again and the status page polled forever."""
+        job = _to_preview(logged_client, seeded)
+        logged_client.post(f"/import/{job.id}/executar/")
+        job.refresh_from_db()
+        assert job.status == ImportStatus.DONE
+
+        response = logged_client.post(f"/import/{job.id}/mapear/", data=_MAPPING)
+        job.refresh_from_db()
+
+        assert response.status_code == 302
+        assert response.url == f"/import/{job.id}/status/"
+        assert job.status == ImportStatus.DONE, "a finished import was reopened"
+        assert job.created_count == 1, "the finished job's counts were reset"

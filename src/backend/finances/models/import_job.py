@@ -11,9 +11,17 @@ from accounts.models import AuthoredHouseholdModel
 class ImportStatus(models.TextChoices):
     UPLOADED = "uploaded", "Enviado"
     MAPPED = "mapped", "Mapeado"
+    QUEUED = "queued", "Na fila"
     RUNNING = "running", "Importando"
     DONE = "done", "Concluído"
     FAILED = "failed", "Falhou"
+
+
+# The states in which something is expected to happen without the user acting.
+# The status page polls exactly these, and the stuck sweep looks at exactly
+# these -- one tuple, so the two can never disagree about which jobs are
+# "in flight" and leave a state that polls forever but is never swept.
+IN_FLIGHT_STATUSES = (ImportStatus.QUEUED, ImportStatus.RUNNING)
 
 
 class ImportJob(AuthoredHouseholdModel):
@@ -105,14 +113,29 @@ class ImportJob(AuthoredHouseholdModel):
         return self.status in {ImportStatus.DONE, ImportStatus.FAILED}
 
     @property
-    def is_stuck(self) -> bool:
-        """RUNNING for longer than any real import takes.
+    def is_in_flight(self) -> bool:
+        """Something is expected to move this row without the user acting."""
+        return self.status in IN_FLIGHT_STATUSES
 
-        The instance that was running it is gone -- Cloud Run recycled it, or
-        the task exhausted the request timeout. Nothing will ever move this row
-        again, so leaving it RUNNING shows the user a spinner that never stops.
+    @property
+    def is_stuck(self) -> bool:
+        """In flight for longer than any real import takes.
+
+        The instance that had it is gone -- Cloud Run recycled it, or the task
+        exhausted the request timeout. Nothing will ever move this row again,
+        so leaving it in flight shows the user a spinner that never stops.
+
+        QUEUED counts, not just RUNNING, and that is the whole reason the state
+        exists. Under the Cloud Tasks backend ``core/tasks/views.py`` runs the
+        handler inside ``transaction.atomic()`` holding ``select_for_update``
+        on the TaskRun, so everything the runner writes about itself --
+        including ``status=RUNNING`` -- is rolled back if the instance dies
+        mid-import. A job that only ever became RUNNING inside that transaction
+        would be invisible here and to ``sweep_stuck_import_jobs``, and the
+        page would poll it forever. QUEUED is committed by the request that
+        enqueued it, which is a different transaction and survives.
         """
-        if self.status != ImportStatus.RUNNING or self.started_at is None:
+        if not self.is_in_flight or self.started_at is None:
             return False
         cutoff = timezone.now() - timedelta(minutes=settings.IMPORT_STUCK_AFTER_MINUTES)
         return self.started_at < cutoff
