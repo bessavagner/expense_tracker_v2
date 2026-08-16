@@ -88,7 +88,10 @@ class TestImporterCeiling:
         # ImportUploadView is POST-redirect-GET: success is a redirect to the
         # mapping step, not a 200 — the point here is "not 413".
         assert response.status_code == 302
-        assert response.url == "/import/map/"
+        # Job-scoped from E12: the redirect carries the id of the job the
+        # upload just minted, so the next step can be served by any instance.
+        assert response.url.startswith("/import/")
+        assert response.url.endswith("/mapear/")
 
 
 class TestUploadDefaults:
