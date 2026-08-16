@@ -1992,3 +1992,87 @@ OnboardingState.objects.filter(household_id='<uuid>').delete()"
 ```
 
 The next page load redirects that household back to `/casa/comecar/`.
+
+## Product metrics (E14)
+
+The four numbers the beta → GA decision is made on. What each one *means* is
+decided in `docs/architecture/product-metrics.md`, and the thresholds are in
+`docs/architecture/ga-criteria.md`. Both the command and the page compute
+everything through `core/metrics.py`, so they cannot disagree.
+
+Read these weekly, alongside the feedback queue below.
+
+### `retention_report`
+
+```bash
+POSTGRES_PORT=5433 uv run python src/backend/manage.py retention_report
+POSTGRES_PORT=5433 uv run python src/backend/manage.py retention_report --since 2026-08-01
+```
+
+Prints four sections:
+
+```
+== Coortes (retenção rolante) ==
+Semana        Casas      D1      D7     D30
+2026-08-10        3      67%     33%       —
+
+== Engajamento (últimos 7 dias) ==
+Casas ativas: 3
+Turnos do assistente por casa ativa: 4.3 (total 13)
+Cupons confirmados: 5
+Primeiras ativações: 2
+
+== A cunha ==
+IA 14 : 3 manual (82%)
+
+== Excluídos ==
+Casas-sombra fora das coortes: 1 (criadas no cadastro de quem trabalha na casa de outra pessoa).
+```
+
+**Read `—` as "we do not know yet", never as zero.** A cohort younger than the
+day it is being judged on is excluded rather than counted as lost — a household
+that signed up on Friday has not failed D7, it has not had the chance.
+
+**The line that decides the epic** is the wedge ratio. When AI drops below
+manual the command prints:
+
+```
+⚠️ Mais lançamentos digitados que capturados por IA — a cunha não está pegando.
+```
+
+That is the stop condition in `ga-criteria.md`. It means rethinking, not
+launching.
+
+**Common failure:** every retention column reads `—` on a database that clearly
+has activity. The cohort is younger than the window, or the households in it are
+being excluded as shadows — check the `Excluídos` count at the bottom, which is
+printed for exactly this reason.
+
+### `/metricas/` — the operator dashboard
+
+The same numbers on one screen, plus cost per household beside that household's
+assistant turns.
+
+- **Staff only** (`is_staff`), and it shows **every** household in the database.
+  Not a screen to share or screenshot into a chat.
+- It is deliberately **not** under the secret admin path — that path's 404 has to
+  stay indistinguishable from a wrong guess (`core/admin_gate.py`), and an
+  anonymous visitor being redirected there would leak it. `/metricas/` is gated
+  by identity instead, and its login redirect goes to the ordinary app login.
+- Empty metrics render as `—`, same rule as the command.
+
+**Common failure:** a `302` to `/accounts/login/` while already logged in means
+the account is not staff. Grant it:
+
+```bash
+POSTGRES_PORT=5433 uv run python src/backend/manage.py shell -c "
+from core.models import CustomUser
+CustomUser.objects.filter(email='<email>').update(is_staff=True)"
+```
+
+### A negative "Perda no passo" in the funnel
+
+Not a bug. It means the step above was instrumented later than the one below, so
+households that had already passed it never emitted its event. `email_verified`
+and `receipt_photo` both shipped in E14, after the first households existed —
+expect negatives against them until the current cohorts age out.

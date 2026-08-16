@@ -11,9 +11,16 @@ from core.views import (
     ServiceWorkerView,
     health_check,
 )
+from core.views_metrics import MetricsDashboardView
 
 urlpatterns = [
     path("healthz/", health_check, name="health-check"),
+    # Staff-only product metrics (E14 S14-4). Deliberately NOT under
+    # `ADMIN_URL_PATH`: that path is a secret whose 404 must stay
+    # indistinguishable from a wrong guess (`core.admin_gate`), and this page is
+    # gated by identity instead. Staff are already exempt from the onboarding
+    # redirect by identity, so this needs no `_ONBOARDING_EXEMPT_PREFIXES` entry.
+    path("metricas/", MetricsDashboardView.as_view(), name="metrics_dashboard"),
     # Cloud Tasks dispatch (E10). Public by necessity — the service is deployed
     # --allow-unauthenticated — so `core.tasks.auth` verifies the OIDC token
     # in-app on every request.

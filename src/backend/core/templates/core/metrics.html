@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}Métricas do produto{% endblock %}
+
+{% block content %}
+<div class="flex flex-wrap justify-between items-center gap-2 mb-4">
+    <h2 class="text-2xl font-bold">Métricas do produto</h2>
+    <p class="text-xs opacity-60">
+        Definições em <code>docs/architecture/product-metrics.md</code> ·
+        <code>manage.py retention_report</code>
+    </p>
+</div>
+
+{% comment %}The headline numbers, from the same events activation_report reads.{% endcomment %}
+<section class="mb-6">
+    <h3 class="text-[11px] uppercase tracking-wide opacity-60 mb-2">Ativação</h3>
+    <div class="stats stats-vertical lg:stats-horizontal w-full bg-base-100 border border-base-300">
+        {% for step in funnel %}
+        {% if step.name == "signup" or step.name == "activated" %}
+        <div class="stat">
+            <div class="stat-title">{% if step.name == "signup" %}Cadastros{% else %}Ativações{% endif %}</div>
+            <div class="stat-value text-2xl">{{ step.count }}</div>
+            <div class="stat-desc">
+                {% if step.name == "activated" %}
+                    {% if step.share is not None %}{{ step.share|floatformat:0 }}% dos cadastros{% else %}—{% endif %}
+                {% else %}
+                    casas que chegaram até aqui
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+        <div class="stat">
+            <div class="stat-title">Casas-sombra excluídas</div>
+            <div class="stat-value text-2xl">{{ excluded }}</div>
+            <div class="stat-desc">fora do numerador e do denominador</div>
+        </div>
+    </div>
+</section>
+
+{% comment %}The number S14-3 calls the most important in the product, so it
+gets the most space rather than the least.{% endcomment %}
+<section class="mb-6">
+    <h3 class="text-[11px] uppercase tracking-wide opacity-60 mb-2">A cunha — IA contra digitação</h3>
+    <div class="card bg-base-100 border border-base-300">
+        <div class="card-body p-4 min-w-0">
+            {% if wedge.total %}
+            <div class="flex flex-wrap items-baseline gap-3">
+                <span class="text-3xl font-bold">{{ wedge.ai }} : {{ wedge.manual }}</span>
+                <span class="text-sm opacity-70">
+                    {{ wedge.share|floatformat:0 }}% dos lançamentos vieram de foto ou conversa
+                </span>
+                {% if wedge.landing %}
+                <span class="badge badge-sm badge-success">A cunha está pegando</span>
+                {% else %}
+                <span class="badge badge-sm badge-error">A cunha não está pegando</span>
+                {% endif %}
+            </div>
+            <progress class="progress w-full mt-2" value="{{ wedge.ai }}" max="{{ wedge.total }}"></progress>
+            {% if not wedge.landing %}
+            <p class="text-sm mt-2">
+                Mais lançamentos digitados que capturados por IA. Essa é a condição de parada
+                escrita em <code>docs/architecture/ga-criteria.md</code>.
+            </p>
+            {% endif %}
+            {% else %}
+            <p class="text-sm opacity-70">
+                Sem lançamentos ainda — a razão IA:manual não tem amostras. Isso é “ainda não
+                sabemos”, não 0%.
+            </p>
+            {% endif %}
+            <p class="text-xs opacity-60">
+                Importações de CSV ficam de fora: um backfill é migração, não captura.
+            </p>
+        </div>
+    </div>
+</section>
+
+{% comment %}Drop-off is adjacent subtraction: each row shows what the step above lost.{% endcomment %}
+<section class="mb-6">
+    <h3 class="text-[11px] uppercase tracking-wide opacity-60 mb-2">Funil</h3>
+    <div class="card bg-base-100 border border-base-300">
+        <div class="card-body p-4 min-w-0">
+            <div class="max-w-full overflow-x-auto">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Passo</th>
+                            <th class="text-right">Casas</th>
+                            <th class="text-right">Perda no passo</th>
+                            <th class="text-right">% do topo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for step in funnel %}
+                        <tr>
+                            <td class="whitespace-nowrap">{{ step.name }}</td>
+                            <td class="text-right">{{ step.count }}</td>
+                            <td class="text-right">
+                                {% if step.lost is None %}—{% else %}{{ step.lost }}{% endif %}
+                            </td>
+                            <td class="text-right">
+                                {% if step.share is None %}—{% else %}{{ step.share|floatformat:0 }}%{% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-xs opacity-60 mt-2">
+                Uma perda negativa quer dizer que o passo de cima foi instrumentado depois —
+                as casas que já tinham passado por ele nunca emitiram o evento.
+            </p>
+        </div>
+    </div>
+</section>
+
+{% comment %}Rolling; a cohort too young to judge prints an em dash, never 0%.{% endcomment %}
+<section class="mb-6">
+    <h3 class="text-[11px] uppercase tracking-wide opacity-60 mb-2">Retenção rolante por coorte</h3>
+    <div class="card bg-base-100 border border-base-300">
+        <div class="card-body p-4 min-w-0">
+            {% if cohorts %}
+            <div class="max-w-full overflow-x-auto">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Semana do cadastro</th>
+                            <th class="text-right">Casas</th>
+                            <th class="text-right">D1</th>
+                            <th class="text-right">D7</th>
+                            <th class="text-right">D30</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in cohorts %}
+                        <tr>
+                            <td class="whitespace-nowrap">{{ row.week|date:"d/m/Y" }}</td>
+                            <td class="text-right">{{ row.size }}</td>
+                            <td class="text-right">{% if row.d1 is None %}—{% else %}{{ row.d1|floatformat:2 }}{% endif %}</td>
+                            <td class="text-right">{% if row.d7 is None %}—{% else %}{{ row.d7|floatformat:2 }}{% endif %}</td>
+                            <td class="text-right">{% if row.d30 is None %}—{% else %}{{ row.d30|floatformat:2 }}{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-xs opacity-60 mt-2">
+                “—” quer dizer que a coorte ainda é nova demais para ter falhado nesse dia.
+                Uma casa que volta no dia 9 conta para D7.
+            </p>
+            {% else %}
+            <p class="text-sm opacity-70">Nenhum cadastro ainda.</p>
+            {% endif %}
+        </div>
+    </div>
+</section>
+
+{% comment %}Cost beside engagement — S14-4's actual requirement.{% endcomment %}
+<section class="mb-6">
+    <h3 class="text-[11px] uppercase tracking-wide opacity-60 mb-2">Custo e engajamento, lado a lado</h3>
+    <div class="card bg-base-100 border border-base-300">
+        <div class="card-body p-4 min-w-0">
+            {% if households %}
+            <div class="max-w-full overflow-x-auto">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Casa</th>
+                            <th class="text-right">Custo (USD)</th>
+                            <th class="text-right">Turnos do assistente</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in households %}
+                        <tr>
+                            <td>{{ row.name }}</td>
+                            <td class="text-right">
+                                {% if row.cost is None %}—{% else %}{{ row.cost|floatformat:4 }}{% endif %}
+                            </td>
+                            <td class="text-right">{{ row.turns }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-xs opacity-60 mt-2">
+                Chamadas sem preço conhecido ficam de fora da soma em vez de entrarem como zero —
+                “não sabemos” não é “de graça”.
+            </p>
+            {% else %}
+            <p class="text-sm opacity-70">Sem consumo registrado ainda.</p>
+            {% endif %}
+        </div>
+    </div>
+</section>
+
+<p class="text-xs opacity-60">
+    Esta página mostra <strong>todas</strong> as casas. É só para operação — não é tela de
+    compartilhar.
+</p>
+{% endblock %}
