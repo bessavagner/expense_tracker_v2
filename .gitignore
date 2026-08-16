@@ -60,3 +60,6 @@ qa-screenshots/
 # E08 scratch eval runs. The committed baseline lives at
 # docs/superpowers/evidence/eval/baseline-*.{md,json} and is added explicitly.
 docs/superpowers/evidence/eval/scratch-*
+
+# E12. Local fallback for import uploads and export archives.
+.jobstore/
