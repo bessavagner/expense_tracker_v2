@@ -70,6 +70,26 @@ def test_the_key_is_namespaced_by_household(local_storage):
     assert key.startswith(f"imports/{_HOUSEHOLD_ID}/")
 
 
+@pytest.mark.django_db
+def test_a_bom_prefixed_header_still_auto_detects(local_storage, household, user):
+    """Every CSV Excel writes starts with a BOM, including the ones this
+    product exports. Found by the export round trip, fixed in the importer:
+    without stripping it, "﻿data" is not "data" and the date column silently
+    fails to auto-detect on every file Excel has ever touched."""
+    from finances.models import ImportJob
+    from finances.services.import_rows import detected_mapping, headers_for
+
+    body = "﻿data,valor,descrição,categoria,forma\n01/03/2026,42,x,y,z\n"
+    upload = SimpleUploadedFile("bom.csv", body.encode("utf-8"), "text/csv")
+    job = ImportJob.objects.create(
+        household=household,
+        created_by=user,
+        storage_key=store_upload(upload, household.id),
+    )
+    assert headers_for(job)[0] == "data"
+    assert detected_mapping(job)["date"] == 0
+
+
 def test_two_uploads_of_the_same_name_do_not_collide(local_storage):
     first = store_upload(SimpleUploadedFile("x.csv", b"a\n", "text/csv"), _HOUSEHOLD_ID)
     second = store_upload(SimpleUploadedFile("x.csv", b"b\n", "text/csv"), _HOUSEHOLD_ID)
