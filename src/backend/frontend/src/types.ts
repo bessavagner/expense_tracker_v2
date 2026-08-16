@@ -90,3 +90,10 @@ export interface DailyTrendData {
 export interface SparkPoint {
   v: number;
 }
+
+/** D05: "is the ledger empty, or just this month?" — the one fact a month's own
+ *  queryset cannot answer, so an empty state can stop guessing. */
+export interface LedgerElsewhere {
+  has_any: boolean;
+  nearest: { year: number; month: number; label: string } | null;
+}

@@ -31,11 +31,21 @@ function mountAll() {
     const name = el.getAttribute("data-react-component");
     const apiUrl = el.getAttribute("data-api-url") || "";
     const sparkUrl = el.getAttribute("data-spark-url") ?? undefined;
+    // D05: a second, sibling endpoint answering "is the ledger empty, or just
+    // this month?" — built from the same query string as `data-api-url`.
+    const elsewhereUrl = el.getAttribute("data-elsewhere-url") ?? undefined;
     const autostart = el.getAttribute("data-autostart") || undefined;
     if (name && COMPONENTS[name]) {
       const Component = COMPONENTS[name];
       const root = createRoot(el);
-      root.render(<Component apiUrl={apiUrl} sparkUrl={sparkUrl} autostart={autostart} />);
+      root.render(
+        <Component
+          apiUrl={apiUrl}
+          sparkUrl={sparkUrl}
+          elsewhereUrl={elsewhereUrl}
+          autostart={autostart}
+        />,
+      );
     }
   });
 }
