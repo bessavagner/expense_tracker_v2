@@ -70,6 +70,16 @@ def given_csv_installment(ctx):
     return ctx
 
 
+def _job_id(ctx):
+    """The job the upload step just minted.
+
+    The wizard is job-scoped from E12, so every step after the upload needs the
+    id. Read back from the database rather than threaded through ``ctx``,
+    because that is what the browser does too: the upload's redirect carries it.
+    """
+    return ImportJob.objects.for_household(ctx["household"]).latest("created_at").pk
+
+
 @when("I upload the CSV as regular entries")
 def when_upload_regular(ctx):
     csv_file = io.BytesIO(ctx["csv_content"])
@@ -105,12 +115,12 @@ def when_confirm_mapping(ctx):
             "category": "3",
             "payment_method": "4",
         }
-    ctx["client"].post("/import/map/", data=data)
+    ctx["client"].post(f"/import/{_job_id(ctx)}/mapear/", data=data)
 
 
 @when("I execute the import")
 def when_execute(ctx):
-    ctx["response"] = ctx["client"].post("/import/execute/")
+    ctx["response"] = ctx["client"].post(f"/import/{_job_id(ctx)}/executar/")
 
 
 @then("3 entries should exist in the database")

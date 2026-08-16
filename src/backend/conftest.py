@@ -36,6 +36,23 @@ def shifted_clock():
 
 
 @pytest.fixture(autouse=True)
+def isolated_job_storage(tmp_path, settings):
+    """Every test's import uploads and export archives go to its own tmp_path.
+
+    Two reasons this is autouse rather than opt-in (E12). Without it a test
+    that uploads a CSV writes into ``BASE_DIR/.jobstore`` — the developer's
+    real working tree — and leaves it there, so the suite's tenth run has
+    nine files of somebody's ledger lying in the repo. And a test that forgets
+    to unset ``GS_BUCKET_NAME`` would reach for a real bucket, which is the
+    one thing "local development works without GCP credentials" must never
+    do by accident.
+    """
+    settings.GS_BUCKET_NAME = ""
+    settings.JOB_STORAGE_ROOT = tmp_path / "jobstore"
+    return settings.JOB_STORAGE_ROOT
+
+
+@pytest.fixture(autouse=True)
 def clean_cache():
     """Empty the cache between tests.
 

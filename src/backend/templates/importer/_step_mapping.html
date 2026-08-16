@@ -4,7 +4,7 @@
         <h3 class="card-title">2. Mapeamento de colunas</h3>
         <p class="text-sm opacity-70 mb-4">Verifique se as colunas foram detectadas corretamente.</p>
 
-        <form method="post" action="{% url 'finances:import_map' %}">
+        <form method="post" action="{% url 'finances:import_map' job_id=job.id %}">
             {% csrf_token %}
             <div class="overflow-x-auto">
             <table class="table table-sm">

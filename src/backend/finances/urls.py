@@ -217,9 +217,9 @@ urlpatterns = [
     ),
     # Import
     path("import/", ImportUploadView.as_view(), name="import_upload"),
-    path("import/map/", ImportMappingView.as_view(), name="import_map"),
-    path("import/preview/", ImportPreviewView.as_view(), name="import_preview"),
-    path("import/execute/", ImportExecuteView.as_view(), name="import_execute"),
+    path("import/<uuid:job_id>/mapear/", ImportMappingView.as_view(), name="import_map"),
+    path("import/<uuid:job_id>/preview/", ImportPreviewView.as_view(), name="import_preview"),
+    path("import/<uuid:job_id>/executar/", ImportExecuteView.as_view(), name="import_execute"),
     # Cockpit — income
     path(
         "cockpit/<int:year>/<int:month>/income/",

@@ -15,7 +15,7 @@
         <div class="alert alert-warning mb-4">
             <div>
                 <h4 class="font-bold">Categorias não encontradas</h4>
-                <form method="post" action="{% url 'finances:import_preview' %}">
+                <form method="post" action="{% url 'finances:import_preview' job_id=job.id %}">
                     {% csrf_token %}
                     {% for name in unmatched_categories %}
                     <div class="flex items-center gap-2 mt-2">
@@ -40,7 +40,7 @@
         <div class="alert alert-warning mb-4">
             <div>
                 <h4 class="font-bold">Formas de pagamento não encontradas</h4>
-                <form method="post" action="{% url 'finances:import_preview' %}">
+                <form method="post" action="{% url 'finances:import_preview' job_id=job.id %}">
                     {% csrf_token %}
                     {% for name in unmatched_pms %}
                     <div class="flex items-center gap-2 mt-2">
@@ -60,7 +60,10 @@
         </div>
         {% endif %}
 
-        <!-- Rows table -->
+        <!-- Rows table. The skip checkboxes need a form of their own: the
+             execute button below posts elsewhere, and nested forms are invalid. -->
+        <form method="post" action="{% url 'finances:import_preview' job_id=job.id %}">
+        {% csrf_token %}
         <div class="overflow-x-auto">
         <table class="table table-sm">
             <thead>
@@ -87,8 +90,8 @@
                     <td>
                         {% if row.status != "error" %}
                         <input type="checkbox" class="checkbox checkbox-sm"
-                               name="skip_{{ forloop.counter0 }}"
-                               {% if forloop.counter0 in skip_indices %}checked{% endif %}>
+                               name="skip_{{ row.line }}"
+                               {% if row.line in skip_lines %}checked{% endif %}>
                         {% endif %}
                     </td>
                 </tr>
@@ -96,10 +99,12 @@
             </tbody>
         </table>
         </div>
+        <button type="submit" class="btn btn-sm btn-ghost mt-2">Aplicar linhas puladas</button>
+        </form>
 
         <div class="flex gap-2 mt-4">
-            <a href="{% url 'finances:import_map' %}" class="btn btn-ghost">← Voltar</a>
-            <form method="post" action="{% url 'finances:import_execute' %}">
+            <a href="{% url 'finances:import_map' job_id=job.id %}" class="btn btn-ghost">← Voltar</a>
+            <form method="post" action="{% url 'finances:import_execute' job_id=job.id %}">
                 {% csrf_token %}
                 <button type="submit" class="btn btn-accent"
                         data-pending="Importando… não feche a página">Importar {{ ok_count }} entradas →</button>
