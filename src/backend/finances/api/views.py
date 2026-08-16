@@ -6,6 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from assistant.agents.receipt_billing import month_label
 from finances.models import Category, Entry, Income
 from finances.services.category_stats import category_moving_averages, diverse_savings_for_month
 from finances.services.daily_trend import daily_spend_trend
@@ -289,6 +290,53 @@ class RecentEntriesView(APIView):
             for e in entries
         ]
         return Response(result)
+
+
+class LedgerElsewhereView(APIView):
+    """Whether this household has entries outside the month on screen.
+
+    D05: the dashboard shows one billing month and says nothing about the others,
+    so a correctly-filed backdated receipt reads as a capture that did nothing.
+    The empty state needs to tell "you have recorded nothing" apart from "nothing
+    in *this* month", and to do that it needs one fact the month's own queryset
+    cannot provide.
+
+    Distinct months only — the row count is months-with-data, not entries, so
+    doing the ranking in Python is both correct and cheap.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        year, month, billing_month = _get_month_params(request)
+        months = (
+            Entry.objects.for_household(request.household)
+            .exclude(billing_month=billing_month)
+            .values_list("billing_month", flat=True)
+            .distinct()
+        )
+        months = [m for m in months if m is not None]
+        if not months:
+            return Response({"has_any": False, "nearest": None})
+
+        def distance(candidate):
+            # Ordered by absolute distance in months, then by recency so a tie —
+            # two months equally far either side — resolves to the newer one
+            # rather than to whatever the database happened to return first.
+            gap = abs((candidate.year - year) * 12 + (candidate.month - month))
+            return (gap, -candidate.toordinal())
+
+        nearest = min(months, key=distance)
+        return Response(
+            {
+                "has_any": True,
+                "nearest": {
+                    "year": nearest.year,
+                    "month": nearest.month,
+                    "label": month_label(nearest),
+                },
+            }
+        )
 
 
 class InstallmentsView(APIView):
