@@ -250,9 +250,19 @@ INVENTORY: tuple[Record, ...] = (
         Basis.CONTRACT,
         Disposal.HOUSEHOLD,
     ),
-    # `core.PolicyAcceptance` and `core.Consent` are added here by Task 2, in
-    # the same commit that creates them. Adding them now would make this file's
-    # own completeness test fail on models that do not exist yet.
+    Record(
+        "core.PolicyAcceptance",
+        "Provar que você aceitou uma versão específica dos termos e do aviso "
+        "de privacidade, e quando.",
+        Basis.LEGITIMATE,
+        Disposal.CASCADE,
+    ),
+    Record(
+        "core.Consent",
+        "Guardar se você autorizou o processamento por IA, e quando mudou de ideia.",
+        Basis.LEGITIMATE,
+        Disposal.CASCADE,
+    ),
     Record(
         "account.EmailAddress",
         "Confirmar que o endereço de e-mail é seu.",

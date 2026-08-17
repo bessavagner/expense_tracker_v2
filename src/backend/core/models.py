@@ -224,3 +224,94 @@ class Feedback(HouseholdOwnedModel):
 
     def __str__(self):
         return f"{self.household} @ {self.created_at:%Y-%m-%d %H:%M}"
+
+
+class PolicyDocument(models.TextChoices):
+    """The two documents a person accepts to use this product."""
+
+    PRIVACY = "privacy", "Aviso de privacidade"
+    TERMS = "terms", "Termos de uso"
+
+
+class PolicyAcceptance(models.Model):
+    """Proof that a specific person accepted a specific version, on a date.
+
+    Versioned rather than a boolean on the user, because "did they accept the
+    terms?" is not the question anyone will actually ask. The question is
+    "which terms did they accept?", and a boolean cannot answer it after the
+    first amendment.
+
+    CASCADE, unlike most user foreign keys here: an acceptance is a statement
+    about a person, so it has no meaning once that person is gone. The
+    household's ledger survives a deletion (E04's SET_NULL rule); this does not,
+    and should not.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="policy_acceptances"
+    )
+    document = models.CharField(max_length=20, choices=PolicyDocument.choices)
+    version = models.CharField(max_length=20)
+    accepted_at = models.DateTimeField(auto_now_add=True)
+    # Kept because an acceptance without any circumstance around it is weak
+    # evidence. Nothing else is: no user agent, no fingerprint.
+    ip = models.GenericIPAddressField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "aceite de política"
+        verbose_name_plural = "aceites de política"
+        ordering = ["-accepted_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "document", "version"], name="one_acceptance_per_version"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.user} aceitou {self.document} {self.version}"
+
+
+class ConsentPurpose(models.TextChoices):
+    """Purposes that run on consent rather than on contract.
+
+    Exactly one today. It is an enum rather than a boolean because the second
+    one — analytics shipped to a vendor, say — must not require a migration and
+    a rewrite of every call site to add.
+    """
+
+    AI_ASSISTANT = "ai_assistant", "Assistente de IA"
+
+
+class Consent(models.Model):
+    """Whether this person has authorised a purpose, and when they changed it.
+
+    One row per person per purpose, updated in place, with both timestamps kept.
+    Deleting the row on revocation would be the obvious implementation and the
+    wrong one: "they consented on the 17th and withdrew on the 20th" is exactly
+    what a data-subject complaint asks about, and a deleted row cannot say it.
+
+    Absence means "not granted". LGPD art. 8 wants consent to be an affirmative
+    act, so a default of True would not be consent at all.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="consents"
+    )
+    purpose = models.CharField(max_length=30, choices=ConsentPurpose.choices)
+    granted = models.BooleanField(default=False)
+    granted_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "consentimento"
+        verbose_name_plural = "consentimentos"
+        constraints = [
+            models.UniqueConstraint(fields=["user", "purpose"], name="one_consent_per_purpose")
+        ]
+
+    def __str__(self):
+        state = "concedido" if self.granted else "recusado"
+        return f"{self.user}: {self.purpose} {state}"

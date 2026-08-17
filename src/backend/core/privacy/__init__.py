@@ -6,6 +6,12 @@ cannot be bypassed by importing something one layer down and writing a second
 list of models.
 """
 
+from core.privacy.consent import (
+    AI_CONSENT_REQUIRED,
+    ahas_ai_consent,
+    has_ai_consent,
+    set_ai_consent,
+)
 from core.privacy.inventory import (
     INVENTORY,
     Basis,
@@ -17,11 +23,15 @@ from core.privacy.inventory import (
 )
 
 __all__ = [
+    "AI_CONSENT_REQUIRED",
     "INVENTORY",
     "Basis",
     "Disposal",
     "Record",
+    "ahas_ai_consent",
+    "has_ai_consent",
     "model_for",
     "purgeable",
     "record_for",
+    "set_ai_consent",
 ]

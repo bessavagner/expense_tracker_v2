@@ -313,6 +313,15 @@ ACCOUNT_RATE_LIMITS = {"login_failed": None}
 # their own admin.
 MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
 
+# --- Privacy and terms (E13) --------------------------------------------
+#
+# Dates, not integers: a version a person can compare with the day they signed
+# up is worth more than a counter nobody can place in time. Bump these in the
+# same commit that changes the document, or `PolicyAcceptance` records an
+# acceptance of text nobody can reconstruct.
+PRIVACY_POLICY_VERSION = os.environ.get("PRIVACY_POLICY_VERSION", "2026-08-17")
+TERMS_VERSION = os.environ.get("TERMS_VERSION", "2026-08-17")
+
 # --- Transactional email (E05 S05-2) ------------------------------------
 # Resend over plain SMTP, deliberately: an API-key-in-a-header SDK would be a
 # dependency and a code path, and Django already speaks SMTP. Switching
