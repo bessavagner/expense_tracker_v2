@@ -1,0 +1,30 @@
+{% extends "account/base.html" %}
+{% comment %}
+Turning 2FA off. The warning is blunt on purpose for a staff account: the
+admin gate demands a second factor, so deactivating locks them out of the
+admin until they re-enrol. That is correct and is not special-cased.
+{% endcomment %}
+
+{% block head_title %}Desativar verificação em duas etapas — Expense Tracker{% endblock %}
+{% block heading %}Desativar duas etapas{% endblock %}
+{% block subheading %}A partir daí, só a senha protege a sua conta.{% endblock %}
+
+{% block inner %}
+{% if form.non_field_errors %}
+<div role="alert" class="alert alert-error mb-4"><span>{{ form.non_field_errors|first }}</span></div>
+{% endif %}
+
+{% if request.user.is_staff %}
+<div role="alert" class="alert alert-warning mb-4">
+    <span>Sua conta é de administrador. Sem o segundo fator você perde o acesso ao painel até ativar de novo.</span>
+</div>
+{% endif %}
+
+<form method="post" action="{% url 'mfa_deactivate_totp' %}">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit" class="btn btn-error w-full mt-4" data-pending="Desativando…">Desativar</button>
+</form>
+
+<a href="{% url 'mfa_index' %}" class="link link-hover text-sm text-center mt-3">Cancelar</a>
+{% endblock %}

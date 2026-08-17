@@ -107,3 +107,125 @@ class TestTheStaffAdminGateIsUnchanged:
         response = client.get("/" + settings.ADMIN_URL_PATH)
         assert response.status_code == 302
         assert "2fa" in response["Location"] or "totp" in response["Location"]
+
+
+#: The password these tests set on the fixture user before signing back in.
+#: Not a secret — nothing outside this module reads it, and it exists only so
+#: `with_password` and the assertions cannot drift apart.
+PASSWORD = "uma-senha-bem-comprida"  # noqa: S105
+
+
+def with_password(client, user):
+    """Give `user` a known password and keep `client` signed in.
+
+    `set_password` rotates the session auth hash, which signs a `force_login`
+    client straight back out — so every one of these tests would otherwise be
+    asserting against the login page's 302 rather than the page it named.
+    """
+    user.set_password(PASSWORD)
+    user.save(update_fields=["password"])
+    client.force_login(user)
+    return user
+
+
+def activate_recovery_codes(user):
+    """Give `user` a set of recovery codes; without them the view 404s."""
+    from allauth.mfa.recovery_codes.internal import auth as recovery_auth
+
+    return recovery_auth.RecoveryCodes.activate(user)
+
+
+def past_reauthentication(client, user, url_name):
+    """Clear allauth's reauthentication gate and return the page behind it.
+
+    Enrolment, deactivation and the recovery codes all sit behind it: allauth
+    302s to `account_reauthenticate` first. A test that merely followed that
+    redirect would assert against the reauth page while claiming to test the
+    page beyond it — which is exactly what happened to three of these before
+    the redirect chain was read.
+    """
+    with_password(client, user)
+    return client.post(
+        reverse("account_reauthenticate") + "?next=" + reverse(url_name),
+        {"password": PASSWORD},
+        follow=True,
+    )
+
+
+@pytest.mark.django_db
+class TestTheStyledAllauthPages:
+    """Every page a user can reach from Segurança renders in the ledger theme.
+
+    Each test asserts on a string only this repo's override contains. Asserting
+    merely that the English is gone would prove nothing: allauth ships its own
+    pt-BR catalogue, so the stock templates are already translated. What was
+    missing before E18 was the *styling*, and a copy string unique to the
+    override is what distinguishes "our template rendered" from "allauth's
+    template rendered in Portuguese".
+    """
+
+    def test_password_change_is_the_styled_override(self, logged_client):
+        body = logged_client.get(reverse("account_change_password")).content.decode()
+        assert "Repita a nova senha" in body
+        assert "Você continua conectado nos aparelhos em que já entrou." in body
+        assert "Change Password" not in body
+
+    def test_password_change_still_posts_to_allauths_own_view(self, logged_client, user):
+        """The form is re-skinned, never reimplemented (spec D3)."""
+        with_password(logged_client, user)
+        response = logged_client.post(
+            reverse("account_change_password"),
+            {
+                "oldpassword": PASSWORD,
+                "password1": "outra-senha-bem-comprida",
+                "password2": "outra-senha-bem-comprida",
+            },
+        )
+        assert response.status_code in (200, 302)
+        user.refresh_from_db()
+        assert user.check_password("outra-senha-bem-comprida")
+
+    def test_reauthenticate_is_the_styled_override(self, logged_client, user):
+        with_password(logged_client, user)
+        body = logged_client.get(
+            reverse("account_reauthenticate") + "?next=" + reverse("account")
+        ).content.decode()
+        assert "Confirme que é você" in body
+        assert "Digite a sua senha para continuar." in body
+        assert "Confirm Access" not in body
+
+    def test_the_two_factor_overview_is_the_styled_override(self, logged_client):
+        body = logged_client.get(reverse("mfa_index"), follow=True).content.decode()
+        assert "Um código do seu celular, além da senha." in body
+        assert "duas etapas" in body.lower()
+        assert "Two-Factor Authentication" not in body
+
+    def test_totp_enrolment_is_the_styled_override(self, logged_client, user):
+        body = past_reauthentication(logged_client, user, "mfa_activate_totp").content.decode()
+        assert "Ou digite este código" in body
+        assert "Ativar duas etapas" in body
+        assert "Activate Authenticator App" not in body
+
+    def test_totp_deactivation_is_the_styled_override(self, logged_client, user):
+        activate_totp(user)
+        body = past_reauthentication(logged_client, user, "mfa_deactivate_totp").content.decode()
+        assert "Desativar duas etapas" in body
+        assert "A partir daí, só a senha protege a sua conta." in body
+        assert "Deactivate Authenticator App" not in body
+
+    def test_recovery_codes_are_the_styled_override(self, logged_client, user):
+        activate_totp(user)
+        activate_recovery_codes(user)
+        body = past_reauthentication(
+            logged_client, user, "mfa_view_recovery_codes"
+        ).content.decode()
+        assert "Use um deles se perder o acesso ao aplicativo autenticador." in body
+        assert "vale uma vez só" in body
+        assert "Recovery Codes" not in body
+
+    def test_every_styled_page_carries_the_ledger_shell(self, logged_client):
+        """They inherit `allauth/layouts/base.html`, which the repo overrides —
+        this is the assertion that an override did not break the chain."""
+        body = logged_client.get(reverse("account_change_password")).content.decode()
+        assert 'lang="pt-BR"' in body
+        assert "css/tailwind.css" in body

@@ -1,0 +1,40 @@
+{% extends "account/base.html" %}
+{% comment %}
+The second step of signing in. Reached by anyone with an authenticator, which
+from E18 is any user who chose one — not only staff.
+
+The cancel button posts to `account_logout` through a separate form, because
+the sign-in is only half done at this point and abandoning it has to end the
+partial session rather than leave it hanging.
+{% endcomment %}
+
+{% block head_title %}Entrar — Expense Tracker{% endblock %}
+{% block heading %}Verificação em duas etapas{% endblock %}
+{% block subheading %}Digite o código do seu aplicativo autenticador.{% endblock %}
+
+{% block inner %}
+{% if form.non_field_errors %}
+<div role="alert" class="alert alert-error mb-4"><span>{{ form.non_field_errors|first }}</span></div>
+{% endif %}
+
+<form method="post" action="{% url 'mfa_authenticate' %}">
+    {% csrf_token %}
+    <fieldset class="fieldset">
+        <label class="label" for="{{ form.code.id_for_label }}">Código</label>
+        <input type="text" name="{{ form.code.html_name }}" id="{{ form.code.id_for_label }}"
+               class="input w-full {% if form.code.errors %}input-error {% endif %}"
+               inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*"
+               placeholder="000000" required autofocus>
+        {% if form.code.errors %}
+        <p class="label text-error">{{ form.code.errors|first }}</p>
+        {% endif %}
+    </fieldset>
+    <button type="submit" class="btn btn-accent w-full mt-4" data-pending="Entrando…">Entrar</button>
+</form>
+
+<form id="logout-from-stage" method="post" action="{% url 'account_logout' %}" class="mt-3">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{% url 'account_login' %}">
+    <button type="submit" class="link link-hover text-sm w-full text-center">Cancelar</button>
+</form>
+{% endblock %}

@@ -1,0 +1,58 @@
+{% extends "account/base.html" %}
+{% comment %}
+The 2FA overview. Two panels, because `MFA_SUPPORTED_TYPES` is
+["totp", "recovery_codes"] — there is no webauthn branch here on purpose, and
+adding one means adding the type to settings first.
+{% endcomment %}
+
+{% block head_title %}Verificação em duas etapas — Expense Tracker{% endblock %}
+{% block heading %}Verificação em duas etapas{% endblock %}
+{% block subheading %}Um código do seu celular, além da senha.{% endblock %}
+
+{% block inner %}
+<section class="mb-6">
+    <div class="flex items-center gap-2 flex-wrap mb-1">
+        <h2 class="font-semibold">Aplicativo autenticador</h2>
+        {% if authenticators.totp %}
+        <span class="badge badge-success badge-sm">Ativo</span>
+        {% else %}
+        <span class="badge badge-ghost badge-sm">Inativo</span>
+        {% endif %}
+    </div>
+    {% if authenticators.totp %}
+    <p class="text-sm opacity-70 mb-3">
+        Pedimos um código de seis dígitos sempre que você entrar.
+    </p>
+    <a href="{% url 'mfa_deactivate_totp' %}" class="btn btn-outline btn-sm text-error">Desativar</a>
+    {% else %}
+    <p class="text-sm opacity-70 mb-3">
+        Use um aplicativo como o Google Authenticator ou o Authy.
+    </p>
+    <a href="{% url 'mfa_activate_totp' %}" class="btn btn-accent btn-sm">Ativar</a>
+    {% endif %}
+</section>
+
+{% if "recovery_codes" in MFA_SUPPORTED_TYPES %}
+<section>
+    <h2 class="font-semibold mb-1">Códigos de recuperação</h2>
+    {% if authenticators.recovery_codes %}
+    <p class="text-sm opacity-70 mb-3">
+        São a sua saída se você perder o celular. Guarde em outro lugar.
+    </p>
+    {% else %}
+    <p class="text-sm opacity-70 mb-3">Nenhum código gerado ainda.</p>
+    {% endif %}
+    {% if is_mfa_enabled %}
+    <div class="flex gap-2 flex-wrap">
+        {% if authenticators.recovery_codes %}
+        <a href="{% url 'mfa_view_recovery_codes' %}" class="btn btn-outline btn-sm">Ver</a>
+        <a href="{% url 'mfa_download_recovery_codes' %}" class="btn btn-outline btn-sm">Baixar</a>
+        {% endif %}
+        <a href="{% url 'mfa_generate_recovery_codes' %}" class="btn btn-outline btn-sm">Gerar novos</a>
+    </div>
+    {% endif %}
+</section>
+{% endif %}
+
+<a href="{% url 'account' %}" class="link link-hover text-sm text-center mt-6">Voltar para Conta</a>
+{% endblock %}
