@@ -16,8 +16,21 @@ from django.apps import apps
 from core.privacy import INVENTORY, Basis, Disposal, purgeable, record_for
 
 
+def installed_labels() -> set[str]:
+    """Every model this product actually ships.
+
+    Test modules may declare their own models — `accounts/tests/test_backfill.py`
+    builds a `LegacyRow` table so it can exercise the backfill against a shape
+    no live model has any more — and those get registered in the app registry
+    as soon as the module is imported. They are not part of the product and
+    hold nobody's data, so demanding a privacy decision for them would make
+    this suite pass or fail on collection order.
+    """
+    return {model._meta.label for model in apps.get_models() if ".tests." not in model.__module__}
+
+
 def test_every_installed_model_is_classified():
-    installed = {model._meta.label for model in apps.get_models()}
+    installed = installed_labels()
     classified = {record.label for record in INVENTORY}
 
     unclassified = installed - classified
@@ -28,8 +41,7 @@ def test_every_installed_model_is_classified():
 
 
 def test_the_inventory_names_no_model_that_does_not_exist():
-    installed = {model._meta.label for model in apps.get_models()}
-    ghosts = {record.label for record in INVENTORY} - installed
+    ghosts = {record.label for record in INVENTORY} - installed_labels()
     assert not ghosts, f"the inventory names models that were deleted: {sorted(ghosts)}"
 
 
