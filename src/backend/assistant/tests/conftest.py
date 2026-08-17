@@ -92,3 +92,20 @@ def household_mate(db, household):
     u = baker.make("core.CustomUser", username="colega", email="colega@example.com")
     Membership.objects.create(user=u, household=household)
     return u
+
+
+@pytest.fixture
+def consented_user(user):
+    """A user who has authorised the AI processing (E13).
+
+    Most of this suite is about what the assistant *does*, not about whether it
+    is allowed to. Without this, every one of those tests would assert a 403
+    from the consent gate and prove nothing about the behaviour it names.
+
+    A test that is actually about the gate asks for `user` and sets consent
+    itself — see `test_ai_consent_gate.py`.
+    """
+    from core.privacy import set_ai_consent
+
+    set_ai_consent(user, granted=True)
+    return user

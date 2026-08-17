@@ -53,7 +53,7 @@ class TestChatCsrf:
         assert response.status_code == 403
         assert not ChatMessage.objects.for_household(household).exists()
 
-    def test_post_with_valid_token_succeeds(self, csrf_client, household):
+    def test_post_with_valid_token_succeeds(self, csrf_client, household, consented_user):
         token = csrf_client.cookies["csrftoken"].value
         with agents_override(TestModel()):
             response = csrf_client.post(
@@ -65,7 +65,9 @@ class TestChatCsrf:
         assert response.status_code == 200
         assert response["Content-Type"] == "text/event-stream"
 
-    def test_multipart_image_with_valid_token_succeeds(self, csrf_client, household):
+    def test_multipart_image_with_valid_token_succeeds(
+        self, csrf_client, household, consented_user
+    ):
         from django.core.files.uploadedfile import SimpleUploadedFile
 
         from assistant.agents.assistant import assistant_agent
@@ -89,7 +91,9 @@ class TestChatCsrf:
             )
         assert response.status_code == 200
 
-    def test_multipart_audio_with_valid_token_succeeds(self, csrf_client, household, monkeypatch):
+    def test_multipart_audio_with_valid_token_succeeds(
+        self, csrf_client, household, monkeypatch, consented_user
+    ):
         from django.core.files.uploadedfile import SimpleUploadedFile
 
         async def fake_transcribe(data, filename, content_type, *, client=None, scope=None):

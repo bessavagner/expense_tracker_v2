@@ -25,7 +25,7 @@ def _consume(response):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_stream_failure_is_reported_and_the_message_is_unchanged(logged_client):
+def test_stream_failure_is_reported_and_the_message_is_unchanged(logged_client, consented_user):
     """The generic 'Erro ao processar mensagem' path was fully silent.
 
     It is the single most important site in the epic: every unhandled agent

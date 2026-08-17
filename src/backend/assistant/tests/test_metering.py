@@ -220,7 +220,9 @@ class TestTheChatRunIsMetered:
 
         return AgentScope(household=household, user=user, interaction=interaction)
 
-    def test_a_chat_turn_produces_one_usage_record(self, logged_client, user, household, settings):
+    def test_a_chat_turn_produces_one_usage_record(
+        self, logged_client, user, household, settings, consented_user
+    ):
         import json as _json
 
         from pydantic_ai.models.test import TestModel
@@ -248,7 +250,7 @@ class TestTheChatRunIsMetered:
         assert rec.latency_ms is not None
 
     def test_the_record_belongs_to_the_household_that_asked(
-        self, logged_client, user, household, other_household
+        self, logged_client, user, household, other_household, consented_user
     ):
         import json as _json
 
@@ -355,7 +357,7 @@ class TestExtractionIsMetered:
         return resp
 
     def test_a_receipt_photo_correlates_extraction_and_chat(
-        self, logged_client, user, household, priced
+        self, logged_client, user, household, priced, consented_user
     ):
         """DoD: one photo, several provider calls, all analysable as one event."""
         from pydantic_ai.models.test import TestModel
@@ -378,7 +380,7 @@ class TestExtractionIsMetered:
         assert UsageKind.CHAT in kinds
 
     def test_the_vision_escalation_produces_a_second_extraction_record(
-        self, logged_client, user, household, monkeypatch, priced, settings
+        self, logged_client, user, household, monkeypatch, priced, settings, consented_user
     ):
         """The expensive retry is a separate billable call, and the attempt that
         failed is billable too — the provider read the image either way.
@@ -500,7 +502,7 @@ class TestTranscriptionIsMetered:
         assert UsageRecord.objects.count() == 0
 
     def test_the_audio_turn_meters_its_transcription(
-        self, logged_client, user, household, monkeypatch
+        self, logged_client, user, household, monkeypatch, consented_user
     ):
         """The wiring: `chat_view` must hand the scope down, or every real
         transcription in production goes unbilled while the unit test passes."""

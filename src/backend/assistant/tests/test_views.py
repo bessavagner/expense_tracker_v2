@@ -33,7 +33,7 @@ def consume_streaming(response):
 
 @pytest.mark.django_db
 class TestChatEndpoint:
-    def test_post_creates_user_message(self, logged_client, user, household):
+    def test_post_creates_user_message(self, logged_client, user, household, consented_user):
 
         with agents_override(TestModel()):
             response = logged_client.post(
@@ -44,7 +44,7 @@ class TestChatEndpoint:
         assert response.status_code == 200
         assert ChatMessage.objects.for_household(household).filter(role="user").exists()
 
-    def test_post_returns_sse_content_type(self, logged_client, user):
+    def test_post_returns_sse_content_type(self, logged_client, user, consented_user):
 
         with agents_override(TestModel()):
             response = logged_client.post(
@@ -54,7 +54,7 @@ class TestChatEndpoint:
             )
         assert response["Content-Type"] == "text/event-stream"
 
-    def test_post_creates_assistant_message(self, logged_client, user, household):
+    def test_post_creates_assistant_message(self, logged_client, user, household, consented_user):
 
         with agents_override(TestModel()):
             response = logged_client.post(
@@ -76,7 +76,7 @@ class TestChatEndpoint:
         )
         assert response.status_code == 403
 
-    def test_post_empty_message(self, logged_client, user):
+    def test_post_empty_message(self, logged_client, user, consented_user):
 
         response = logged_client.post(
             "/api/assistant/chat/",
@@ -86,7 +86,7 @@ class TestChatEndpoint:
         assert response.status_code == 400
 
     def test_multipart_audio_transcribes_and_streams(
-        self, logged_client, user, monkeypatch, household
+        self, logged_client, user, monkeypatch, household, consented_user
     ):
 
         async def fake_transcribe(data, filename, content_type, *, client=None, scope=None):
@@ -110,7 +110,9 @@ class TestChatEndpoint:
         )
         assert ChatMessage.objects.for_household(household).filter(role="assistant").exists()
 
-    def test_multipart_image_routes_to_assistant(self, logged_client, user, household):
+    def test_multipart_image_routes_to_assistant(
+        self, logged_client, user, household, consented_user
+    ):
 
         # 1x1 PNG válido (bytes mínimos)
         png = (
@@ -137,7 +139,7 @@ class TestChatEndpoint:
             .exists()
         )
 
-    def test_image_creates_receipt_draft(self, logged_client, user, household):
+    def test_image_creates_receipt_draft(self, logged_client, user, household, consented_user):
         """Fase 1: a foto gera um ReceiptDraft persistido com a extração."""
         from assistant.agents.extraction import extraction_agent
         from assistant.models import ReceiptDraft
@@ -161,7 +163,7 @@ class TestChatEndpoint:
         assert ReceiptDraft.objects.for_household(household).exists()
 
     def test_resent_registered_receipt_does_not_reregister(
-        self, logged_client, user, monkeypatch, household
+        self, logged_client, user, monkeypatch, household, consented_user
     ):
         """Reenviar a MESMA nota (já registrada) NÃO abre um novo fluxo de recibo
         — não cria draft para re-commit. Evita a duplicata do incidente PAGUE
@@ -218,20 +220,22 @@ class TestChatEndpoint:
         # nenhum draft novo criado → não há recibo pendente para re-commit
         assert ReceiptDraft.objects.for_household(household).count() == before
 
-    def test_multipart_rejects_two_files(self, logged_client, user):
+    def test_multipart_rejects_two_files(self, logged_client, user, consented_user):
 
         a = SimpleUploadedFile("n.webm", b"\x00", content_type="audio/webm")
         i = SimpleUploadedFile("r.png", b"\x00", content_type="image/png")
         response = logged_client.post("/api/assistant/chat/", data={"audio": a, "image": i})
         assert response.status_code == 400
 
-    def test_multipart_rejects_bad_audio_type(self, logged_client, user):
+    def test_multipart_rejects_bad_audio_type(self, logged_client, user, consented_user):
 
         bad = SimpleUploadedFile("x.txt", b"\x00", content_type="text/plain")
         response = logged_client.post("/api/assistant/chat/", data={"audio": bad})
         assert response.status_code == 400
 
-    def test_multipart_accepts_audio_with_codecs_param(self, logged_client, user, monkeypatch):
+    def test_multipart_accepts_audio_with_codecs_param(
+        self, logged_client, user, monkeypatch, consented_user
+    ):
         """MediaRecorder envia content_type 'audio/webm;codecs=opus' — o
         parâmetro de codec não pode fazer a validação rejeitar (era 400 →
         'Erro de conexão' no widget)."""
@@ -252,7 +256,7 @@ class TestChatEndpoint:
         assert response.status_code == 200
         assert response["Content-Type"] == "text/event-stream"
 
-    def test_multipart_rejects_oversized_image(self, logged_client, user, settings):
+    def test_multipart_rejects_oversized_image(self, logged_client, user, settings, consented_user):
 
         settings.ASSISTANT_MAX_IMAGE_MB = 0  # tudo é grande demais
         big = SimpleUploadedFile("r.png", b"\x00" * 1024, content_type="image/png")
@@ -260,7 +264,7 @@ class TestChatEndpoint:
         assert response.status_code == 400
 
     def test_image_fallback_uses_the_escalation_model(
-        self, logged_client, user, monkeypatch, settings
+        self, logged_client, user, monkeypatch, settings, consented_user
     ):
         """Quando a leitura barata falha, a segunda tentativa usa o modelo FORTE.
 
@@ -299,7 +303,9 @@ class TestChatEndpoint:
         assert captured["calls"][0] == "openai:vision-sentinel", "primeira é a leitura barata"
         assert captured["calls"][1] == "openai:strong-sentinel", "segunda escala para o forte"
 
-    def test_image_is_preprocessed_before_send(self, logged_client, user, monkeypatch):
+    def test_image_is_preprocessed_before_send(
+        self, logged_client, user, monkeypatch, consented_user
+    ):
         """_handle_image deve passar a imagem por prepare_receipt_image."""
         calls = {}
 
@@ -339,7 +345,9 @@ class TestChatEndpoint:
         b"c\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
     )
 
-    def test_multiple_images_one_extraction(self, logged_client, user, monkeypatch, household):
+    def test_multiple_images_one_extraction(
+        self, logged_client, user, monkeypatch, household, consented_user
+    ):
         """N fotos => UMA chamada a extract_receipt com N imagens (mesmo recibo)."""
         from assistant.agents.extraction import ReceiptExtraction
 
@@ -372,7 +380,7 @@ class TestChatEndpoint:
             .exists()
         )
 
-    def test_rejects_too_many_images(self, logged_client, user, settings):
+    def test_rejects_too_many_images(self, logged_client, user, settings, consented_user):
 
         settings.ASSISTANT_MAX_IMAGES = 1
         img1 = SimpleUploadedFile("a.png", self._PNG, content_type="image/png")
@@ -380,14 +388,14 @@ class TestChatEndpoint:
         response = logged_client.post("/api/assistant/chat/", data={"image": [img1, img2]})
         assert response.status_code == 400
 
-    def test_rejects_bad_type_among_images(self, logged_client, user):
+    def test_rejects_bad_type_among_images(self, logged_client, user, consented_user):
 
         good = SimpleUploadedFile("a.png", self._PNG, content_type="image/png")
         bad = SimpleUploadedFile("x.txt", b"\x00", content_type="text/plain")
         response = logged_client.post("/api/assistant/chat/", data={"image": [good, bad]})
         assert response.status_code == 400
 
-    def test_image_proposes_without_writing(self, logged_client, seeded_user):
+    def test_image_proposes_without_writing(self, logged_client, seeded_user, consented_user):
         """Turno de imagem NUNCA cria Entry — apenas propõe via assistant_agent."""
         from assistant.agents.extraction import extraction_agent
         from finances.models import Entry
@@ -404,7 +412,7 @@ class TestChatEndpoint:
         assert Entry.objects.count() == 0
 
     def test_pending_receipt_routes_confirm_and_commits_once(
-        self, logged_client, seeded_user, seeded_scope, household
+        self, logged_client, seeded_user, seeded_scope, household, consented_user
     ):
         from assistant.agents.tools import propose_receipt
         from assistant.models import ReceiptDraft, ReceiptDraftStatus
@@ -450,7 +458,7 @@ class TestChatEndpoint:
         assert Entry.objects.for_household(household).count() == 2
 
     def test_pending_receipt_audio_routes_confirm_and_commits_once(
-        self, logged_client, seeded_user, seeded_scope, monkeypatch, household
+        self, logged_client, seeded_user, seeded_scope, monkeypatch, household, consented_user
     ):
         """Voice confirmation of a pending receipt must route to assistant_agent —
         regression guard for the audio path (single-agent mode)."""
@@ -491,7 +499,7 @@ class TestChatEndpoint:
         assert draft.status == ReceiptDraftStatus.REGISTERED
 
     def test_images_pass_user_taxonomy_to_extraction(
-        self, logged_client, user, monkeypatch, household
+        self, logged_client, user, monkeypatch, household, consented_user
     ):
 
         from assistant.agents.extraction import ReceiptExtraction
@@ -531,7 +539,9 @@ class TestChokepointWiring:
     are invisible to it. See the module docstring of `test_metering.py`.
     """
 
-    def test_an_abuse_refusal_makes_zero_model_calls(self, logged_client, user, settings):
+    def test_an_abuse_refusal_makes_zero_model_calls(
+        self, logged_client, user, settings, consented_user
+    ):
         """DoD: a ceiling-refused request produces zero model calls and no row.
 
         No `agents_override` here on purpose — `ALLOW_MODEL_REQUESTS` is False
@@ -551,7 +561,7 @@ class TestChokepointWiring:
         assert UsageInteraction.objects.count() == 0
 
     def test_a_household_out_of_credits_still_gets_an_answer(
-        self, logged_client, user, household, plan
+        self, logged_client, user, household, plan, consented_user
     ):
         """DoD: zero credits degrades to ESSENTIAL, it does NOT refuse."""
         from assistant.models import InteractionKind, UsageInteraction
@@ -580,7 +590,7 @@ class TestChokepointWiring:
         assert opened.credits_charged == 0
 
     def test_the_degrade_notice_arrives_before_any_token(
-        self, logged_client, user, household, plan
+        self, logged_client, user, household, plan, consented_user
     ):
         """A notice after the answer is a footnote nobody reads."""
         from assistant.models import InteractionKind, UsageInteraction
@@ -603,7 +613,9 @@ class TestChokepointWiring:
 
         assert body.index('"notice"') < body.index('"token"')
 
-    def test_a_household_with_credits_gets_no_notice(self, logged_client, user, household, plan):
+    def test_a_household_with_credits_gets_no_notice(
+        self, logged_client, user, household, plan, consented_user
+    ):
         """The notice is for a degrade. Emitting it always would train the user
         to ignore it."""
         with agents_override(TestModel()):
@@ -617,7 +629,7 @@ class TestChokepointWiring:
         assert '"type": "notice"' not in body
 
     def test_the_interaction_is_opened_before_any_model_call(
-        self, logged_client, user, household, monkeypatch
+        self, logged_client, user, household, monkeypatch, consented_user
     ):
         """A stream that dies mid-flight must still have counted against budget."""
         from assistant.models import UsageInteraction
@@ -638,7 +650,7 @@ class TestChokepointWiring:
 
     @pytest.mark.parametrize("field", ["model", "notice"])
     def test_the_text_path_threads_the_decision(
-        self, logged_client, user, household, monkeypatch, settings, field
+        self, logged_client, user, household, monkeypatch, settings, field, consented_user
     ):
         from django.http import JsonResponse
 
@@ -659,7 +671,7 @@ class TestChokepointWiring:
             assert captured["model"] == settings.LLM_TIER_ADVANCED
 
     def test_the_audio_path_threads_the_decision(
-        self, logged_client, user, household, monkeypatch, settings
+        self, logged_client, user, household, monkeypatch, settings, consented_user
     ):
         from django.http import JsonResponse
 
@@ -681,7 +693,7 @@ class TestChokepointWiring:
         assert "notice" in captured
 
     def test_the_image_path_threads_the_decision(
-        self, logged_client, user, household, monkeypatch, settings
+        self, logged_client, user, household, monkeypatch, settings, consented_user
     ):
         from django.http import JsonResponse
 
@@ -846,7 +858,7 @@ class TestTierEndpoint:
         assert household.preferred_tier == "advanced"
 
     def test_the_chosen_tier_is_what_the_chokepoint_spends(
-        self, logged_client, user, household, plan
+        self, logged_client, user, household, plan, consented_user
     ):
         """The switch has to mean something. Standard costs fewer credits per
         turn than Advanced, so choosing it must change what a turn is billed."""
@@ -969,7 +981,7 @@ class TestVisionEscalation:
         return response
 
     def test_a_confident_read_never_calls_the_second_model(
-        self, logged_client, user, household, monkeypatch, settings
+        self, logged_client, user, household, monkeypatch, settings, consented_user
     ):
         """The saving IS the calls not made. This test is the cost gate."""
         settings.LLM_VISION_MODEL = "cheap:model"
@@ -987,7 +999,7 @@ class TestVisionEscalation:
         assert calls == ["cheap:model"]
 
     def test_an_inconsistent_read_escalates_once(
-        self, logged_client, user, household, monkeypatch, settings
+        self, logged_client, user, household, monkeypatch, settings, consented_user
     ):
         settings.LLM_VISION_MODEL = "cheap:model"
         settings.LLM_VISION_ESCALATION_MODEL = "strong:model"
@@ -1004,7 +1016,7 @@ class TestVisionEscalation:
         assert calls == ["cheap:model", "strong:model"]
 
     def test_escalation_is_bounded_to_one_retry(
-        self, logged_client, user, household, monkeypatch, settings
+        self, logged_client, user, household, monkeypatch, settings, consented_user
     ):
         """DoD: bounded to one retry, never a loop. Both reads are bad here."""
         settings.LLM_VISION_MODEL = "cheap:model"
@@ -1022,7 +1034,7 @@ class TestVisionEscalation:
         assert len(calls) == 2
 
     def test_a_failed_first_read_escalates_rather_than_giving_up(
-        self, logged_client, user, household, monkeypatch, settings
+        self, logged_client, user, household, monkeypatch, settings, consented_user
     ):
         """The old retry re-ran the SAME model, so it could only survive a blip."""
         settings.LLM_VISION_MODEL = "cheap:model"
@@ -1042,7 +1054,7 @@ class TestVisionEscalation:
         assert calls == ["cheap:model", "strong:model"]
 
     def test_the_escalated_call_records_its_reason(
-        self, logged_client, user, household, monkeypatch, settings
+        self, logged_client, user, household, monkeypatch, settings, consented_user
     ):
         settings.LLM_VISION_MODEL = "cheap:model"
         settings.LLM_VISION_ESCALATION_MODEL = "strong:model"
@@ -1059,7 +1071,7 @@ class TestVisionEscalation:
         assert calls == ["", "inconsistent"]
 
     def test_the_escalated_read_is_the_one_that_reaches_the_draft(
-        self, logged_client, user, household, monkeypatch, settings
+        self, logged_client, user, household, monkeypatch, settings, consented_user
     ):
         """Escalating and then discarding the better read would spend for nothing."""
         from assistant.models import ReceiptDraft
