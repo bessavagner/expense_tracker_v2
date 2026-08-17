@@ -39,6 +39,8 @@ Three related gaps, grouped because they share one theme:
 | Empty-state component to build on | `src/backend/frontend/src/components/EmptyState.tsx` |
 | Existing PWA and TWA delivery | `core/views.py` — manifest, service worker, asset links |
 | The dashboard screenshot that already sells the product | `docs/images/dashboard.png` |
+| **No per-request log on the success path.** E13's breach tabletop found that `request_id` correlation answers only for requests that already logged an error — a request that succeeds quietly leaves no `jsonPayload` entry, so "find every request this user made" returns nothing. `core.middleware.log_context_middleware` already populates `request_id`/`user_id`/`household_id`; what is missing is one log line per request. Small change, large effect on incident scoping | `docs/superpowers/evidence/e13-breach-tabletop/README.md` |
+| **No per-row read log.** "Did anyone read Amanda's entries?" is unanswerable for a non-staff path. `core.AdminAccessLog` covers staff only. E13's privacy notice and breach procedure both state this limitation rather than implying otherwise | same tabletop; `docs/architecture/data-inventory.md` § boundary 6 |
 
 ## Stories
 

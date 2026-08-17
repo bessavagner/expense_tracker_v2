@@ -1910,6 +1910,198 @@ explicitly ask for that to be written down. Adopting them is not E13's
 deliverable; leaving a rail behind that nobody knows exists would be the same
 mistake twice.
 
+## Pedido de titular (LGPD) — 15 dias
+
+Most requests need no operator at all: access, portability, correction and
+deletion are all self-service in **Conta → Privacidade**. This section is for
+the ones that arrive by email — because the person cannot sign in, because they
+asked in writing, or because they want something the UI does not offer.
+
+**The deadline is 15 days** from the request (LGPD art. 19). Not 15 business
+days. Start by acknowledging, so the clock is visibly running.
+
+### 0. Log it
+
+Reply the same day:
+
+> Recebemos seu pedido em <data>. Vamos responder até <data + 15 dias>, que é o
+> prazo da LGPD. Se precisarmos confirmar sua identidade, escrevemos antes disso.
+
+### 1. Identify the person, without creating a new risk
+
+The address the request came from must match the account's, or you have no
+business acting on it. **Do not** accept a photo of a document as proof — it
+adds personal data you did not have and did not need. If the addresses do not
+match, ask them to send the request from the address on the account.
+
+```bash
+POSTGRES_PORT=5433 uv run python src/backend/manage.py shell -c "
+from core.models import CustomUser
+p = CustomUser.objects.filter(email__iexact='PESSOA@example.com').first()
+print(p, p and p.date_joined, p and [m.household.name for m in p.memberships.all()])"
+```
+
+### 2. Access or portability
+
+Point them at **Conta → Privacidade → Baixar meus dados**. It is the same
+archive you would build by hand, it is scoped to their household by
+construction, and it arrives through a signed expiring link rather than through
+your email client.
+
+If they genuinely cannot sign in, build it and hand it over out of band:
+
+```bash
+POSTGRES_PORT=5433 uv run python src/backend/manage.py shell -c "
+from accounts.resolution import household_for_user
+from core.models import CustomUser
+from finances.services.export_builder import build_export
+p = CustomUser.objects.get(email__iexact='PESSOA@example.com')
+open('/tmp/ledger-export.zip','wb').write(build_export(household_for_user(p)))
+print('ok')"
+```
+
+Delete `/tmp/ledger-export.zip` when it has been collected. It is somebody's
+complete financial history sitting on a disk.
+
+### 3. Correction
+
+Everything a person can see, they can edit. The one thing worth naming: the
+assistant's inferences are listed individually in **Conta → Privacidade**, each
+with its own delete button, and deleting one removes its embedding too.
+
+### 4. Deletion
+
+Self-service in **Conta → Privacidade → Excluir minha conta**, and prefer it:
+the UI offers the export first, which is the part an operator forgets.
+
+By hand, only when they cannot reach it:
+
+```bash
+POSTGRES_PORT=5433 uv run python src/backend/manage.py shell -c "
+from core.models import CustomUser
+from core.privacy import delete_account
+p = CustomUser.objects.get(email__iexact='PESSOA@example.com')
+print(delete_account(p))"
+```
+
+It prints a `DeletionReceipt`. **Keep it** — it is what you paste into the reply,
+and it is the only record that survives, because the account it describes does
+not.
+
+What survives a deletion, and why, is stated in the privacy notice, section 7:
+the household's ledger when somebody else is still in the house, and the
+anonymised metering rows kept for 730 days under legítimo interesse.
+
+### 5. Close it
+
+Reply inside the 15 days, naming what was done. If a request is refused —
+somebody asking to delete a household they do not own, say — say so plainly and
+say why. An unanswered request is the failure the deadline exists to prevent.
+
+## Incidente de segurança — 72 horas
+
+LGPD art. 48. The clock starts when you **become aware**, not when you finish
+investigating. 72 hours is the target for notifying the ANPD and the affected
+people, and the notification does not wait for a complete picture — an
+incomplete notice on time beats a complete one late.
+
+### Hour 0 — contain, then write down the time
+
+Write down the moment you became aware, before doing anything else. Every
+deadline below counts from it.
+
+Contain in this order:
+
+```bash
+# 1. Rotate whatever might be exposed. The service reads secrets at start, so
+#    a new revision is required for a rotation to take effect.
+#    See "Transactional email" and "Async tasks" for the secret names.
+
+# 2. If it is an application-level leak, roll back to the last good revision.
+#    List them first — `--format` keeps the output to what you need:
+gcloud run revisions list --service expense-tracker \
+  --project expense-tracker-482807 --region southamerica-east1 \
+  --format="table(metadata.name, status.conditions[0].lastTransitionTime)" --limit 5
+
+gcloud run services update-traffic expense-tracker \
+  --project expense-tracker-482807 --region southamerica-east1 \
+  --to-revisions <last-good-revision>=100
+
+# 3. If credentials may be loose, end every session.
+POSTGRES_PORT=5433 uv run python src/backend/manage.py shell -c "
+from django.contrib.sessions.models import Session
+print(Session.objects.all().delete())"
+```
+
+### Hours 0–24 — scope it
+
+The question the ANPD asks is *whose* data, and *what* data. These are the
+sources that can answer it, and they exist because earlier epics built them:
+
+| Question | Where the answer is | From |
+|---|---|---|
+| Which requests, and from where? | Cloud Logging, filtered by `request_id` | E06 |
+| Did staff read customer data? | `core.AdminAccessLog` — actor, path, timestamp | E05 S05-5 |
+| Who wrote or changed a row? | `created_by` on every authored model | E04 |
+| Which background work ran? | `core.TaskRun` — name, status, attempts, `request_id` | E10 |
+| Which households could a leak have touched? | `household` on all 18 tenant tables | E04 phase 4 |
+| Did an export leave? | `finances.ExportJob` — one row per archive built | E12 |
+
+```bash
+# Everything one request touched, across the app and its tasks.
+# `--freshness` is not optional: gcloud defaults to ONE DAY, which is shorter
+# than the 72-hour window this section is about, and the shortfall is silent.
+gcloud logging read \
+  'jsonPayload.request_id="<id>"' \
+  --project expense-tracker-482807 --limit 200 --freshness=7d --format json
+
+# Staff access in a window.
+POSTGRES_PORT=5433 uv run python src/backend/manage.py shell -c "
+from datetime import timedelta
+from django.utils import timezone
+from core.models import AdminAccessLog
+since = timezone.now() - timedelta(days=7)
+for row in AdminAccessLog.objects.filter(created_at__gte=since):
+    print(row.created_at, row.actor, row.method, row.path, row.ip)"
+
+# Archives built in a window — each one is a household's whole history.
+POSTGRES_PORT=5433 uv run python src/backend/manage.py shell -c "
+from datetime import timedelta
+from django.utils import timezone
+from finances.models import ExportJob
+since = timezone.now() - timedelta(days=7)
+for job in ExportJob._base_manager.filter(created_at__gte=since):
+    print(job.created_at, job.household_id, job.status, job.size_bytes)"
+```
+
+**A gap worth knowing before you need it.** There is no per-row read log. If the
+question is "did anyone read Amanda's entries?", the honest answer for a
+non-staff path is *we cannot tell from the data we keep* — and the notification
+has to say that rather than imply otherwise. E17 is where a customer-data
+access trail would live. Confirmed by the tabletop:
+`docs/superpowers/evidence/e13-breach-tabletop/`.
+
+### Hours 24–72 — notify
+
+Notify the **ANPD** at <https://www.gov.br/anpd> and the **affected people**
+directly. The notice must carry, at minimum:
+
+1. what data was involved;
+2. how many people, and which categories;
+3. what technical and security measures were in place;
+4. the risks involved;
+5. what has been done since, and what the person should do now;
+6. why, if the notification is late.
+
+Draft it in Portuguese, addressed to the person, not to a regulator. Send from
+the address in `PRIVACY_CONTACT_EMAIL`.
+
+### After — write it down
+
+An incident that nobody wrote up happens again. Add a dated file under
+`docs/superpowers/evidence/`, with the timeline, the scope, what was notified
+and what changed as a result.
+
 ## Usage, credits and cost (E07)
 
 ### Run the cost report
