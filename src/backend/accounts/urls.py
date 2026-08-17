@@ -9,8 +9,13 @@ from accounts.views import (
     MemberRemoveView,
 )
 from accounts.views_account import (
+    AccountDeletedView,
+    AccountDeleteView,
     AccountView,
+    AIConsentView,
     MembersTabView,
+    MemoryRuleDeleteView,
+    PrivacyTabView,
     ProfileTabView,
     SecurityTabView,
 )
@@ -23,6 +28,15 @@ urlpatterns = [
     path("conta/perfil/", ProfileTabView.as_view(), name="account_profile_tab"),
     path("conta/seguranca/", SecurityTabView.as_view(), name="account_security_tab"),
     path("conta/membros/", MembersTabView.as_view(), name="account_members_tab"),
+    path("conta/privacidade/", PrivacyTabView.as_view(), name="account_privacy_tab"),
+    path("conta/privacidade/ia/", AIConsentView.as_view(), name="account_ai_consent"),
+    path(
+        "conta/privacidade/memoria/<uuid:pk>/apagar/",
+        MemoryRuleDeleteView.as_view(),
+        name="account_memory_rule_delete",
+    ),
+    path("conta/privacidade/excluir/", AccountDeleteView.as_view(), name="account_delete"),
+    path("conta/excluida/", AccountDeletedView.as_view(), name="account_deleted"),
     # Kept as a permanent redirect rather than deleted: this path is in the
     # installed Android TWA and in whatever bookmarks the beta made, and there
     # is no way to push a URL change to a phone that already has the app. The
