@@ -22,19 +22,23 @@ from core.privacy.inventory import (
     purgeable,
     record_for,
 )
+from core.privacy.retention import PURGE_EXPIRED_DATA, count_expired, purge_expired
 
 __all__ = [
     "AI_CONSENT_REQUIRED",
     "INVENTORY",
+    "PURGE_EXPIRED_DATA",
     "Basis",
     "DeletionReceipt",
     "Disposal",
     "Record",
     "ahas_ai_consent",
+    "count_expired",
     "delete_account",
     "has_ai_consent",
     "model_for",
     "purgeable",
+    "purge_expired",
     "record_for",
     "set_ai_consent",
 ]

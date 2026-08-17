@@ -575,7 +575,15 @@ which is the failure the whole dead-letter path exists to prevent.
 ### Deploy variables
 
 Add to `gcloud run deploy --set-env-vars` (see *Deploy a new revision*; keep the
-`^@^` separator, these values contain no commas but the existing ones do):
+`^@^` separator, these values contain no commas but the existing ones do).
+
+**These are not set on the live service today.** Verified 2026-08-17 against
+revision `expense-tracker` in `southamerica-east1`: the service carries no
+`CLOUD_TASKS_*` variable at all, so `settings.py:530`'s default applies and
+production runs the **eager** backend — handlers execute in-process at enqueue
+time. That matches the *Import job status* section further down and contradicts
+nothing else; this block is what to set **when** the queue is switched on, not a
+description of what is running.
 
 ```
 CLOUD_TASKS_ENABLED=1
@@ -1741,6 +1749,166 @@ only if nobody else already has; a genuinely failed import is retried by the
 user uploading again, which re-runs duplicate detection first.
 `finances.build_export` retries three times because it is a pure read plus one
 write.
+
+## Retenção de dados (E13)
+
+Every period this job enforces is declared in
+`src/backend/core/privacy/inventory.py` and rendered by the privacy notice from
+that same list. **Changing a period means editing the inventory** — never the
+job, never the template. If you find a number in either, that is a bug.
+
+Today: chat 90 days, rascunhos de cupom 90 days, importações abandonadas 180
+days, exportações 180 days, convites 180 days, medição de uso 730 days,
+eventos de produto 730 days, feedback 730 days, log de acesso administrativo
+730 days, tentativas de login 30 days, `TaskRun` 90 days, sessões vencidas
+imediatamente.
+
+Uploaded CSVs and export archives are **not** in that list: those are deleted
+by the bucket's own 7-day lifecycle rule (E12 decision 2), because a deletion
+that depends on our cron running is a deletion that does not happen.
+
+### What would tomorrow's run delete?
+
+```bash
+POSTGRES_PORT=5433 uv run python src/backend/manage.py purge_expired_data --dry-run
+```
+
+Nothing is deleted and nothing is enqueued. Add `--as-of 2027-01-01` to ask the
+same question about a future date.
+
+### Run it by hand
+
+```bash
+POSTGRES_PORT=5433 uv run python src/backend/manage.py purge_expired_data
+```
+
+It prints the `TaskRun` id. Under `CLOUD_TASKS_ENABLED=0` — which is production
+today, see *Async tasks (E10) → Deploy variables* — the handler has already run
+in-process by the time the command returns.
+
+### Did last night's run happen?
+
+```bash
+POSTGRES_PORT=5433 uv run python src/backend/manage.py shell -c "
+from core.models import TaskRun
+for run in TaskRun.objects.filter(name='core.purge_expired_data')[:7]:
+    print(run.created_at.date(), run.status, run.payload.get('as_of'), run.last_error[:80])"
+```
+
+One row per day, `done`, empty error. A missing day means the Scheduler job did
+not fire — check it before assuming the data was already clean.
+
+### Provisioning the scheduled run (one-off, per environment)
+
+**Not yet provisioned.** Everything from here to the end of this section is the
+procedure, not a description of running infrastructure. E13 shipped the command
+and its tests; creating the job, the trigger and the alert is a separate,
+deliberate act against the live project.
+
+**This is the first scheduled job this project has.** The old
+`expense-tracker-keepalive` Scheduler job was deleted on 2026-08-14 in favour of
+a Monitoring uptime check, so `gcloud scheduler jobs list` is empty and the
+`create` block under *Cold starts* is history. Nothing here is "alongside" an
+existing job.
+
+A Cloud Run **Job**, not an HTTP endpoint. The service is deployed
+`--allow-unauthenticated`, so every public path is a thing to defend; a job
+runs the command with the service's own identity and adds no surface at all.
+
+```bash
+# 0. The API may have been left enabled from the deleted keepalive, or not.
+#    Enabling an already-enabled API is a no-op, so just run it.
+gcloud services enable cloudscheduler.googleapis.com run.googleapis.com \
+  --project expense-tracker-482807
+
+# 1. The job. Same image and same env as the service, --command overridden.
+#    The service's current image and runtime service account:
+#      gcloud run services describe expense-tracker \
+#        --project expense-tracker-482807 --region southamerica-east1 \
+#        --format="value(spec.template.spec.containers[0].image,\
+#                       spec.template.spec.serviceAccountName)"
+gcloud run jobs create ledger-purge \
+  --project expense-tracker-482807 \
+  --region southamerica-east1 \
+  --image <the image the service currently runs> \
+  --set-secrets <same as the service> \
+  --set-env-vars <same as the service> \
+  --command python \
+  --args src/backend/manage.py,purge_expired_data \
+  --max-retries 1 \
+  --task-timeout 600s
+
+# 2. The trigger. 03:20 local, when nobody is using the product.
+gcloud scheduler jobs create http ledger-purge-daily \
+  --project expense-tracker-482807 \
+  --location southamerica-east1 \
+  --schedule "20 3 * * *" \
+  --time-zone "America/Sao_Paulo" \
+  --uri "https://southamerica-east1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/expense-tracker-482807/jobs/ledger-purge:run" \
+  --http-method POST \
+  --oauth-service-account-email <the Cloud Run runtime service account> \
+  --description "E13: apaga dados cujo prazo de retencao venceu"
+```
+
+The Scheduler service account needs `roles/run.invoker` on the job.
+
+**Common failure:** the Scheduler job reports success while the Cloud Run job
+fails. `:run` returns 200 as soon as the execution is *created*. The `TaskRun`
+query above is the real check, which is the whole reason the command enqueues
+instead of sweeping silently.
+
+### Inspect an execution
+
+```bash
+gcloud run jobs executions list --job ledger-purge \
+  --project expense-tracker-482807 --region southamerica-east1 --limit 5
+```
+
+### Alerting when it stops — do not skip this
+
+E12 refused to let a cron own deletion, and its reasoning is on the record
+(`settings.py:553-555`): *a deletion that depends on our cron running is a
+deletion that does not happen*. Database rows have no lifecycle rule, so E13
+has no alternative — which makes **detecting a stopped sweep** the whole of the
+mitigation.
+
+```bash
+# Alert when a day passes with no successful purge. The log line comes from
+# core.privacy.retention.purge_expired, which logs on every run including the
+# ones that delete nothing.
+gcloud logging metrics create ledger_purge_ran \
+  --project expense-tracker-482807 \
+  --description "One entry per completed retention sweep (E13)" \
+  --log-filter='jsonPayload.message=~"Retention sweep for"'
+```
+
+Then, in Monitoring → Alerting, add a policy on `logging/user/ledger_purge_ran`
+that fires when the count is **0 over 36 hours**, notifying the same channel as
+the two existing policies (runbook § *The alert policies*). 36 rather than 24 so
+one late run is not a page.
+
+**Verify it the honest way:** disable the Scheduler job, wait for the window,
+confirm the alert fires, re-enable. An alert nobody has seen fire is an
+assumption.
+
+### The two orphans, adopted
+
+Until E13 there was no way to run a management command on a schedule at all, so
+two commands have been documenting one they never had:
+
+- `sweep_stuck_import_jobs` — "Schedule it next to the keepalive ping… once
+  every 15 minutes is plenty" (*Import and export jobs (E12)*). The keepalive it
+  points at was deleted on 2026-08-14.
+- `emit_usage_metrics` — "Schedule the daily run with Cloud Scheduler against a
+  Cloud Run job, or as a step in the existing cron path; **record whichever you
+  pick here**" (*Usage, credits and cost (E07)*). Never picked.
+
+Both now have a rail. Create one Cloud Run Job each, on the pattern above —
+`ledger-sweep-imports` on `*/15 * * * *`, `ledger-usage-metrics` daily at 03:40
+— and **update those two runbook sections to say which was chosen**, since both
+explicitly ask for that to be written down. Adopting them is not E13's
+deliverable; leaving a rail behind that nobody knows exists would be the same
+mistake twice.
 
 ## Usage, credits and cost (E07)
 
