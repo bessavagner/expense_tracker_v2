@@ -2,7 +2,7 @@
 id: E18
 title: Account surface (Conta)
 release: R3
-status: ready
+status: review
 depends_on: [E05]
 blocks: [E13, E15]
 wedge_critical: false

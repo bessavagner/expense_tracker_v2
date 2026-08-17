@@ -60,9 +60,10 @@ against the real bucket (footnote 12). The one that remains is **a data-subject
 request fulfilled in 15 days with deletion honoured (E13)**. Beta does not open
 until all four hold.
 
-E13 is still `blocked`, and not on E12: it depends on **E18** as well, and E18
-is `ready` rather than `done`. E18 is small and off the critical path, so it is
-now the shortest route to opening R3's gate.
+**E18's code is complete and in review as of 2026-08-16** (footnote 13). Once it
+closes, E13 is blocked by nothing: both of its dependencies, E12 and E18, will
+be done. E13 is then the single remaining condition on R3's gate — the whole of
+the distance between here and opening the beta.
 
 **R2's gate is observably true as of 2026-08-15.** Receipt and chat quality are
 scored against fifteen real receipts and seven conversations across five models
@@ -91,12 +92,12 @@ pipeline) is still open inside R2 but is not named by this gate.
 | [E10](E10-async-work-pipeline.md) | Async work pipeline | R2 | W | E06 | **done** (2026-08-15)¹¹ |
 | [E11](E11-onboarding-and-activation.md) | Onboarding & activation | R3 | W | E05 | **done** (2026-08-16)⁹ |
 | [E12](E12-durable-import-export-jobs.md) | Durable import/export jobs | R3 | | E10 | **done** (2026-08-16)¹² |
-| [E13](E13-lgpd-compliance.md) | LGPD compliance | R3 | | E12, E18 | blocked |
+| [E13](E13-lgpd-compliance.md) | LGPD compliance | R3 | | E12, E18 | blocked¹³ |
 | [E14](E14-product-analytics.md) | Product analytics | R3 | | E06, E11 | **done** (2026-08-16)¹ |
 | [E15](E15-billing-and-subscription.md) | Billing & subscription | R4 | | E07, E13, E18 | blocked |
 | [E16](E16-operations-staging-deploy-recovery.md) | Operations: staging, deploy, recovery | R4 | | E06 | ready |
 | [E17](E17-trust-surface.md) | Trust surface: audit, error UX, landing | R4 | | E11 | ready |
-| [E18](E18-account-surface.md) | Account surface (Conta) | R3 | | E05 | ready |
+| [E18](E18-account-surface.md) | Account surface (Conta) | R3 | | E05 | review¹³ |
 
 ### Defects
 
@@ -425,6 +426,40 @@ that is well inside Cloud Run's 300 s timeout; chunked execution is the fix if a
 real user ever hits it, and it is out of scope here.
 
 **E05 is done, so E11 and E18 are both open.** E18 is small and off the critical path — it can run alongside E11 rather than ahead of it. Its `blocks` edges into E13 and E15 are *UI-surface* dependencies, not data ones: both later epics add a tab to E18's page instead of inventing an account surface of their own.
+
+¹³ **E18's code is complete and its DoD commands pass** (2026-08-16): 2043 tests
+pass, coverage 93% against the 80 gate, `ruff check` and `ruff format --check`
+clean, and `makemigrations --check --dry-run` clean — **zero migrations**, which
+was a design constraint rather than a happy accident. The display name reuses
+`AbstractUser.first_name`, a column that existed and had never been written to.
+
+What shipped: `/casa/conta/` with three tabs — Perfil (display name, and the
+login address shown but never edited here), Segurança (password and 2FA status,
+linking out), Membros (absorbed from `/casa/membros/`, which is now a
+`RedirectView(permanent=True)` because the path is baked into the installed
+Android TWA). Each tab is a `_TabView` with its own URL that renders standalone
+on a non-HTMX hit, which is how E13's Privacidade and E15's Plano get their
+standalone render for free. `ACCOUNT_CHANGE_EMAIL` is on, so the address a user
+logs in with keeps working until the new one is verified. Ten allauth templates
+were re-skinned — no view, form or URL of allauth's was reimplemented.
+
+**Three things worth carrying forward:**
+
+- **`base.html` renders Django `messages` nowhere.** E18 fixed it for the Conta
+  tabs only (`accounts/tab_page.html`), which is why
+  `messages.success(request, f"Convite enviado para {email}.")` had never once
+  been visible to anyone. Everywhere else in the app, `messages.*` is still
+  written and thrown away. That is a real defect with a wider blast radius than
+  this epic and deserves its own ticket rather than a silent partial fix.
+- **`templates/settings/settings_page.html` still carries `tabs-bordered`,** a
+  daisyUI 4 class dropped in v5. It generates nothing — confirmed by its absence
+  from the built `tailwind.css` — so the settings tabs are unstyled today, and
+  its `<a class="tab">` elements have no `href` and so take no keyboard focus.
+  The Conta page deliberately does *not* copy either bug (`tabs-border`,
+  `<button role="tab">`); fixing the settings page is a separate small ticket.
+- **2FA is now offered to every user (spec D5).** The login-time challenge page
+  `mfa/authenticate.html` is therefore on the critical login path for anyone who
+  enrols, which is why it was styled even though the epic did not name it.
 
 ---
 
