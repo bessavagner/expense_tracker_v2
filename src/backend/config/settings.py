@@ -296,6 +296,10 @@ ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 3
 # adapter's send-the-mail hooks all run after that decision — see
 # `accounts.signals.verify_invited_email`.
 ACCOUNT_ADAPTER = "allauth.account.adapter.DefaultAccountAdapter"
+# E13: the terms checkbox, and the PolicyAcceptance rows it writes. This is
+# allauth's supported extension point — the class becomes the base of both the
+# local and the social signup form, so nothing about the flow itself is forked.
+ACCOUNT_SIGNUP_FORM_CLASS = "accounts.forms_signup.LedgerSignupForm"
 # allauth ships its own login throttle (`10/m/ip, 5/300s/key`, cache-backed).
 # It is switched off because E01's lockout already answers this question, and
 # two throttles with different windows is worse than either alone: allauth's is

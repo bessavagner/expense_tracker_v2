@@ -129,6 +129,8 @@ class TestAcceptingWithoutAnAccount:
                 "email2": "nova@example.com",
                 "password1": SENHA,
                 "password2": SENHA,
+                # E13: the signup form now carries a required acceptance checkbox.
+                "accept_terms": "on",
             },
         )
 

@@ -47,6 +47,25 @@
         <p class="label text-error">{{ form.password2.errors|first }}</p>
         {% endif %}
     </fieldset>
+    {# E13. Required, and the links are not decoration: an acceptance of a #}
+    {# document the person had no way to read is not informed consent.     #}
+    <fieldset class="fieldset mt-2">
+        <label class="label cursor-pointer justify-start gap-3 items-start">
+            <input type="checkbox" name="accept_terms" id="id_accept_terms"
+                   class="checkbox checkbox-sm mt-0.5
+                          {% if form.accept_terms.errors %}checkbox-error{% endif %}"
+                   {% if form.accept_terms.value %}checked{% endif %} required>
+            <span class="text-sm leading-snug">
+                Li e aceito os
+                <a href="{% url 'terms_of_service' %}" target="_blank" class="link">Termos de Uso</a>
+                e o
+                <a href="{% url 'privacy_notice' %}" target="_blank" class="link">Aviso de Privacidade</a>.
+            </span>
+        </label>
+        {% if form.accept_terms.errors %}
+        <p class="label text-error">{{ form.accept_terms.errors|first }}</p>
+        {% endif %}
+    </fieldset>
     {% if redirect_field_value %}
     <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
     {% endif %}

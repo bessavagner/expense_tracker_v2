@@ -99,6 +99,10 @@ _ONBOARDING_EXEMPT_PREFIXES = (
     "/offline/",
     "/manifest.webmanifest",
     "/.well-known/",
+    # E13. Every new signup has an unonboarded household, and every new signup
+    # is exactly who clicks these links from the form they are filling in.
+    "/privacidade/",
+    "/termos/",
 )
 
 
