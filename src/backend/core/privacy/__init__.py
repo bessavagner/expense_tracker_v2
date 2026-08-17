@@ -12,6 +12,7 @@ from core.privacy.consent import (
     has_ai_consent,
     set_ai_consent,
 )
+from core.privacy.deletion import DeletionReceipt, delete_account
 from core.privacy.inventory import (
     INVENTORY,
     Basis,
@@ -26,9 +27,11 @@ __all__ = [
     "AI_CONSENT_REQUIRED",
     "INVENTORY",
     "Basis",
+    "DeletionReceipt",
     "Disposal",
     "Record",
     "ahas_ai_consent",
+    "delete_account",
     "has_ai_consent",
     "model_for",
     "purgeable",
