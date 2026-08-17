@@ -151,3 +151,12 @@ def test_the_things_a_person_wrote_go_with_them(label):
     """D1: the household's ledger survives a member leaving; their own words
     do not."""
     assert record_for(label).disposal is Disposal.AUTHOR
+
+
+def test_the_boundaries_document_exists_beside_the_notice():
+    """S13-6: 'the inventory is kept with the privacy notice so both stay
+    consistent'."""
+    from pathlib import Path
+
+    doc = Path(__file__).resolve().parents[4] / "docs" / "architecture" / "data-inventory.md"
+    assert doc.is_file()
