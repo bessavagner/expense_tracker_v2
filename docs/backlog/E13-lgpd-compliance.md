@@ -130,7 +130,13 @@ Observable assertions:
 - [x] A test asserts no personal data survives deletion, parameterized across
       every model holding personal data — `core/tests/test_privacy_deletion.py`,
       parameterized from `core.privacy.INVENTORY`, and proved able to fail by
-      deleting the delete and watching all four parameterizations go red
+      deleting the delete and watching all four parameterizations go red.
+      **The security review found one real defect here and it is fixed:**
+      `_delete_authored_rows` was scoped to the households the person belongs to
+      *now*, so anything they had written in a household they were later removed
+      from survived their account deletion — readable, with only `created_by`
+      nulled. Now unscoped, with a regression test and a sweep asserting the
+      address survives in no table at all
 - [x] Household deletion edge cases are implemented and tested — last owner
       promotes the longest-standing member; last member takes the household
 - [x] The chat purge job runs on schedule and is tested —

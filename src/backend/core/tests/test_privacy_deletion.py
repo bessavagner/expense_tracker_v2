@@ -150,6 +150,81 @@ class TestNothingPersonalSurvives:
 
         assert not MemoryEmbedding.objects.filter(id=embedding_id_for(rule.pk)).exists()
 
+    def test_what_they_wrote_in_a_household_they_left_goes_too(self, household, user):
+        """Found by E13's security review, and it was real.
+
+        `_delete_authored_rows` used to be called once per *current* membership
+        and filtered on that household. A person removed from a household left
+        their authored rows behind — and deleting their account then never
+        looked there, so their chat messages survived, readable, with only
+        `created_by` nulled by the FK. "Their own words go with them" has to
+        mean wherever they wrote them.
+        """
+        from assistant.models import ChatMessage, MemoryRule, MemorySource, MessageRole
+
+        socia = baker.make("core.CustomUser", username="socia", email="socia@example.com")
+        Membership.objects.create(user=socia, household=household, role=Role.MEMBER)
+
+        left_behind = Household.objects.create(name="Casa antiga")
+        Membership.objects.create(user=user, household=left_behind, role=Role.OWNER)
+        expired = Membership.objects.create(user=socia, household=left_behind, role=Role.MEMBER)
+
+        message = baker.make(
+            ChatMessage,
+            household=left_behind,
+            created_by=socia,
+            role=MessageRole.USER,
+            content="segredo da socia",
+        )
+        rule = MemoryRule.objects.create(
+            household=left_behind,
+            created_by=socia,
+            trigger="x",
+            field="category",
+            value="Outros",
+            source=MemorySource.INFERRED,
+        )
+        expired.delete()  # an owner removed her; her rows stayed behind
+
+        delete_account(socia)
+
+        assert not ChatMessage._base_manager.filter(pk=message.pk).exists()
+        assert not MemoryRule._base_manager.filter(pk=rule.pk).exists()
+
+    def test_the_address_itself_survives_nowhere_in_the_database(self, two_person_household):
+        """A sweep rather than a list: every table, every row, one string.
+
+        The per-model assertions above each name a table somebody thought of.
+        This one names none, so a column that starts holding an address next
+        year is covered by a test written this year.
+        """
+        from allauth.account.models import EmailAddress
+
+        from assistant.models import ChatMessage, MessageRole
+        from core.models import Feedback, LoginAttempt, ProductEvent
+        from finances.models import Entry
+
+        household, _, socia = two_person_household
+        EmailAddress.objects.create(user=socia, email=socia.email, verified=True, primary=True)
+        baker.make(ChatMessage, household=household, created_by=socia, role=MessageRole.USER)
+        baker.make(Entry, household=household, created_by=socia)
+        Feedback.objects.create(household=household, user=socia, message="oi")
+        ProductEvent.objects.create(household=household, user=socia, name="signup")
+        LoginAttempt.objects.create(username="socia@example.com", ip="203.0.113.7")
+
+        delete_account(socia)
+
+        from django.apps import apps
+
+        survivors = [
+            model._meta.label
+            for model in apps.get_models()
+            if ".tests." not in model.__module__
+            for row in model._base_manager.all()[:500]
+            if "socia@example.com" in str(row.__dict__)
+        ]
+        assert not survivors, f"the address survived in: {sorted(set(survivors))}"
+
 
 class TestWhatTheHouseholdKeeps:
     def test_the_ledger_survives_for_whoever_is_left(self, two_person_household):

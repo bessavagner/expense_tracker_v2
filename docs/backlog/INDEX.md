@@ -647,7 +647,7 @@ sections making the export a real access request (`meta.formato` → 2); and two
 public documents at `/privacidade/` and `/termos/` whose purpose, basis and
 retention tables are rendered from the inventory rather than typed.
 
-Three findings worth keeping:
+Four findings worth keeping:
 
 - **`assistant.UsageInteraction.user` was the one FK still on CASCADE.** A member
   deleting their account silently erased the household's credit history — E07's
@@ -662,6 +662,10 @@ Three findings worth keeping:
   request that succeeds quietly emits no structured log line at all, so "find
   every request this user made" returns nothing precisely in the scenario where
   it matters. Recorded as evidence on E17, along with the absent per-row read log.
+- **The security review found deletion was scoped to current memberships.** A
+  person removed from a household left their authored rows behind, and deleting
+  their account never looked there — their chat messages survived, readable.
+  Fixed, with a regression test and a whole-database sweep for the address.
 
 **Still outstanding, and none of it is code:** the legal review; DPAs with
 OpenAI, Supabase, Resend and Pydantic; and the **provisioning of the purge job** —

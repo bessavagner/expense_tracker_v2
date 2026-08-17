@@ -103,7 +103,8 @@ def delete_account(user) -> DeletionReceipt:
                     promoted_to,
                 )
 
-            _delete_authored_rows(user, household, rows_deleted)
+        # Once, and NOT inside the loop above: see the function's docstring.
+        _delete_authored_rows(user, rows_deleted)
 
         _delete_login_attempts_for(user, rows_deleted)
         _delete_sessions_for(user, rows_deleted)
@@ -134,18 +135,31 @@ def delete_account(user) -> DeletionReceipt:
     )
 
 
-def _delete_authored_rows(user, household, counts: dict[str, int]) -> None:
-    """The rows this person wrote, inside a household that outlives them.
+def _delete_authored_rows(user, counts: dict[str, int]) -> None:
+    """The rows this person wrote — wherever they wrote them.
 
     Driven by the inventory. A model added later with ``Disposal.AUTHOR`` is
     covered here without anyone editing this function, which is the point of
     the registry existing at all.
+
+    DELIBERATELY NOT SCOPED TO A HOUSEHOLD, and called once rather than once per
+    membership. An earlier version filtered on the households the person belongs
+    to *now*, which quietly spared everything they had written in a household
+    they were later removed from: an owner removes a member, and that member's
+    chat messages sit there, readable, surviving their account deletion. E13's
+    security review found it. "Their own words go with them" (plan decision D1)
+    is a statement about the person, not about their current memberships, and
+    `created_by` is the only handle that expresses it.
+
+    Rows in a household this deletion just removed entirely are already gone by
+    the time this runs — the household's CASCADE took them — so they simply do
+    not match.
     """
     for record in INVENTORY:
         if record.disposal is not Disposal.AUTHOR:
             continue
         model = model_for(record)
-        rows = model._base_manager.filter(household=household, **{record.subject_field: user})
+        rows = model._base_manager.filter(**{record.subject_field: user})
         if record.label == "assistant.MemoryRule":
             _delete_embeddings_for(rows)
         deleted, _ = rows.delete()
