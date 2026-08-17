@@ -15,13 +15,25 @@ rendered from the same lists the code enforces.
 from django.conf import settings
 from django.views.generic import TemplateView
 
+from core.privacy import INVENTORY, Basis, Disposal, purgeable
+from core.privacy.subprocessors import SUBPROCESSORS
+
 
 class PrivacyNoticeView(TemplateView):
     template_name = "legal/privacidade.html"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        context["controller"] = settings.PRIVACY_CONTROLLER
         context["version"] = settings.PRIVACY_POLICY_VERSION
+        context["purposes"] = [
+            record for record in INVENTORY if record.disposal is not Disposal.NONE
+        ]
+        context["bases"] = list(Basis)
+        # `retention_days == 0` is the expired-session sweep — true, and not
+        # something to put in a table of promises about how long we keep things.
+        context["retentions"] = [record for record in purgeable() if record.retention_days]
+        context["subprocessors"] = SUBPROCESSORS
         return context
 
 
@@ -30,5 +42,6 @@ class TermsView(TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        context["controller"] = settings.PRIVACY_CONTROLLER
         context["version"] = settings.TERMS_VERSION
         return context

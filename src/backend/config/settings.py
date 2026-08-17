@@ -326,6 +326,17 @@ MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
 PRIVACY_POLICY_VERSION = os.environ.get("PRIVACY_POLICY_VERSION", "2026-08-17")
 TERMS_VERSION = os.environ.get("TERMS_VERSION", "2026-08-17")
 
+# Who is legally answerable for this data (LGPD art. 5º, VI and art. 41). Read
+# from the environment so a fork or a staging deployment cannot accidentally
+# publish a notice naming somebody else. `manage.py check --deploy` fails when
+# any of these is blank — see core/checks_privacy.py.
+PRIVACY_CONTROLLER = {
+    "name": os.environ.get("PRIVACY_CONTROLLER_NAME", ""),
+    "cnpj": os.environ.get("PRIVACY_CONTROLLER_CNPJ", ""),
+    "address": os.environ.get("PRIVACY_CONTROLLER_ADDRESS", ""),
+    "email": os.environ.get("PRIVACY_CONTACT_EMAIL", ""),
+}
+
 # --- Transactional email (E05 S05-2) ------------------------------------
 # Resend over plain SMTP, deliberately: an API-key-in-a-header SDK would be a
 # dependency and a code path, and Django already speaks SMTP. Switching

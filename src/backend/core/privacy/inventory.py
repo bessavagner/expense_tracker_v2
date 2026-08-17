@@ -182,7 +182,10 @@ INVENTORY: tuple[Record, ...] = (
     ),
     Record(
         "assistant.MemoryRule",
-        "Lembrar suas correções — que 'cosmos' é mercado, por exemplo — para "
+        # Typographic quotes, not straight ones: this string is rendered into
+        # the privacy notice verbatim, and Django escapes `'` to `&#x27;` —
+        # which reads as mojibake in a legal document a person has to trust.
+        "Lembrar suas correções — que “cosmos” é mercado, por exemplo — para "
         "não errar a mesma categoria duas vezes.",
         Basis.CONSENT,
         Disposal.AUTHOR,

@@ -43,6 +43,13 @@ of it.
         {% endcomment %}
         {% block shell %}{% block content %}{% endblock %}{% endblock %}
     </main>
+    {# E13. Reachable from the login and signup screens, which is where somebody #}
+    {# deciding whether to trust this product is standing.                       #}
+    <footer class="fixed bottom-0 inset-x-0 py-3 text-center text-xs opacity-60">
+        <a href="{% url 'privacy_notice' %}" class="link link-hover">Aviso de Privacidade</a>
+        <span class="mx-1">·</span>
+        <a href="{% url 'terms_of_service' %}" class="link link-hover">Termos de Uso</a>
+    </footer>
     {% include "partials/_submit_guard.html" %}
 </body>
 </html>
