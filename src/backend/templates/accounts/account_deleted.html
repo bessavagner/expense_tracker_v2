@@ -1,0 +1,24 @@
+{% extends "base_public.html" %}
+{% comment %}
+The one page a deleted account sees. Extends `base_public.html` because by the
+time anyone gets here they have no session — `base.html` assumes a signed-in
+user and half of it would redirect straight back to a login screen.
+{% endcomment %}
+
+{% block title %}Conta excluída — Expense Tracker{% endblock %}
+
+{% block content %}
+<div class="card bg-base-100 shadow-md max-w-md w-full">
+    <div class="card-body items-center text-center">
+        <div class="text-5xl mb-2">👋</div>
+        <h1 class="card-title">Conta excluída</h1>
+        <p class="text-base-content/70">
+            Seus dados foram apagados. Obrigado por ter usado o Ledger — se um dia
+            quiser voltar, é só criar uma conta nova.
+        </p>
+        <div class="card-actions mt-4">
+            <a href="{% url 'account_login' %}" class="btn btn-ghost btn-sm">Voltar ao início</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
