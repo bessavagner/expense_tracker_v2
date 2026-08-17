@@ -160,6 +160,49 @@ class TestTheArchiveIsStillWhatE12Built:
         assert "conta" in readme.lower()
 
 
+class TestTheContaSectionIsScopedToThisHousehold:
+    """The `conta` section joins through `user__memberships__household`, which is
+    the one query in this file that reaches *people* rather than rows. E13's plan
+    flagged it for security review by name, so the answer lives here as a test
+    rather than in a reviewer's memory."""
+
+    def test_a_member_of_two_households_does_not_bleed_between_them(
+        self, household, user, other_household, other_user
+    ):
+        """`user` is in BOTH households; `other_user` is only in the second.
+        The first household's archive must not name the second's member."""
+        from accounts.models import Membership, Role
+        from core.models import PolicyAcceptance, PolicyDocument
+        from core.privacy import set_ai_consent
+
+        Membership.objects.create(user=user, household=other_household, role=Role.MEMBER)
+        PolicyAcceptance.objects.create(
+            user=user, document=PolicyDocument.TERMS, version="2026-08-17"
+        )
+        PolicyAcceptance.objects.create(
+            user=other_user, document=PolicyDocument.TERMS, version="2026-08-17"
+        )
+        set_ai_consent(user, granted=True)
+        set_ai_consent(other_user, granted=True)
+
+        raw = json.dumps(ledger(household), ensure_ascii=False)
+
+        assert other_user.email not in raw
+
+    def test_the_membership_join_does_not_multiply_rows(self, household, user, other_household):
+        """A person in two households matches the join once per household. The
+        filter pins one, so an acceptance is listed once rather than squared."""
+        from accounts.models import Membership, Role
+        from core.models import PolicyAcceptance, PolicyDocument
+
+        Membership.objects.create(user=user, household=other_household, role=Role.MEMBER)
+        PolicyAcceptance.objects.create(
+            user=user, document=PolicyDocument.TERMS, version="2026-08-17"
+        )
+
+        assert len(ledger(household)["conta"]["aceites"]) == 1
+
+
 class TestNothingPersonalIsLeftOut:
     def test_every_household_owned_model_holding_personal_data_is_in_the_archive(self, household):
         """The completeness assertion, driven by the inventory rather than by a
