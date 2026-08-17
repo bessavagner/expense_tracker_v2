@@ -7,13 +7,11 @@ URL, and `?next=` carries it back through signup and verification.
 """
 
 from django.contrib import messages
-from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpResponseBadRequest, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
 from django.views import View
-from django.views.generic import TemplateView
 
 from accounts.emails import send_invitation
 from accounts.invitations import (
@@ -24,7 +22,7 @@ from accounts.invitations import (
     revoke_invitation,
 )
 from accounts.models import Invitation, Membership, Role
-from accounts.permissions import OwnerRequiredMixin, is_owner
+from accounts.permissions import OwnerRequiredMixin
 
 #: Where the landing page leaves the token so signup can find it. The URL is
 #: the primary carrier (`?next=`); this is the backup for the case that URL
@@ -33,49 +31,25 @@ from accounts.permissions import OwnerRequiredMixin, is_owner
 PENDING_INVITE_SESSION_KEY = "pending_invitation_token"
 
 
-class MembersView(LoginRequiredMixin, TemplateView):
-    """Who is in this household, and who has been invited.
-
-    Visible to every member — knowing who can see the family's money is not a
-    privilege. Only the owner gets the controls, and that is enforced in the
-    views they post to, not by hiding the buttons.
-    """
-
-    template_name = "accounts/members.html"
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        household = self.request.household
-        context["household"] = household
-        context["memberships"] = (
-            Membership.objects.filter(household=household)
-            .select_related("user")
-            .order_by("created_at")
-        )
-        context["invitations"] = [
-            invitation
-            for invitation in Invitation.objects.for_request(self.request)
-            if invitation.is_pending
-        ]
-        context["viewer_is_owner"] = is_owner(self.request.user, household)
-        return context
-
-
 class InvitationCreateView(OwnerRequiredMixin, View):
     """An owner invites someone by email."""
 
     def post(self, request, *args, **kwargs):
+        # `account_members_tab`, not `account`: the Conta shell always opens on
+        # Perfil (no `?tab=` — spec's call), so redirecting there would drop the
+        # owner somewhere unrelated to the invitation they just sent. The tab's
+        # own URL renders as a full page with the app chrome and a way back.
         email = (request.POST.get("email") or "").strip()
         if not email:
             messages.error(request, "Informe um e-mail.")
-            return HttpResponseRedirect(reverse("members"))
+            return HttpResponseRedirect(reverse("account_members_tab"))
 
         invitation, raw_token = create_invitation(
             household=request.household, invited_by=request.user, email=email
         )
         send_invitation(invitation, raw_token, request)
         messages.success(request, f"Convite enviado para {email}.")
-        return HttpResponseRedirect(reverse("members"))
+        return HttpResponseRedirect(reverse("account_members_tab"))
 
 
 class InvitationAcceptView(View):
@@ -127,7 +101,7 @@ class InvitationRevokeView(OwnerRequiredMixin, View):
             raise Http404
         revoke_invitation(invitation)
         messages.success(request, f"Convite para {invitation.email} cancelado.")
-        return HttpResponseRedirect(reverse("members"))
+        return HttpResponseRedirect(reverse("account_members_tab"))
 
 
 class MemberRemoveView(OwnerRequiredMixin, View):
@@ -167,4 +141,4 @@ class MemberRemoveView(OwnerRequiredMixin, View):
         email = membership.user.email
         membership.delete()
         messages.success(request, f"{email} não faz mais parte da casa.")
-        return HttpResponseRedirect(reverse("members"))
+        return HttpResponseRedirect(reverse("account_members_tab"))

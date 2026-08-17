@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% comment %}
+Any Conta tab, rendered on its own.
+
+The tabs are HTMX fragments inside `account_page.html`; this is what the same
+fragment looks like when its URL is opened directly — a bookmark, a redirect
+after a form post, or a test. One wrapper rather than one per tab, so E13's
+Privacidade and E15's Plano get their standalone render for nothing.
+
+The messages block is here because `base.html` has none: until E18 the
+`messages.success` calls in `accounts/views.py` were written and never shown.
+{% endcomment %}
+
+{% block title %}{{ tab_title }} — Conta{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto space-y-4">
+    <a href="{% url 'account' %}" class="link link-hover text-sm">← Conta</a>
+
+    {% if messages %}
+    <div class="space-y-2">
+        {% for message in messages %}
+        <div role="alert" class="alert {% if message.tags == 'error' %}alert-error{% else %}alert-success{% endif %}">
+            <span>{{ message }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% include fragment_template %}
+</div>
+{% endblock %}

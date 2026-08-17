@@ -1,0 +1,72 @@
+{% extends "account/base.html" %}
+{% comment %}
+allauth's single-address email change, in the ledger theme and in pt-BR.
+
+The flow is allauth's, unchanged — this file only replaces the `{% element %}`
+markup with the repo's daisyUI. Three states: no change pending, a change
+pending (re-send / cancel), and the form to start one.
+
+Nothing here tells the user whether an address already belongs to somebody
+else. That is not an oversight: `ACCOUNT_PREVENT_ENUMERATION` exists to stop
+this page becoming an "is this person a customer?" oracle, and a friendlier
+message is the leak.
+{% endcomment %}
+
+{% block head_title %}Alterar e-mail — Expense Tracker{% endblock %}
+{% block heading %}Seu e-mail{% endblock %}
+{% block subheading %}É o endereço com que você entra.{% endblock %}
+
+{% block inner %}
+{% if form.non_field_errors %}
+<div role="alert" class="alert alert-error mb-4"><span>{{ form.non_field_errors|first }}</span></div>
+{% endif %}
+
+{% if current_emailaddress %}
+<div class="mb-4">
+    <p class="text-sm opacity-70">Endereço atual</p>
+    <p class="font-mono break-all">{{ current_emailaddress.email }}</p>
+</div>
+{% endif %}
+
+{% if new_emailaddress %}
+<div role="alert" class="alert alert-info mb-4">
+    <span>
+        Enviamos um link de confirmação para
+        <strong class="break-all">{{ new_emailaddress.email }}</strong>.
+        Até você confirmar, continua entrando com o endereço atual.
+    </span>
+</div>
+<form method="post" action="{% url 'account_email' %}" class="flex gap-2 mb-6">
+    {% csrf_token %}
+    <input type="hidden" name="email" value="{{ new_emailaddress.email }}">
+    <button type="submit" name="action_send" class="btn btn-outline btn-sm" data-pending="Enviando…">
+        Reenviar
+    </button>
+    {% if current_emailaddress %}
+    <button type="submit" name="action_remove" class="btn btn-ghost btn-sm text-error">
+        Cancelar troca
+    </button>
+    {% endif %}
+</form>
+{% endif %}
+
+<form method="post" action="{% url 'account_email' %}">
+    {% csrf_token %}
+    <fieldset class="fieldset">
+        <label class="label" for="{{ form.email.id_for_label }}">Novo e-mail</label>
+        <input type="email" name="{{ form.email.html_name }}" id="{{ form.email.id_for_label }}"
+               class="input w-full {% if form.email.errors %}input-error {% endif %}"
+               autocomplete="email" autocapitalize="none" inputmode="email"
+               placeholder="voce@exemplo.com"
+               value="{{ form.email.value|default:'' }}" required>
+        {% if form.email.errors %}
+        <p class="label text-error">{{ form.email.errors|first }}</p>
+        {% endif %}
+    </fieldset>
+    <button type="submit" name="action_add" class="btn btn-accent w-full mt-4" data-pending="Enviando…">
+        Enviar confirmação
+    </button>
+</form>
+
+<a href="{% url 'account' %}" class="link link-hover text-sm text-center mt-3">Voltar para Conta</a>
+{% endblock %}

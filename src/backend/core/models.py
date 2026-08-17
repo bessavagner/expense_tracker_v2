@@ -21,6 +21,17 @@ class CustomUser(AbstractUser):
     def __str__(self):
         return self.username
 
+    @property
+    def display_name(self) -> str:
+        """What to show wherever a person appears on screen.
+
+        `first_name` is `AbstractUser`'s own column, unused until E18 — which
+        is why a display name costs no migration. It is blank on every account
+        that predates this, so the email fallback is the ordinary case rather
+        than an edge one.
+        """
+        return self.first_name.strip() or self.email
+
 
 class LoginAttempt(models.Model):
     """A failed authentication, kept only long enough to enforce a lockout.

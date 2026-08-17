@@ -1,0 +1,38 @@
+{% extends "account/base.html" %}
+{% comment %}
+`MFA_RECOVERY_CODES_SHOW_ONCE` is not set and defaults to False, so the codes
+can be shown more than once and the stock template's onload JS is not needed.
+Turning that setting on later means bringing that script back — say so here so
+whoever turns it on finds out from the template rather than from a bug report.
+{% endcomment %}
+
+{% block head_title %}Códigos de recuperação — Expense Tracker{% endblock %}
+{% block heading %}Códigos de recuperação{% endblock %}
+{% block subheading %}Use um deles se perder o acesso ao aplicativo autenticador.{% endblock %}
+
+{% block inner %}
+<p class="text-sm opacity-70 mb-3">
+    {{ unused_codes|length }} de {{ total_count }} códigos ainda disponíveis. Cada um
+    vale uma vez só.
+</p>
+
+{% if can_view_codes %}
+<fieldset class="fieldset">
+    <label class="label" for="recovery_codes">Códigos não usados</label>
+    <textarea id="recovery_codes" class="textarea w-full font-mono text-sm" rows="{{ unused_codes|length }}"
+              readonly>{% for code in unused_codes %}{% if forloop.counter0 %}
+{% endif %}{{ code }}{% endfor %}</textarea>
+</fieldset>
+{% endif %}
+
+<div class="flex gap-2 flex-wrap mt-4">
+    {% if can_download_codes %}
+    <a href="{% url 'mfa_download_recovery_codes' %}" class="btn btn-outline btn-sm">Baixar</a>
+    {% endif %}
+    {% if can_generate_codes %}
+    <a href="{% url 'mfa_generate_recovery_codes' %}" class="btn btn-outline btn-sm">Gerar novos</a>
+    {% endif %}
+</div>
+
+<a href="{% url 'mfa_index' %}" class="link link-hover text-sm text-center mt-4">Voltar</a>
+{% endblock %}

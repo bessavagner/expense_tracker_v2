@@ -61,6 +61,17 @@ Ledger is not competing on automation (INDEX §2) and should not anchor on their
 - **And** invoices or receipts are available for download
 - **And** the transition from beta to paid is handled explicitly for existing beta households — with notice, not a surprise
 
+**Where this lives:** a **Plano** tab on the Conta page E18 shipped —
+`/casa/conta/plano/`, a `_TabView` subclass in
+`src/backend/accounts/views_account.py`, its fragment in
+`src/backend/templates/accounts/_plano_tab.html`, and one more `<button role="tab">` in
+`src/backend/templates/accounts/account_page.html`. E15 does **not** invent an
+account surface of its own.
+
+E18 deliberately did not build deep-linkable tabs (`?tab=`), matching the
+settings page. If "ir para o seu plano" needs to land on this tab directly,
+that is E15's call to make and E15's work to do.
+
 ### S15-3 · Enforce entitlements at the existing chokepoint
 
 - **Given** E07 built a single quota chokepoint

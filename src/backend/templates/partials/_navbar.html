@@ -17,8 +17,10 @@
         </button>
         {# The email, not the username: from E05 the username is a slug allauth #}
         {# derived from the address and nobody ever chose or saw.               #}
+        {# `display_name` falls back to the email, so this reads the same for   #}
+        {# an account that has never set a name — which is all of them today.   #}
         <span class="text-sm opacity-70 truncate max-w-32 hidden sm:inline"
-              title="{{ request.user.email }}">{{ request.user.email }}</span>
+              title="{{ request.user.email }}">{{ request.user.display_name }}</span>
         {# `account_logout`, not the `/logout/` redirect: a 301 cannot carry a  #}
         {# POST body, so posting at the old path lands on a confirmation page   #}
         {# still signed in.                                                     #}

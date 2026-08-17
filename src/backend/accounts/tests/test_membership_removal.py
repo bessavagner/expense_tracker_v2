@@ -132,19 +132,19 @@ class TestMembersPage:
         self, logged_client, household, user, joined_member
     ):
         create_invitation(household=household, invited_by=user, email="pendente@example.com")
-        body = logged_client.get(reverse("members")).content.decode()
+        body = logged_client.get(reverse("account_members_tab")).content.decode()
         assert "socia@example.com" in body
         assert "pendente@example.com" in body
 
     def test_it_does_not_leak_another_households_members(
         self, logged_client, other_user, other_household
     ):
-        body = logged_client.get(reverse("members")).content.decode()
+        body = logged_client.get(reverse("account_members_tab")).content.decode()
         assert other_user.email not in body
 
     def test_a_member_sees_the_page_without_the_owner_controls(self, joined_member):
         _, member_client = joined_member
-        body = member_client.get(reverse("members")).content.decode()
+        body = member_client.get(reverse("account_members_tab")).content.decode()
         assert "Convidar" not in body
 
     def test_the_owner_cannot_be_offered_a_button_that_removes_themselves(
@@ -153,10 +153,14 @@ class TestMembersPage:
         """The last-owner rule is enforced in the view, but offering the button
         and then refusing it is a worse experience than not offering it."""
         membership = Membership.objects.get(user=user, household=household)
-        body = logged_client.get(reverse("members")).content.decode()
+        body = logged_client.get(reverse("account_members_tab")).content.decode()
         assert reverse("member_remove", args=[membership.pk]) not in body
 
     def test_the_page_is_reachable_from_the_app_chrome(self, logged_client):
-        """A members page nobody can find is not a feature."""
+        """A members page nobody can find is not a feature.
+
+        E18 replaced the drawer's `Membros da casa` with `Conta`, which is a
+        net removal: the members list is a tab on that page now.
+        """
         body = logged_client.get("/", follow=True).content.decode()
-        assert reverse("members") in body
+        assert reverse("account") in body

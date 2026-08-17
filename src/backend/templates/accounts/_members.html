@@ -1,9 +1,14 @@
-{% extends "base.html" %}
+{% comment %}
+Who is in this household. Shared by the Conta tab and by the standalone page
+its owner actions redirect back to — one template, so the two cannot drift.
 
-{% block title %}Membros da casa — Expense Tracker{% endblock %}
+People are named by `display_name`, which falls back to the email. The
+`confirm()` text keeps the email as well as the name: removing someone is
+irreversible, and the address is the unambiguous identifier.
 
-{% block content %}
-<div class="max-w-2xl mx-auto space-y-6">
+Pending invitations show an address because there is no user to name yet.
+{% endcomment %}
+<div class="space-y-6">
     <header>
         <h1 class="text-2xl font-semibold">Quem vê as contas da {{ household.name }}</h1>
         <p class="text-sm opacity-70 mt-1">
@@ -17,7 +22,7 @@
             <ul class="list">
                 {% for membership in memberships %}
                 <li class="list-row">
-                    <div class="list-col-grow break-all">{{ membership.user.email }}</div>
+                    <div class="list-col-grow break-all">{{ membership.user.display_name }}</div>
                     <span class="badge badge-sm">{% if membership.role == 'owner' %}Dono{% else %}Membro{% endif %}</span>
                     {% if viewer_is_owner and membership.user != request.user %}
                     {# A form, never a link: a GET that removes someone is a URL #}
@@ -79,4 +84,3 @@
     </section>
     {% endif %}
 </div>
-{% endblock %}

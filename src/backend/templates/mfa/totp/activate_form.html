@@ -1,0 +1,48 @@
+{% extends "account/base.html" %}
+{% comment %}
+Enrolment. The QR code and the secret both come from allauth's own view —
+`totp_svg_data_uri` and `form.secret`. Showing the secret as text matters: a
+phone with no camera access, or a desktop authenticator, needs it.
+{% endcomment %}
+
+{% block head_title %}Ativar verificação em duas etapas — Expense Tracker{% endblock %}
+{% block heading %}Ativar duas etapas{% endblock %}
+{% block subheading %}Leia o QR code no seu aplicativo autenticador.{% endblock %}
+
+{% block inner %}
+{% if form.non_field_errors %}
+<div role="alert" class="alert alert-error mb-4"><span>{{ form.non_field_errors|first }}</span></div>
+{% endif %}
+
+<form method="post" action="{% url 'mfa_activate_totp' %}">
+    {% csrf_token %}
+
+    {# `object-contain`: a QR code that gets cropped to fill its box stops #}
+    {# scanning. The box is square because the code is.                    #}
+    <img src="{{ totp_svg_data_uri }}" alt="QR code para o aplicativo autenticador"
+         width="192" height="192"
+         class="w-48 h-48 object-contain mx-auto mb-4 bg-base-100 p-2 rounded">
+
+    <fieldset class="fieldset">
+        <label class="label" for="authenticator_secret">Ou digite este código</label>
+        <input type="text" id="authenticator_secret" class="input w-full font-mono text-xs"
+               value="{{ form.secret }}" readonly>
+        <p class="label">Guarde-o se quiser reinstalar o aplicativo depois.</p>
+    </fieldset>
+
+    <fieldset class="fieldset mt-2">
+        <label class="label" for="{{ form.code.id_for_label }}">Código de seis dígitos</label>
+        <input type="text" name="{{ form.code.html_name }}" id="{{ form.code.id_for_label }}"
+               class="input w-full {% if form.code.errors %}input-error {% endif %}"
+               inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*"
+               placeholder="000000" required autofocus>
+        {% if form.code.errors %}
+        <p class="label text-error">{{ form.code.errors|first }}</p>
+        {% endif %}
+    </fieldset>
+
+    <button type="submit" class="btn btn-accent w-full mt-4" data-pending="Ativando…">Ativar</button>
+</form>
+
+<a href="{% url 'account' %}" class="link link-hover text-sm text-center mt-3">Voltar para Conta</a>
+{% endblock %}

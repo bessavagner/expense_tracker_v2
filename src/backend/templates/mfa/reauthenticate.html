@@ -1,0 +1,31 @@
+{% extends "account/base.html" %}
+{% comment %}
+Reauthentication with a code rather than a password — the variant allauth
+picks when the user already has an authenticator.
+{% endcomment %}
+
+{% block head_title %}Confirmar acesso — Expense Tracker{% endblock %}
+{% block heading %}Confirme que é você{% endblock %}
+{% block subheading %}Digite o código do seu aplicativo autenticador.{% endblock %}
+
+{% block inner %}
+{% if form.non_field_errors %}
+<div role="alert" class="alert alert-error mb-4"><span>{{ form.non_field_errors|first }}</span></div>
+{% endif %}
+
+<form method="post" action="{% url 'mfa_reauthenticate' %}">
+    {% csrf_token %}
+    {{ redirect_field }}
+    <fieldset class="fieldset">
+        <label class="label" for="{{ form.code.id_for_label }}">Código</label>
+        <input type="text" name="{{ form.code.html_name }}" id="{{ form.code.id_for_label }}"
+               class="input w-full {% if form.code.errors %}input-error {% endif %}"
+               inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*"
+               placeholder="000000" required autofocus>
+        {% if form.code.errors %}
+        <p class="label text-error">{{ form.code.errors|first }}</p>
+        {% endif %}
+    </fieldset>
+    <button type="submit" class="btn btn-accent w-full mt-4" data-pending="Confirmando…">Confirmar</button>
+</form>
+{% endblock %}

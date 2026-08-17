@@ -49,7 +49,7 @@
                 <li><a href="{% url 'finances:settings' %}" class="{% if request.resolver_match.url_name and 'settings' in request.resolver_match.url_name %}active{% endif %}">Configurações</a></li>
                 <li><a href="{% url 'finances:import_upload' %}" class="{% if request.resolver_match.url_name and 'import' in request.resolver_match.url_name %}active{% endif %}">Importar</a></li>
                 <li><a href="{% url 'finances:export_page' %}" class="{% if request.resolver_match.url_name and 'export' in request.resolver_match.url_name %}active{% endif %}">Exportar</a></li>
-                <li><a href="{% url 'members' %}" class="{% if request.resolver_match.url_name == 'members' %}active{% endif %}">Membros da casa</a></li>
+                <li><a href="{% url 'account' %}" class="{% if request.resolver_match.url_name and 'account' in request.resolver_match.url_name %}active{% endif %}">Conta</a></li>
                 {% comment %}E14 S14-5: the beta's only channel for "why". Reachable from
                 every page, because the moment someone has something to say is the moment
                 they are looking at the thing they want to say it about.{% endcomment %}

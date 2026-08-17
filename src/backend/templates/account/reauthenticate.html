@@ -1,0 +1,38 @@
+{% extends "account/base.html" %}
+{% comment %}
+allauth demands the password again before anything that changes how you sign
+in — enrolling a second factor, most of all. Re-skinned, not reimplemented.
+{% endcomment %}
+
+{% block head_title %}Confirmar acesso — Expense Tracker{% endblock %}
+{% block heading %}Confirme que é você{% endblock %}
+{% block subheading %}Digite a sua senha para continuar.{% endblock %}
+
+{% block inner %}
+{% if form.non_field_errors %}
+<div role="alert" class="alert alert-error mb-4"><span>{{ form.non_field_errors|first }}</span></div>
+{% endif %}
+
+<form method="post" action="{% url 'account_reauthenticate' %}">
+    {% csrf_token %}
+    {{ redirect_field }}
+    <fieldset class="fieldset">
+        <label class="label" for="{{ form.password.id_for_label }}">Senha</label>
+        <input type="password" name="{{ form.password.html_name }}"
+               id="{{ form.password.id_for_label }}"
+               class="input w-full {% if form.password.errors %}input-error {% endif %}"
+               autocomplete="current-password" required autofocus>
+        {% if form.password.errors %}
+        <p class="label text-error">{{ form.password.errors|first }}</p>
+        {% endif %}
+    </fieldset>
+    <button type="submit" class="btn btn-accent w-full mt-4" data-pending="Confirmando…">Confirmar</button>
+</form>
+
+{% if reauthentication_alternatives %}
+<div class="divider text-xs opacity-60">ou</div>
+{% for alt in reauthentication_alternatives %}
+<a href="{{ alt.url }}" class="btn btn-outline w-full mb-2">{{ alt.description }}</a>
+{% endfor %}
+{% endif %}
+{% endblock %}

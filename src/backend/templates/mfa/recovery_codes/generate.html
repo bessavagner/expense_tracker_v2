@@ -1,0 +1,16 @@
+{% extends "account/base.html" %}
+
+{% block head_title %}Gerar novos códigos — Expense Tracker{% endblock %}
+{% block heading %}Gerar novos códigos{% endblock %}
+{% block subheading %}{% if unused_code_count %}Os códigos atuais deixam de valer.{% else %}Guarde-os em outro lugar.{% endif %}{% endblock %}
+
+{% block inner %}
+<form method="post" action="{% url 'mfa_generate_recovery_codes' %}">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit" class="btn {% if unused_code_count %}btn-error{% else %}btn-accent{% endif %} w-full mt-4"
+            data-pending="Gerando…">Gerar</button>
+</form>
+
+<a href="{% url 'mfa_index' %}" class="link link-hover text-sm text-center mt-3">Cancelar</a>
+{% endblock %}

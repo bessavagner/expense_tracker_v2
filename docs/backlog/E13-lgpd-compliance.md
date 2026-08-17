@@ -69,6 +69,14 @@ Researched 2026-08-07. **Confirm with a Brazilian lawyer before launch — this 
 - **And** correction is possible for everything a user can see
 - **And** a documented operator procedure exists for fulfilling a request that arrives by email, with the 15-day deadline stated
 
+**Where this lives:** a **Privacidade** tab on the Conta page E18 shipped —
+`/casa/conta/privacidade/`, a `_TabView` subclass in
+`src/backend/accounts/views_account.py` with its fragment in
+`src/backend/templates/accounts/_privacidade_tab.html`, and one more `<button role="tab">`
+in `src/backend/templates/accounts/account_page.html`. E13 does **not** invent an
+account surface of its own. The standalone render comes free from
+`accounts/tab_page.html`.
+
 ### S13-3 · Bounded retention
 
 - **Given** indefinite retention of chat content is not defensible
