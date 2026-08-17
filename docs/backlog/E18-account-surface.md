@@ -2,7 +2,7 @@
 id: E18
 title: Account surface (Conta)
 release: R3
-status: review
+status: done
 depends_on: [E05]
 blocks: [E13, E15]
 wedge_critical: false
@@ -128,21 +128,47 @@ cd src/backend/frontend && pnpm build
 existing column, so **any new migration in this epic is a design error worth
 stopping for**.
 
-Observable assertions:
+Observable assertions — every box below is ticked by a named test or by
+pasted command output, per `superpowers:verification-before-completion`:
 
-- [ ] `/casa/conta/` renders three tabs; each fragment URL also renders standalone
-- [ ] The drawer shows `Conta` and no longer shows `Membros da casa`
-- [ ] `/casa/membros/` redirects to `/casa/conta/`
-- [ ] A name saves and appears on the Membros list; a blank name falls back to the email — both asserted by test
-- [ ] Changing the email leaves the old address primary until confirmation, asserted by test
-- [ ] An email collision is rejected without enumerating, asserted by test
-- [ ] A **non-staff** user can enrol and disable TOTP
-- [ ] E05's staff-admin-gate test passes unchanged
-- [ ] Login required and household scoping asserted on every new view
-- [ ] Owner-only member removal and invitation revocation still enforced, asserted by test
-- [ ] No new migration
-- [ ] Every new or styled page renders in pt-BR, on a phone viewport
-- [ ] E13 and E15 each name their future tab on this page
+- [x] `/casa/conta/` renders three tabs; each fragment URL also renders standalone
+      — `test_account_page.py::TestTheContaShell::test_it_offers_three_tabs`, plus
+      `test_the_fragment_url_renders_standalone` in all three tab test classes
+- [x] The drawer shows `Conta` and no longer shows `Membros da casa`
+      — `TestTheDrawerAndTheOldUrl::test_the_drawer_offers_conta_and_no_longer_offers_membros_da_casa`
+- [x] `/casa/membros/` redirects to `/casa/conta/`
+      — `test_the_old_members_url_redirects_permanently_to_conta` (301), and
+      `test_the_redirect_survives_a_signed_out_visitor` for the anonymous case
+- [x] A name saves and appears on the Membros list; a blank name falls back to the email
+      — `test_profile.py::test_a_name_saves_and_comes_back`,
+      `test_a_blank_name_is_allowed_and_is_not_an_error`,
+      `test_display_name.py` (4 cases), `TestPeopleAreNamedByName` (2 cases)
+- [x] Changing the email leaves the old address primary until confirmation
+      — `test_email_change.py::test_the_old_address_stays_primary_until_the_new_one_is_confirmed`
+      and `test_the_user_can_still_log_in_with_the_old_address_while_it_is_pending`
+- [x] An email collision is rejected without enumerating
+      — `TestACollisionWithAnotherAccount` (3 cases). Note the shape: allauth
+      **accepts** the request and the change dies later at `set_verified()`.
+      Asserting "the form shows an error" would be asserting the leak itself
+- [x] A **non-staff** user can enrol and disable TOTP
+      — `TestTwoFactorIsForEveryone` (2 cases)
+- [x] E05's staff-admin-gate test passes unchanged
+      — `core/tests/test_admin_isolation.py` green, untouched; mirrored by
+      `TestTheStaffAdminGateIsUnchanged` so the two cannot silently disagree
+- [x] Login required and household scoping asserted on every new view
+      — `test_it_requires_login` on all three tabs and on the shell;
+      `test_it_does_not_leak_another_households_members`
+- [x] Owner-only member removal and invitation revocation still enforced
+      — `test_membership_removal.py` green against the new URL; a signed-in
+      member posting to `invite_create` and `member_remove` gets 403 on both
+- [x] No new migration — `makemigrations --check --dry-run`: `No changes detected`
+- [x] Every new or styled page renders in pt-BR, on a phone viewport
+      — rendered at 390×844 and 1440×900: `/casa/conta/` (all three tabs),
+      `/casa/conta/membros/` standalone, `/accounts/password/change/`,
+      `/accounts/email/`, `/accounts/2fa/`. No horizontal overflow, no clipped
+      text, focus ring visible, 0 console errors
+- [x] E13 and E15 each name their future tab on this page
+      — **Where this lives** blocks added to S13-2 and S15-2
 
 ## Out of scope
 
