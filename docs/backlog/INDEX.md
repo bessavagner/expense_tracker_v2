@@ -50,20 +50,26 @@ graph LR
 | **R3 · Ready for strangers — BETA OPENS** | A new user reaches the activation event unaided. Import and export are durable. A data-subject request can be fulfilled in 15 days and a deletion honoured. Activation and D7 retention are instrumented. |
 | **R4 · GA & monetization** | Someone pays in BRL, is charged correctly, hits a quota gracefully, and you can restore the database inside your stated RTO — rehearsed, not assumed. |
 
-**R3's gate is three-quarters open as of 2026-08-16.** Three of its four
-conditions are observably true: *a new user reaches the activation event
-unaided* — proven by the E11 walkthrough, activation in 83 seconds with no help
+**R3's four conditions are all engineering-complete as of 2026-08-17.** *A new
+user reaches the activation event unaided* — proven by the E11 walkthrough,
+activation in 83 seconds with no help
 (`docs/superpowers/evidence/e11-walkthrough/README.md`); *activation and D7
-retention are instrumented*, by E14; and now *durable import and export*, by
-E12 — deployed as revision `expense-tracker-00048-lgf` and exercised end to end
-against the real bucket (footnote 12). The one that remains is **a data-subject
-request fulfilled in 15 days with deletion honoured (E13)**. Beta does not open
-until all four hold.
+retention are instrumented*, by E14; *durable import and export*, by E12 —
+deployed as revision `expense-tracker-00048-lgf` and exercised end to end
+against the real bucket (footnote 12); and now *a data-subject request fulfilled
+in 15 days with deletion honoured*, by E13 (footnote 14).
 
-**E18 is done as of 2026-08-16** (footnote 13), so E13 is blocked by nothing:
-both of its dependencies, E12 and E18, are closed. E13 is now the single
-remaining condition on R3's gate — the whole of the distance between here and
-opening the beta.
+**R3's fourth condition is engineering-complete, and the gate is still shut.** A
+data subject can export, correct and delete their own data without contacting
+anyone, retention is bounded and swept daily by a tested job, and the notice is
+rendered from the code it describes. **The gate does not open until a Brazilian
+lawyer has reviewed the notice and the terms** — E13's own Definition of Done
+says so, and it is the one item this repository cannot close. Two operational
+items are also outstanding and are named in footnote 14.
+
+**E15 moves to `ready`**, since E07, E13 and E18 are all closed. It inherits the
+qualification above: charging money before the legal review is exactly the risk
+E13 was written to remove.
 
 **R2's gate is observably true as of 2026-08-15.** Receipt and chat quality are
 scored against fifteen real receipts and seven conversations across five models
@@ -92,9 +98,9 @@ pipeline) is still open inside R2 but is not named by this gate.
 | [E10](E10-async-work-pipeline.md) | Async work pipeline | R2 | W | E06 | **done** (2026-08-15)¹¹ |
 | [E11](E11-onboarding-and-activation.md) | Onboarding & activation | R3 | W | E05 | **done** (2026-08-16)⁹ |
 | [E12](E12-durable-import-export-jobs.md) | Durable import/export jobs | R3 | | E10 | **done** (2026-08-16)¹² |
-| [E13](E13-lgpd-compliance.md) | LGPD compliance | R3 | | E12, E18 | ready |
+| [E13](E13-lgpd-compliance.md) | LGPD compliance | R3 | | E12, E18 | **done** (2026-08-17)¹⁴ |
 | [E14](E14-product-analytics.md) | Product analytics | R3 | | E06, E11 | **done** (2026-08-16)¹ |
-| [E15](E15-billing-and-subscription.md) | Billing & subscription | R4 | | E07, E13, E18 | blocked |
+| [E15](E15-billing-and-subscription.md) | Billing & subscription | R4 | | E07, E13, E18 | ready¹⁴ |
 | [E16](E16-operations-staging-deploy-recovery.md) | Operations: staging, deploy, recovery | R4 | | E06 | ready |
 | [E17](E17-trust-surface.md) | Trust surface: audit, error UX, landing | R4 | | E11 | ready |
 | [E18](E18-account-surface.md) | Account surface (Conta) | R3 | | E05 | **done** (2026-08-16)¹³ |
@@ -617,3 +623,48 @@ Recorded so nobody rediscovers them mid-epic and treats them as gaps.
 | Postgres Row-Level Security | Review ADR-001 alternatives — Supabase pooler makes per-transaction session vars unreliable | Defense-in-depth after E04, or after a Cloud SQL migration |
 | Multi-region / HA | Single BR region is LGPD-friendly and adequate | Availability target rises above 99.9% |
 | Receipt image retention for re-processing | Conflicts with privacy-by-default (media discarded today) | Only with explicit opt-in consent |
+
+---
+
+¹⁴ **E13 closed 2026-08-17 with nine of ten boxes ticked**, and the tenth is the
+one engineering cannot tick. Fourteen tasks, thirteen commits, TDD throughout,
+in the worktree `e13-lgpd-compliance`.
+
+The spine is `src/backend/core/privacy/inventory.py`: one `Record` per model in
+the project — purpose, lawful basis, what happens to it when a member leaves,
+how long it is kept. Four things read that single list and nothing keeps a copy:
+the deletion service, the retention purge, the privacy notice's three tables,
+and a test that fails the moment a model exists without a privacy decision. That
+last one is the mechanism; everything else in the epic is downstream of it.
+
+What shipped: revocable consent for the AI leg, gated at the chat chokepoint
+before any credit is charged (`assistant/views.py`); account deletion that keeps
+the household's ledger for whoever remains and promotes the longest-standing
+member when the last owner leaves; a daily `purge_expired_data` sweep enqueued
+through `core.tasks` so every run leaves a `TaskRun` row; the Privacidade tab
+where a person sees, corrects and takes their data; four new `ledger.json`
+sections making the export a real access request (`meta.formato` → 2); and two
+public documents at `/privacidade/` and `/termos/` whose purpose, basis and
+retention tables are rendered from the inventory rather than typed.
+
+Three findings worth keeping:
+
+- **`assistant.UsageInteraction.user` was the one FK still on CASCADE.** A member
+  deleting their account silently erased the household's credit history — E07's
+  cost report and E15's future invoice. Now `SET_NULL`, like every other authored
+  column (D10).
+- **The notice's first draft was false about Logfire.** It claimed only timings
+  and costs; `LOGFIRE_CAPTURE_CONTENT` defaults to on, so Pydantic receives
+  prompt and completion content. Corrected in `core/privacy/subprocessors.py`,
+  which is what the notice renders. This is the failure mode the epic warned
+  about, caught by reading settings rather than trusting the draft.
+- **The breach tabletop found that `request_id` correlation barely works.** A
+  request that succeeds quietly emits no structured log line at all, so "find
+  every request this user made" returns nothing precisely in the scenario where
+  it matters. Recorded as evidence on E17, along with the absent per-row read log.
+
+**Still outstanding, and none of it is code:** the legal review; DPAs with
+OpenAI, Supabase, Resend and Pydantic; and the **provisioning of the purge job** —
+the Cloud Run Job, the Scheduler trigger and the `ledger_purge_ran` alert exist
+as a procedure in `docs/runbook.md` § "Retenção de dados (E13)" and have not been
+created. Until they are, retention is enforced by a command nobody runs.

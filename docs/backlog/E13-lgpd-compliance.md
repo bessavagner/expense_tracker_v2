@@ -2,7 +2,7 @@
 id: E13
 title: LGPD compliance
 release: R3
-status: blocked
+status: done
 depends_on: [E12, E18]
 blocks: [E15]
 wedge_critical: false
@@ -125,16 +125,41 @@ uv run ruff check src/backend/ && uv run ruff format --check src/backend/
 
 Observable assertions:
 
-- [ ] A user can export and then delete their account entirely from the UI
-- [ ] A test asserts no personal data survives deletion, parameterized across every model holding personal data
-- [ ] Household deletion edge cases are implemented and tested
-- [ ] The chat purge job runs on schedule and is tested
-- [ ] The privacy notice's every factual claim has been checked against the implementation
-- [ ] Signup records acceptance of a specific policy version
-- [ ] `docs/runbook.md` contains the data-subject-request procedure with the 15-day deadline and the breach procedure with the 72-hour deadline
-- [ ] The breach tabletop exercise has been run once
-- [ ] The sub-processor inventory exists and matches the error tracker's scrubbing configuration
-- [ ] **A Brazilian lawyer has reviewed the privacy notice and terms** — this cannot be satisfied by engineering alone
+- [x] A user can export and then delete their account entirely from the UI —
+      `accounts/tests/test_account_deletion_flow.py`, walked end to end
+- [x] A test asserts no personal data survives deletion, parameterized across
+      every model holding personal data — `core/tests/test_privacy_deletion.py`,
+      parameterized from `core.privacy.INVENTORY`, and proved able to fail by
+      deleting the delete and watching all four parameterizations go red
+- [x] Household deletion edge cases are implemented and tested — last owner
+      promotes the longest-standing member; last member takes the household
+- [x] The chat purge job runs on schedule and is tested —
+      `core/tests/test_privacy_retention.py`, likewise proved able to fail.
+      **The command and its tests ship; the Cloud Run Job, the Scheduler trigger
+      and the alert policy are NOT provisioned** — the procedure is in
+      `docs/runbook.md` § "Retenção de dados (E13)" and provisioning is a
+      deliberate act per environment
+- [x] The privacy notice's every factual claim has been checked against the
+      implementation — `core/tests/test_legal_pages.py`; the purpose, basis and
+      retention tables are rendered from `core.privacy.INVENTORY`. One claim was
+      found false while writing it and corrected: Logfire receives prompt and
+      completion content, because `LOGFIRE_CAPTURE_CONTENT` defaults to on
+- [x] Signup records acceptance of a specific policy version —
+      `accounts/tests/test_signup_records_acceptance.py`
+- [x] `docs/runbook.md` contains the data-subject-request procedure with the
+      15-day deadline and the breach procedure with the 72-hour deadline
+- [x] The breach tabletop exercise has been run once —
+      `docs/superpowers/evidence/e13-breach-tabletop/README.md`. Commands were
+      executed, not read; it found that `request_id` correlation only answers for
+      requests that already logged an error, now recorded as evidence on E17
+- [x] The sub-processor inventory exists and matches the error tracker's
+      scrubbing configuration — `docs/architecture/data-inventory.md`,
+      verified by `core/tests/test_sentry_scrubbing.py` (all ten assertions
+      passed on first run: E06's scrubber does what it was built to do)
+- [ ] **A Brazilian lawyer has reviewed the privacy notice and terms** — NOT
+      DONE. Engineering cannot close this. The documents are at `/privacidade/`
+      and `/termos/`, version 2026-08-17; the open contract questions are listed
+      in `docs/architecture/data-inventory.md` § "Contracts still outstanding"
 
 ## Out of scope
 
@@ -143,13 +168,37 @@ Observable assertions:
 - GDPR — no EU users at MVP; the architectures are similar if that changes
 - Building the export machinery → **E12**; this epic consumes it
 
-## Open questions
+## Open questions — answered
 
-1. **What is the lawful basis for each purpose?** Consent for the AI processing, legitimate interest for core bookkeeping, is a plausible split — needs legal confirmation.
-2. **Does Ledger qualify for the ANPD small-business DPO exemption?** Likely yes. Confirm, and provide a contact channel regardless.
-3. **What is the chat retention period?** Shorter is safer and cheaper. Given the assistant only uses the recent window, a short period costs the product little.
-4. **What happens to shared household data when one member deletes their account?** Their personal data must go; the household's shared financial history may legitimately remain for the other member. This needs a clear, defensible rule.
-5. **Is a DPA needed with OpenAI or the chosen LLM provider,** and does the provider's data-retention policy conflict with what the privacy notice promises?
+Decided before implementation and recorded in full, with reasoning, as D1–D14 of
+[`docs/superpowers/plans/2026-08-17-E13-lgpd-compliance.md`](../superpowers/plans/2026-08-17-E13-lgpd-compliance.md).
+
+1. **What is the lawful basis for each purpose?** **Answered (D3).** Bookkeeping,
+   authentication and backups: *execução de contrato*, art. 7º, V. The AI leg —
+   chat, memory rules, embeddings, receipt OCR, transcription: *consentimento*,
+   art. 7º, I, revocable, with the rest of the product working without it. Abuse
+   limits, security logs and metering: *legítimo interesse*, art. 7º, IX. Each
+   basis lives on its model's `Record` in `core/privacy/inventory.py` and is
+   rendered by the notice. Still wants a lawyer's confirmation — see the last
+   DoD box.
+2. **Does Ledger qualify for the ANPD small-business DPO exemption?** **Answered
+   in the notice, section 1.** Resolução CD/ANPD nº 2/2022 exempts small-scale
+   agents from naming a formal encarregado, and the notice says so explicitly
+   while still publishing a contact channel, which the same resolution requires.
+3. **What is the chat retention period?** **Answered (D2): 90 days.** The
+   assistant only reads the last `ASSISTANT_MAX_HISTORY` (20) messages, so 90
+   days costs the product nothing and is a number that reads honestly in a
+   notice. Receipt drafts follow at 90 days; the full table is in the inventory.
+4. **What happens to shared household data when one member deletes their
+   account?** **Answered (D1).** Their own authored rows go; the household's
+   ledger stays for whoever remains, with `created_by` nulled. Last owner
+   leaving promotes the longest-standing remaining member; last member leaving
+   takes the household with them. Implemented in `core/privacy/deletion.py` and
+   tested per case.
+5. **Is a DPA needed with OpenAI or the chosen LLM provider?** **Still open, and
+   not an engineering question.** Tracked, with Supabase, Resend and Pydantic
+   (Logfire), in `docs/architecture/data-inventory.md` § "Contracts still
+   outstanding".
 
 ## Skill pipeline
 
