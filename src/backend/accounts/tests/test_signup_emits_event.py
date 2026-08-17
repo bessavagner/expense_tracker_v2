@@ -16,6 +16,8 @@ def test_signing_up_emits_a_signup_event(client):
             "email2": "novo@example.com",
             "password1": "uma-senha-bem-comprida",
             "password2": "uma-senha-bem-comprida",
+            # E13: the signup form now carries a required acceptance checkbox.
+            "accept_terms": "on",
         },
     )
 

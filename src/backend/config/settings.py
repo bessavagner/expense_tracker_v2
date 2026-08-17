@@ -296,6 +296,10 @@ ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 3
 # adapter's send-the-mail hooks all run after that decision — see
 # `accounts.signals.verify_invited_email`.
 ACCOUNT_ADAPTER = "allauth.account.adapter.DefaultAccountAdapter"
+# E13: the terms checkbox, and the PolicyAcceptance rows it writes. This is
+# allauth's supported extension point — the class becomes the base of both the
+# local and the social signup form, so nothing about the flow itself is forked.
+ACCOUNT_SIGNUP_FORM_CLASS = "accounts.forms_signup.LedgerSignupForm"
 # allauth ships its own login throttle (`10/m/ip, 5/300s/key`, cache-backed).
 # It is switched off because E01's lockout already answers this question, and
 # two throttles with different windows is worse than either alone: allauth's is
@@ -312,6 +316,26 @@ ACCOUNT_RATE_LIMITS = {"login_failed": None}
 # default and stay on: losing a phone must not lock the only operator out of
 # their own admin.
 MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
+
+# --- Privacy and terms (E13) --------------------------------------------
+#
+# Dates, not integers: a version a person can compare with the day they signed
+# up is worth more than a counter nobody can place in time. Bump these in the
+# same commit that changes the document, or `PolicyAcceptance` records an
+# acceptance of text nobody can reconstruct.
+PRIVACY_POLICY_VERSION = os.environ.get("PRIVACY_POLICY_VERSION", "2026-08-17")
+TERMS_VERSION = os.environ.get("TERMS_VERSION", "2026-08-17")
+
+# Who is legally answerable for this data (LGPD art. 5º, VI and art. 41). Read
+# from the environment so a fork or a staging deployment cannot accidentally
+# publish a notice naming somebody else. `manage.py check --deploy` fails when
+# any of these is blank — see core/checks_privacy.py.
+PRIVACY_CONTROLLER = {
+    "name": os.environ.get("PRIVACY_CONTROLLER_NAME", ""),
+    "cnpj": os.environ.get("PRIVACY_CONTROLLER_CNPJ", ""),
+    "address": os.environ.get("PRIVACY_CONTROLLER_ADDRESS", ""),
+    "email": os.environ.get("PRIVACY_CONTACT_EMAIL", ""),
+}
 
 # --- Transactional email (E05 S05-2) ------------------------------------
 # Resend over plain SMTP, deliberately: an API-key-in-a-header SDK would be a

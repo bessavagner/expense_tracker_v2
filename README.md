@@ -122,6 +122,14 @@ Key principle: **the LLM decides intent; deterministic Python does the arithmeti
 > Measuring how new users land: `docs/runbook.md` → *Onboarding & activation*.
 > What "activated" means is defined once, in
 > [`docs/architecture/activation-event.md`](docs/architecture/activation-event.md).
+>
+> Privacidade e LGPD — retenção, pedidos de titular, resposta a incidente:
+> `docs/runbook.md` §§ *Retenção de dados (E13)*, *Pedido de titular (LGPD)*,
+> *Incidente de segurança*. What the product stores about people, and which
+> third parties receive it, is one list in
+> [`src/backend/core/privacy/inventory.py`](src/backend/core/privacy/inventory.py)
+> — add a `Record` for any new model, or the suite fails. The flows around it are
+> in [`docs/architecture/data-inventory.md`](docs/architecture/data-inventory.md).
 
 ### Prerequisites
 

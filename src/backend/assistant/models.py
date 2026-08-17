@@ -188,10 +188,18 @@ class UsageInteraction(HouseholdOwnedModel):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # SET_NULL, like every other column naming a person in this codebase
+    # (`AuthoredHouseholdModel.created_by`). What a household spent is the
+    # household's record: it is E07's cost report and E15's invoice, and a
+    # member deleting their account must not take it with them. E13 changed
+    # this from CASCADE — see docs/superpowers/plans/2026-08-17-E13-lgpd-compliance.md,
+    # decision D10.
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="assistant_usage_events",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
     )
     kind = models.CharField(max_length=20, choices=InteractionKind.choices)
     # Which tier actually served this turn — not which one was asked for. The

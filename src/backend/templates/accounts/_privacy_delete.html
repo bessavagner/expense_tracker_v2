@@ -1,0 +1,88 @@
+{% comment %}
+The last screen before an irreversible act. It says what will actually happen
+in this particular household rather than a generic warning, because "sua casa
+inteira some" and "a Amanda continua vendo o extrato" are very different facts
+and the person deserves the one that is true for them.
+{% endcomment %}
+<div class="space-y-6">
+    <a href="{% url 'account_privacy_tab' %}" class="link link-hover text-sm">← Privacidade</a>
+
+    {% if error %}
+    <div role="alert" class="alert alert-error"><span>{{ error }}</span></div>
+    {% endif %}
+
+    <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+            <h1 class="card-title text-xl">Baixe uma cópia antes</h1>
+            {% if last_export %}
+            <p class="text-sm opacity-70">
+                Você já baixou uma cópia em {{ last_export.created_at|date:"d/m/Y" }}.
+                O arquivo em si fica disponível por 7 dias, então vale conferir se
+                você ainda o tem.
+            </p>
+            {% else %}
+            <p class="text-sm opacity-70">
+                Você nunca baixou seus dados. Depois da exclusão não há como
+                recuperá-los — nem por nós.
+            </p>
+            {% endif %}
+            <div class="card-actions mt-4">
+                <a href="{% url 'finances:export_page' %}" class="btn btn-accent btn-sm">
+                    Baixar meus dados
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <section class="card bg-base-100 shadow-sm border border-error/40">
+        <div class="card-body">
+            <h2 class="card-title text-lg text-error">O que vai acontecer</h2>
+            {% if others %}
+            <p class="text-sm opacity-80">
+                A casa <strong>{{ household.name }}</strong> continua existindo, porque
+                {% for membership in others %}<strong>{{ membership.user.email }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %}
+                ainda usa{{ others|length|pluralize:"m" }} ela. O extrato, os orçamentos
+                e o histórico da casa continuam lá — sem o seu nome em nada.
+            </p>
+            <ul class="list text-sm opacity-80 mt-2">
+                <li class="list-row">Sua conta, sua senha e sua verificação em duas etapas
+                    são apagadas.</li>
+                <li class="list-row">Suas conversas com o assistente e as regras que ele
+                    aprendeu com você são apagadas.</li>
+                <li class="list-row">Os lançamentos que você cadastrou continuam na casa,
+                    sem autor.</li>
+                <li class="list-row">Se você era o único dono, a pessoa que está há mais
+                    tempo na casa passa a ser dona.</li>
+            </ul>
+            {% else %}
+            <p class="text-sm opacity-80">
+                Você é a única pessoa aqui, então <strong>toda a casa</strong> vai junto:
+                lançamentos, receitas, categorias, orçamentos, parcelamentos, conversas
+                com o assistente. Tudo.
+            </p>
+            {% endif %}
+            <p class="text-sm opacity-80 mt-2">
+                Alguns registros ficam, e o
+                <a href="{% url 'privacy_notice' %}" class="link">Aviso de Privacidade</a>
+                explica quais e por quê — em resumo: quanto o uso de IA custou, sem o
+                seu nome, para responder a uma cobrança ou a uma investigação de abuso.
+            </p>
+
+            <form method="post" action="{% url 'account_delete' %}" class="mt-4">
+                {% csrf_token %}
+                <fieldset class="fieldset">
+                    <label class="label" for="confirm_email">
+                        Para confirmar, digite <span class="font-mono">{{ request.user.email }}</span>
+                    </label>
+                    <input type="email" name="confirm_email" id="confirm_email"
+                           class="input w-full {% if error %}input-error{% endif %}"
+                           autocomplete="off" autocapitalize="none" inputmode="email"
+                           placeholder="{{ request.user.email }}" required>
+                </fieldset>
+                <button type="submit" class="btn btn-error mt-4" data-pending="Excluindo…">
+                    Excluir minha conta para sempre
+                </button>
+            </form>
+        </div>
+    </section>
+</div>

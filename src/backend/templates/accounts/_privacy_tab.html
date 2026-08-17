@@ -1,0 +1,151 @@
+{% comment %}
+Privacidade. Four things, in the order a worried person asks for them: take a
+copy, see what the assistant concluded about you, decide whether it may keep
+doing that, and leave.
+
+Every number on this page comes from `core.privacy.INVENTORY` through the view.
+Typing "90 dias" here would be one edit away from the purge job disagreeing
+with it, and this epic exists because that kind of drift is the violation.
+{% endcomment %}
+<div class="space-y-6" id="privacy-tab">
+    <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+            <h2 class="card-title text-lg">Uma cópia dos seus dados</h2>
+            <p class="text-sm opacity-70">
+                Um arquivo .zip com tudo: lançamentos, receitas, categorias, orçamentos,
+                o histórico de conversas com o assistente e as regras de memória. As
+                planilhas saem no mesmo formato que o próprio Ledger importa, então dá
+                para levar embora e trazer de volta.
+            </p>
+            <div class="card-actions mt-4">
+                <a href="{% url 'finances:export_page' %}" class="btn btn-accent btn-sm">
+                    Baixar meus dados
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+            <h2 class="card-title text-lg">O que o assistente aprendeu sobre você</h2>
+            <p class="text-sm opacity-70">
+                Conclusões que ele tirou das suas correções e dos seus cupons. Apagar
+                uma faz ele esquecer — e ele pode reaprender depois, se você corrigir
+                a mesma coisa de novo.
+            </p>
+            {% if memory_rules %}
+            <ul class="list mt-2">
+                {% for rule in memory_rules %}
+                <li class="list-row">
+                    <div class="list-col-grow break-words">
+                        <span class="font-mono text-sm">{{ rule.trigger }}</span>
+                        <span class="opacity-50 mx-1">→</span>
+                        <span class="text-sm">{{ rule.value }}</span>
+                        {% if rule.source == 'inferred' %}
+                        <span class="badge badge-ghost badge-xs ml-2">deduzido</span>
+                        {% else %}
+                        <span class="badge badge-ghost badge-xs ml-2">você corrigiu</span>
+                        {% endif %}
+                    </div>
+                    {# A form, never a link: a GET that deletes is a URL a scanner follows. #}
+                    <form hx-post="{% url 'account_memory_rule_delete' rule.pk %}"
+                          hx-target="#privacy-tab"
+                          hx-swap="outerHTML">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-xs btn-ghost text-error">Apagar</button>
+                    </form>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="text-sm opacity-60 mt-2">
+                Nada por enquanto. Ele só guarda alguma coisa depois que você corrige
+                uma categoria.
+            </p>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+            <div class="flex items-center gap-2 flex-wrap">
+                <h2 class="card-title text-lg">Assistente de IA</h2>
+                {% if ai_consent %}
+                <span class="badge badge-success badge-sm">Autorizado</span>
+                {% else %}
+                <span class="badge badge-ghost badge-sm">Não autorizado</span>
+                {% endif %}
+            </div>
+            <p class="text-sm opacity-70">
+                O assistente envia o que você escreve, fala e fotografa para a
+                <strong>OpenAI</strong>, que processa e devolve a resposta. Fotos e
+                áudios são processados e descartados na hora — nunca ficam guardados.
+                As conversas ficam {{ chat_retention_days }} dias e os rascunhos de
+                cupom {{ draft_retention_days }} dias.
+            </p>
+            <p class="text-sm opacity-70">
+                Isso é uma escolha sua, e você pode voltar atrás quando quiser. O
+                resto do aplicativo — lançamentos, orçamentos, projeção — funciona
+                igual sem isso.
+            </p>
+            <form hx-post="{% url 'account_ai_consent' %}"
+                  hx-target="#privacy-tab"
+                  hx-swap="outerHTML"
+                  class="card-actions mt-4">
+                {% csrf_token %}
+                {% if ai_consent %}
+                <input type="hidden" name="granted" value="0">
+                <button type="submit" class="btn btn-outline btn-sm" data-pending="Salvando…">
+                    Retirar autorização
+                </button>
+                {% else %}
+                <input type="hidden" name="granted" value="1">
+                <button type="submit" class="btn btn-accent btn-sm" data-pending="Salvando…">
+                    Autorizar
+                </button>
+                {% endif %}
+            </form>
+        </div>
+    </section>
+
+    <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+            <h2 class="card-title text-lg">Documentos</h2>
+            <div class="flex gap-2 flex-wrap mt-1">
+                <a href="{% url 'privacy_notice' %}" class="btn btn-outline btn-sm">
+                    Aviso de Privacidade
+                </a>
+                <a href="{% url 'terms_of_service' %}" class="btn btn-outline btn-sm">
+                    Termos de Uso
+                </a>
+            </div>
+            {% if acceptances %}
+            <ul class="text-sm opacity-70 mt-3 space-y-1">
+                {% for acceptance in acceptances %}
+                <li>
+                    {{ acceptance.get_document_display }}, versão
+                    <span class="font-mono">{{ acceptance.version }}</span>,
+                    aceito em {{ acceptance.accepted_at|date:"d/m/Y" }}.
+                </li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="card bg-base-100 shadow-sm border border-error/30">
+        <div class="card-body">
+            <h2 class="card-title text-lg">Excluir minha conta</h2>
+            <p class="text-sm opacity-70">
+                Apaga sua conta e tudo que é seu. Não dá para desfazer, e o seu
+                histórico financeiro não é recuperável depois — então baixe uma cópia
+                antes.
+            </p>
+            <div class="card-actions mt-4">
+                <a href="{% url 'account_delete' %}" class="btn btn-outline btn-error btn-sm">
+                    Excluir minha conta
+                </a>
+            </div>
+        </div>
+    </section>
+</div>

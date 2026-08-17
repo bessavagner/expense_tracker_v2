@@ -1,0 +1,148 @@
+{% extends "legal/base_legal.html" %}
+{% comment %}
+Terms of service. Deliberately short and specific to what this product is: a
+bookkeeping tool for a household, free during the beta, that is not a bank and
+does not touch anybody's money.
+
+S13-4 asks for "the service, payment (forward-looking to E15), and
+termination". Section 5 is written so that E15 changes a price, not a promise.
+{% endcomment %}
+
+{% block title %}Termos de Uso — Ledger{% endblock %}
+
+{% block document %}
+<header>
+    <h1 class="text-3xl font-semibold">Termos de Uso</h1>
+    <p class="text-sm opacity-70 mt-2">
+        Versão <span class="font-mono">{{ version }}</span>. Ao criar uma conta no
+        Ledger você concorda com o que está aqui.
+    </p>
+</header>
+
+<section class="space-y-2">
+    <h2 class="text-xl font-semibold">1. Quem oferece o serviço</h2>
+    <p>
+        <strong>{{ controller.name }}</strong><br>
+        CNPJ {{ controller.cnpj }}<br>
+        {{ controller.address }}<br>
+        <a href="mailto:{{ controller.email }}" class="link">{{ controller.email }}</a>
+    </p>
+</section>
+
+<section class="space-y-2">
+    <h2 class="text-xl font-semibold">2. O que o Ledger é</h2>
+    <p>
+        Um aplicativo para registrar e acompanhar as contas de uma casa: lançamentos,
+        receitas, cartões, orçamentos, parcelas e uma projeção dos próximos meses. Tem
+        um assistente que lê cupom fiscal por foto e entende pedidos em português.
+    </p>
+    <p>
+        O Ledger <strong>não é</strong> uma instituição financeira, não é um banco, não
+        movimenta dinheiro, não se conecta à sua conta bancária e não dá consultoria
+        de investimentos. Ele anota o que você diz que aconteceu. As decisões
+        financeiras são suas.
+    </p>
+    <p>
+        O assistente usa modelos de IA e pode errar — ler um valor errado num cupom,
+        classificar uma compra na categoria errada. Por isso todo lançamento vindo de
+        uma foto passa por uma tela de confirmação antes de entrar. Confira.
+    </p>
+</section>
+
+<section class="space-y-2">
+    <h2 class="text-xl font-semibold">3. Sua conta</h2>
+    <ul class="space-y-2">
+        <li>Você precisa ter 18 anos ou mais.</li>
+        <li>
+            Um endereço de e-mail é uma conta. Guarde a sua senha; se desconfiar que
+            alguém a descobriu, troque-a e ative a verificação em duas etapas.
+        </li>
+        <li>
+            Convidar alguém para a sua casa dá a essa pessoa acesso a todo o histórico
+            financeiro dela. Convide com esse entendimento.
+        </li>
+        <li>
+            Não use o serviço para nada ilegal, nem tente contornar os limites de uso,
+            derrubá-lo ou extrair dados de outras pessoas.
+        </li>
+    </ul>
+</section>
+
+<section class="space-y-2">
+    <h2 class="text-xl font-semibold">4. Seus dados são seus</h2>
+    <p>
+        O que você registra continua sendo seu. Você pode baixar tudo a qualquer
+        momento, em formato aberto, por
+        <a href="{% url 'account_privacy_tab' %}" class="link">Conta → Privacidade</a>.
+        O
+        <a href="{% url 'privacy_notice' %}" class="link">Aviso de Privacidade</a>
+        explica o que guardamos, por quanto tempo e com quem compartilhamos.
+    </p>
+</section>
+
+<section class="space-y-2">
+    <h2 class="text-xl font-semibold">5. Preço</h2>
+    <p>
+        Durante o beta o Ledger é <strong>gratuito</strong>, com um limite mensal de
+        uso do assistente. Passar do limite não te tira do ar: as funções de
+        escrituração continuam, e o assistente responde num modo mais econômico ou
+        avisa que o limite foi atingido.
+    </p>
+    <p>
+        Um dia haverá um plano pago. Quando houver, avisaremos por e-mail com
+        antecedência, e nada passa a ser cobrado sem você concordar explicitamente com
+        o preço. Não haverá cobrança retroativa pelo período gratuito.
+    </p>
+</section>
+
+<section class="space-y-2">
+    <h2 class="text-xl font-semibold">6. Disponibilidade</h2>
+    <p>
+        O serviço é oferecido “como está”, sem garantia de disponibilidade
+        ininterrupta. Fazemos cópias de segurança do banco de dados, mas a única cópia
+        que está sob o seu controle é a que você baixa — vale exportar de vez em
+        quando.
+    </p>
+</section>
+
+<section class="space-y-2">
+    <h2 class="text-xl font-semibold">7. Encerramento</h2>
+    <p>
+        Você pode <strong>encerrar</strong> sua conta quando quiser, em
+        <a href="{% url 'account_privacy_tab' %}" class="link">Conta → Privacidade</a>,
+        sem precisar falar com ninguém. A exclusão é imediata e não tem volta — baixe
+        seus dados antes.
+    </p>
+    <p>
+        Podemos <strong>encerrar</strong> ou suspender uma conta que use o serviço para
+        algo ilegal, que tente comprometê-lo, ou que abuse dos limites de uso de forma
+        sistemática. Nesse caso avisamos pelo e-mail cadastrado e damos um prazo
+        razoável para você exportar seus dados, exceto quando a lei exigir o
+        contrário.
+    </p>
+    <p>
+        Se o serviço for descontinuado, avisamos com pelo menos 30 dias de
+        antecedência para que todo mundo consiga levar seus dados embora.
+    </p>
+</section>
+
+<section class="space-y-2">
+    <h2 class="text-xl font-semibold">8. Mudanças nestes termos</h2>
+    <p>
+        Cada versão tem uma data. Mudanças relevantes são avisadas por e-mail antes de
+        valerem, e o Ledger registra qual versão você aceitou.
+    </p>
+</section>
+
+<section class="space-y-2">
+    <h2 class="text-xl font-semibold">9. Lei aplicável</h2>
+    <p>
+        Estes termos são regidos pelas leis brasileiras, incluindo o Código de Defesa
+        do Consumidor e a Lei Geral de Proteção de Dados. Fica eleito o foro do
+        domicílio do consumidor para resolver qualquer questão.
+    </p>
+    <p class="text-sm opacity-60">
+        Versão <span class="font-mono">{{ version }}</span>.
+    </p>
+</section>
+{% endblock %}

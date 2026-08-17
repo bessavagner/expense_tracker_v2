@@ -27,8 +27,13 @@ class TestGlobalBodyCeiling:
         )
         assert response.status_code == 413
 
-    def test_body_under_the_ceiling_reaches_the_view(self, logged_client, settings):
+    def test_body_under_the_ceiling_reaches_the_view(self, logged_client, settings, user):
         settings.MAX_REQUEST_BODY_BYTES = 4096
+        # E13's consent gate sits in front of the view's own validation, so a
+        # user who has not consented never reaches the 400 this test is about.
+        from core.privacy import set_ai_consent
+
+        set_ai_consent(user, granted=True)
         response = logged_client.post(
             "/api/assistant/chat/",
             data=b'{"message": ""}',

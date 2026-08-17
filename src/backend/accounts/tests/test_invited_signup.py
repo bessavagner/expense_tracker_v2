@@ -29,7 +29,14 @@ class TestInvitedSignupSkipsVerification:
         client.get(accept_path)  # stashes the token in the session
         client.post(
             f"{reverse('account_signup')}?next={accept_path}",
-            {"email": email, "email2": email, "password1": SENHA, "password2": SENHA},
+            {
+                "email": email,
+                "email2": email,
+                "password1": SENHA,
+                "password2": SENHA,
+                # E13: the signup form now carries a required acceptance checkbox.
+                "accept_terms": "on",
+            },
         )
         return client, accept_path
 
@@ -68,6 +75,8 @@ class TestInvitedSignupSkipsVerification:
                 "email2": "sozinha@example.com",
                 "password1": SENHA,
                 "password2": SENHA,
+                # E13: the signup form now carries a required acceptance checkbox.
+                "accept_terms": "on",
             },
         )
         assert EmailAddress.objects.get(email="sozinha@example.com").verified is False
@@ -94,6 +103,8 @@ class TestInvitedSignupSkipsVerification:
                 "email2": "tarde@example.com",
                 "password1": SENHA,
                 "password2": SENHA,
+                # E13: the signup form now carries a required acceptance checkbox.
+                "accept_terms": "on",
             },
         )
         assert EmailAddress.objects.get(email="tarde@example.com").verified is False
@@ -113,6 +124,8 @@ class TestTheInviteeLandsInTheHousehold:
                 "email2": "nova@example.com",
                 "password1": SENHA,
                 "password2": SENHA,
+                # E13: the signup form now carries a required acceptance checkbox.
+                "accept_terms": "on",
             },
         )
         client.post(accept_path)

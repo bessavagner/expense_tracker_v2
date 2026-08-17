@@ -61,7 +61,7 @@ def _consume(response):
 
 @pytest.mark.django_db
 class TestDoneEventDataChanged:
-    def test_done_event_includes_data_changed_flag(self, logged_client, user):
+    def test_done_event_includes_data_changed_flag(self, logged_client, user, consented_user):
         # TestModel calls every tool on the single assistant_agent, including register_entry.
         with agents_override(TestModel()):
             response = logged_client.post(

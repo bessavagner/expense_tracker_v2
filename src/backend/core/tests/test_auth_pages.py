@@ -85,6 +85,8 @@ class TestEmailsAreInPortuguese:
                 "email2": "nova@example.com",
                 "password1": "uma-senha-bem-longa-9",
                 "password2": "uma-senha-bem-longa-9",
+                # E13: the signup form now carries a required acceptance checkbox.
+                "accept_terms": "on",
             },
         )
         assert len(mail.outbox) == 1
@@ -118,6 +120,8 @@ class TestTheDeadEndsHaveAWayOut:
                 "email2": "prazo@example.com",
                 "password1": "uma-senha-bem-longa-9",
                 "password2": "uma-senha-bem-longa-9",
+                # E13: the signup form now carries a required acceptance checkbox.
+                "accept_terms": "on",
             },
             follow=True,
         )

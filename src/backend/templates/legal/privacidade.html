@@ -1,0 +1,263 @@
+{% extends "legal/base_legal.html" %}
+{% comment %}
+The tables are rendered from `core.privacy.INVENTORY` and
+`core.privacy.subprocessors.SUBPROCESSORS`. Do not type a purpose, a lawful
+basis, a retention period or a vendor name into this file: the whole design of
+E13 is that the document and the code read the same list, and a hardcoded row
+is exactly the drift this epic exists to prevent.
+
+The prose between the tables IS hand-written, and every factual claim in it is
+asserted by `core/tests/test_legal_pages.py`. If you change a sentence there,
+expect a test to have an opinion.
+{% endcomment %}
+
+{% block title %}Aviso de Privacidade — Ledger{% endblock %}
+
+{% block document %}
+<header>
+    <h1 class="text-3xl font-semibold">Aviso de Privacidade</h1>
+    <p class="text-sm opacity-70 mt-2">
+        Versão <span class="font-mono">{{ version }}</span>.
+        Este documento explica o que o Ledger guarda sobre você, por quê, por quanto
+        tempo, com quem compartilha e o que você pode exigir a qualquer momento.
+    </p>
+</header>
+
+<section class="space-y-2">
+    <h2 class="text-xl font-semibold">1. Quem é responsável</h2>
+    <p>
+        O controlador dos seus dados, na definição da Lei Geral de Proteção de Dados
+        (Lei 13.709/2018, art. 5º, VI), é:
+    </p>
+    <p>
+        <strong>{{ controller.name }}</strong><br>
+        CNPJ {{ controller.cnpj }}<br>
+        {{ controller.address }}
+    </p>
+    <p>
+        Para qualquer assunto de privacidade — pedido de acesso, correção,
+        portabilidade, exclusão, ou uma dúvida sobre este documento — escreva para
+        <a href="mailto:{{ controller.email }}" class="link">{{ controller.email }}</a>.
+        Respondemos em até <strong>15 dias</strong>, que é o prazo do art. 19 da LGPD.
+    </p>
+    <p class="text-sm opacity-80">
+        <strong>Encarregado (DPO).</strong> A Resolução CD/ANPD nº 2/2022 dispensa
+        agentes de tratamento de pequeno porte de indicar um encarregado formal, e o
+        Ledger se enquadra nessa categoria hoje. Mesmo assim, o endereço acima é um
+        canal de comunicação mantido para exatamente esse fim, como a mesma resolução
+        exige. Se isso mudar, este documento muda junto.
+    </p>
+</section>
+
+<section class="space-y-2">
+    <h2 class="text-xl font-semibold">2. O que guardamos, e para quê</h2>
+    <p>
+        A tabela abaixo é gerada a partir do próprio código do Ledger. Não é uma
+        descrição aproximada: é a lista das tabelas que existem no banco de dados,
+        com a finalidade de cada uma.
+    </p>
+    <div class="max-w-full overflow-x-auto">
+        <table class="table table-sm table-zebra">
+            <thead>
+                <tr><th>O quê</th><th>Para quê</th><th>Base legal</th></tr>
+            </thead>
+            <tbody>
+                {% for record in purposes %}
+                <tr>
+                    <td class="font-mono text-xs whitespace-nowrap">{{ record.label }}</td>
+                    <td>{{ record.purpose }}</td>
+                    <td class="whitespace-nowrap text-xs">
+                        {{ record.basis.label }}<br>
+                        <span class="opacity-60">{{ record.basis.article }}</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="space-y-2">
+    <h2 class="text-xl font-semibold">3. As bases legais, em português</h2>
+    <ul class="space-y-3">
+        <li>
+            <strong>{{ bases.0.label }} ({{ bases.0.article }}).</strong>
+            A escrituração em si — seus lançamentos, suas receitas, suas categorias,
+            seus orçamentos, sua conta e as cópias de segurança do banco de dados.
+            Você se cadastrou para ter um caderno de contas; guardar o caderno é o
+            contrato. Não pedimos permissão para isso porque é o serviço.
+        </li>
+        <li>
+            <strong>{{ bases.1.label }} ({{ bases.1.article }}).</strong>
+            O assistente de IA: o texto que você escreve, o áudio que você grava, as
+            fotos de cupom, as regras que ele aprende com as suas correções e os
+            vetores derivados delas. Isso sai do Ledger e vai para a
+            <strong>OpenAI</strong>, e por isso é uma escolha sua, separada do
+            cadastro. Você pode
+            <a href="{% url 'account_privacy_tab' %}" class="link">retirar essa
+            autorização</a> quando quiser, e o resto do aplicativo continua
+            funcionando exatamente igual.
+        </li>
+        <li>
+            <strong>{{ bases.2.label }} ({{ bases.2.article }}).</strong>
+            Registros que existem para o serviço não ser derrubado nem usado de má-fé:
+            tentativas de login que falharam, quanto cada uso de IA custou, quando um
+            administrador abriu uma tela com dados de cliente, e a contagem de passos
+            do produto. Nada disso guarda o que você escreveu.
+        </li>
+    </ul>
+</section>
+
+<section class="space-y-2">
+    <h2 class="text-xl font-semibold">4. Por quanto tempo</h2>
+    <p>
+        Também gerado a partir do código. Uma rotina automática roda todo dia e apaga
+        o que passou do prazo — não é uma intenção, é um trabalho agendado.
+    </p>
+    <div class="max-w-full overflow-x-auto">
+        <table class="table table-sm">
+            <thead><tr><th>O quê</th><th>Prazo</th></tr></thead>
+            <tbody>
+                {% for record in retentions %}
+                <tr>
+                    <td>{{ record.purpose }}</td>
+                    <td class="whitespace-nowrap">{{ record.retention_days }} dias</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="text-sm opacity-80">
+        O que não está nesta tabela — seus lançamentos, suas categorias, as regras de
+        memória do assistente — fica enquanto a sua conta existir, porque é o próprio
+        conteúdo do serviço. Você apaga tudo isso a qualquer momento excluindo a
+        conta.
+    </p>
+    <p class="text-sm opacity-80">
+        Arquivos de importação e de exportação são um caso à parte: eles são apagados
+        do armazenamento em <strong>7 dias</strong> por uma regra do próprio bucket,
+        que roda independentemente do nosso sistema.
+    </p>
+</section>
+
+<section class="space-y-2">
+    <h2 class="text-xl font-semibold">5. Com quem compartilhamos</h2>
+    <p>
+        Ninguém compra, aluga ou recebe seus dados para fins próprios. As empresas
+        abaixo processam dados <em>em nome do Ledger</em>, para que ele funcione, e
+        estão sujeitas aos contratos de cada uma:
+    </p>
+    <div class="max-w-full overflow-x-auto">
+        <table class="table table-sm table-zebra">
+            <thead>
+                <tr><th>Empresa</th><th>Para quê</th><th>O que recebe</th><th>Onde</th></tr>
+            </thead>
+            <tbody>
+                {% for processor in subprocessors %}
+                <tr>
+                    <td class="whitespace-nowrap">
+                        <a href="{{ processor.url }}" class="link" rel="noopener"
+                           target="_blank">{{ processor.name }}</a>
+                    </td>
+                    <td>{{ processor.role }}</td>
+                    <td>{{ processor.receives }}</td>
+                    <td class="whitespace-nowrap">{{ processor.country }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="text-sm opacity-80">
+        Parte dessas empresas fica fora do Brasil, o que a LGPD chama de transferência
+        internacional (art. 33). Ela acontece porque é necessária para executar o
+        contrato com você — no caso da OpenAI, porque foi você quem autorizou.
+    </p>
+</section>
+
+<section class="space-y-2">
+    <h2 class="text-xl font-semibold">6. Fotos e áudio</h2>
+    <p>
+        Quando você fotografa um cupom ou grava um áudio, o arquivo é enviado para
+        processamento e <strong>descartado em seguida</strong>. O Ledger nunca guarda a
+        imagem nem o som — só o que foi extraído deles: os itens, os valores, o texto
+        transcrito. Isso é assim desde antes deste documento existir, e continua
+        sendo.
+    </p>
+</section>
+
+<section class="space-y-2">
+    <h2 class="text-xl font-semibold">7. O que você pode exigir</h2>
+    <p>A LGPD (art. 18) te dá estes direitos, e o Ledger os atende assim:</p>
+    <ul class="space-y-2">
+        <li>
+            <strong>Acesso e portabilidade.</strong> Em
+            <a href="{% url 'account_privacy_tab' %}" class="link">Conta → Privacidade</a>,
+            botão “Baixar meus dados”: um .zip com tudo, em planilhas que o próprio
+            Ledger importa de volta. Sem pedir para ninguém.
+        </li>
+        <li>
+            <strong>Correção.</strong> Tudo que você vê no aplicativo, você edita. As
+            conclusões que o assistente tirou sobre você estão listadas na mesma tela,
+            uma a uma, com um botão para apagar cada uma.
+        </li>
+        <li>
+            <strong>Exclusão e anonimização.</strong> Na mesma tela: “Excluir minha
+            conta”. Apaga sua conta, suas conversas, as regras de memória e os
+            rascunhos de cupom. Se você divide a casa com outra pessoa, o histórico
+            financeiro <strong>continua com a casa</strong> — sem o seu nome em
+            nenhum lançamento — porque também é dela. Se você é a única pessoa da
+            casa, a casa inteira é apagada junto.
+        </li>
+        <li>
+            <strong>Informação sobre compartilhamento.</strong> É a seção 5 acima.
+        </li>
+        <li>
+            <strong>Revogação do consentimento.</strong> A autorização para o
+            assistente de IA sai com um clique, na mesma tela, e o resto do aplicativo
+            não muda.
+        </li>
+    </ul>
+    <p>
+        Se preferir pedir por escrito, escreva para
+        <a href="mailto:{{ controller.email }}" class="link">{{ controller.email }}</a>.
+        Respondemos em até 15 dias.
+    </p>
+</section>
+
+<section class="space-y-2">
+    <h2 class="text-xl font-semibold">8. Segurança e incidentes</h2>
+    <p>
+        O acesso ao aplicativo exige senha, com verificação em duas etapas disponível
+        para qualquer conta. As senhas são guardadas como hash — nem nós conseguimos
+        lê-las. O tráfego é criptografado. Os dados de uma casa são isolados dos de
+        outra no banco de dados, e isso é verificado por testes automatizados a cada
+        alteração.
+    </p>
+    <p>
+        Se acontecer um incidente de segurança que possa te causar risco relevante,
+        avisamos você e a ANPD. O prazo que seguimos é de <strong>72 horas</strong> a
+        partir do momento em que tomamos conhecimento.
+    </p>
+</section>
+
+<section class="space-y-2">
+    <h2 class="text-xl font-semibold">9. Crianças e adolescentes</h2>
+    <p>
+        O Ledger não é destinado a menores de 18 anos e não coleta dados de crianças
+        conscientemente. Se descobrirmos uma conta assim, ela é excluída.
+    </p>
+</section>
+
+<section class="space-y-2">
+    <h2 class="text-xl font-semibold">10. Mudanças neste aviso</h2>
+    <p>
+        Cada versão tem uma data, e o Ledger registra qual versão você aceitou e
+        quando — dá para conferir em
+        <a href="{% url 'account_privacy_tab' %}" class="link">Conta → Privacidade</a>.
+        Se uma mudança for relevante, avisamos por e-mail antes de ela valer.
+    </p>
+    <p class="text-sm opacity-60">
+        Versão <span class="font-mono">{{ version }}</span>.
+    </p>
+</section>
+{% endblock %}

@@ -28,6 +28,7 @@ from assistant.quota import decide, fallback_model_for, model_for, open_interact
 from assistant.services.image_prep import prepare_receipt_image
 from assistant.services.transcription import transcribe_audio
 from core.events import EventName, emit
+from core.privacy import AI_CONSENT_REQUIRED, ahas_ai_consent
 
 logger = logging.getLogger(__name__)
 
@@ -264,6 +265,14 @@ async def chat_view(request):
     user = await aget_user(request)
     if not user.is_authenticated:
         return JsonResponse({"error": "Authentication required"}, status=403)
+
+    # E13 / LGPD art. 7º, I. The ledger runs on execução de contrato and needs
+    # no permission; this leg sends what the person wrote to OpenAI, and that
+    # is a choice they make. Checked BEFORE `decide` so a refusal opens no
+    # interaction and charges no credit — a gate that still billed for saying
+    # no would be worse than no gate.
+    if not await ahas_ai_consent(user):
+        return JsonResponse({"error": AI_CONSENT_REQUIRED}, status=403)
 
     # Built from the already-awaited user rather than `AgentScope.for_request`:
     # this view is async and resolves its user with `aget_user`, which does not

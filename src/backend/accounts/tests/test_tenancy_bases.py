@@ -97,6 +97,10 @@ def test_registry_holds_exactly_the_seventeen_household_owned_models():
     that holds user-authored text on purpose. That is precisely why it is a
     separate table from `ProductEvent`, whose PII rule forbids user content —
     and why it is household-owned like everything else here rather than global.
+
+    E13 changed `UsageInteraction.user` from CASCADE to SET_NULL so this table
+    behaves like every other one in this list when a member leaves — see
+    `assistant/tests/test_usage_survives_a_departure.py`.
     """
     expected = {
         "accounts.Invitation",

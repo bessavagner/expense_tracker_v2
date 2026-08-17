@@ -45,6 +45,8 @@ class TestAccountLifecycle:
                 "email2": EMAIL,
                 "password1": PRIMEIRA_SENHA,
                 "password2": PRIMEIRA_SENHA,
+                # E13: the signup form now carries a required acceptance checkbox.
+                "accept_terms": "on",
             },
         )
         assert response.status_code == 302

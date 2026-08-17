@@ -1,0 +1,19 @@
+{% extends "base_public.html" %}
+{% comment %}
+A long document inside `base_public.html`, whose `main` centres its child with
+`items-center`. `self-start` on this wrapper is not styling: without it a
+document taller than the viewport has its top clipped in a centred flex
+container, which is the classic way a legal page loses its first paragraph.
+{% endcomment %}
+
+{% block shell %}
+<article class="w-full max-w-3xl mx-auto self-start py-10 px-2 space-y-6">
+    {% block document %}{% endblock %}
+    <footer class="divider"></footer>
+    <p class="text-xs opacity-60">
+        <a href="{% url 'privacy_notice' %}" class="link">Aviso de Privacidade</a>
+        ·
+        <a href="{% url 'terms_of_service' %}" class="link">Termos de Uso</a>
+    </p>
+</article>
+{% endblock %}

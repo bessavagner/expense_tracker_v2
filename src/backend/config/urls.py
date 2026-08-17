@@ -12,6 +12,7 @@ from core.views import (
     ServiceWorkerView,
     health_check,
 )
+from core.views_legal import PrivacyNoticeView, TermsView
 from core.views_metrics import MetricsDashboardView
 
 urlpatterns = [
@@ -25,6 +26,10 @@ urlpatterns = [
     # Beta feedback (E14 S14-5). The one place the product stores user-authored
     # text on purpose — see `core.models.Feedback`.
     path("feedback/", FeedbackView.as_view(), name="feedback_submit"),
+    # Public by necessity (E13 S13-4): the signup form links both, and somebody
+    # deciding whether to sign up has to be able to read them.
+    path("privacidade/", PrivacyNoticeView.as_view(), name="privacy_notice"),
+    path("termos/", TermsView.as_view(), name="terms_of_service"),
     # Cloud Tasks dispatch (E10). Public by necessity — the service is deployed
     # --allow-unauthenticated — so `core.tasks.auth` verifies the OIDC token
     # in-app on every request.

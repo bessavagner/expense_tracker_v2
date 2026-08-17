@@ -88,11 +88,14 @@ def build_export(household) -> bytes:
     cannot hold, that is the signal to chunk -- not a reason to pre-emptively
     complicate this.
     """
-    from assistant.models import ChatMessage, MemoryRule, ReceiptDraft
+    from accounts.models import Invitation, Membership
+    from assistant.models import ChatMessage, MemoryRule, ReceiptDraft, UsageInteraction
+    from core.models import Consent, Feedback, PolicyAcceptance, ProductEvent
     from finances.models import (
         Budget,
         Category,
         Entry,
+        ExportJob,
         ImportJob,
         Income,
         InstallmentPlan,
@@ -245,7 +248,10 @@ def build_export(household) -> bytes:
             "meta": {
                 "gerado_em": timezone.now().isoformat(),
                 "domicilio": str(household.pk),
-                "formato": 1,
+                # 2: E13 added `conta`, `eventos`, `feedbacks`, `uso` and
+                # `exportacoes`. Adding keys breaks no reader, but the number is
+                # what tells a person which shape they are holding.
+                "formato": 2,
             },
             "entradas": [
                 {
@@ -363,6 +369,101 @@ def build_export(household) -> bytes:
                 }
                 for job in ImportJob.objects.for_household(household).order_by("created_at")
             ],
+            # E13. The other half of the job history: when a copy of this data
+            # was asked for. The archive itself expires after 7 days; this row
+            # is what says it once existed.
+            "exportacoes": [
+                {
+                    "situacao": job.status,
+                    "tamanho_bytes": job.size_bytes,
+                    "criado_em": job.created_at,
+                    "concluido_em": job.completed_at,
+                }
+                for job in ExportJob.objects.for_household(household).order_by("created_at")
+            ],
+            # E13. The account itself: an access request that omits "which
+            # address, since when, which version you accepted" is not one.
+            # `password` is deliberately absent — an export is a file people
+            # email to themselves, and a hash in an inbox is a credential in
+            # an inbox.
+            "conta": {
+                "casa": {
+                    "nome": household.name,
+                    "criada_em": household.created_at,
+                },
+                "pessoas": [
+                    {
+                        "email": membership.user.email,
+                        "nome": membership.user.first_name,
+                        "papel": membership.role,
+                        "entrou_em": membership.created_at,
+                    }
+                    for membership in Membership.objects.filter(household=household)
+                    .select_related("user")
+                    .order_by("created_at")
+                ],
+                "convites": [
+                    {
+                        "email": invitation.email,
+                        "criado_em": invitation.created_at,
+                        "aceito_em": invitation.accepted_at,
+                        "cancelado_em": invitation.revoked_at,
+                    }
+                    for invitation in Invitation.objects.for_household(household).order_by(
+                        "created_at"
+                    )
+                ],
+                "aceites": [
+                    {
+                        "documento": acceptance.document,
+                        "versao": acceptance.version,
+                        "aceito_em": acceptance.accepted_at,
+                    }
+                    for acceptance in PolicyAcceptance.objects.filter(
+                        user__memberships__household=household
+                    ).order_by("accepted_at")
+                ],
+                "consentimentos": [
+                    {
+                        "finalidade": consent.purpose,
+                        "concedido": consent.granted,
+                        "concedido_em": consent.granted_at,
+                        "retirado_em": consent.revoked_at,
+                    }
+                    for consent in Consent.objects.filter(
+                        user__memberships__household=household
+                    ).order_by("updated_at")
+                ],
+            },
+            # E13. `core.ProductEvent`'s docstring has said "exported by E13"
+            # since E14 shipped; this is that promise. No user content is in
+            # here by construction — the model forbids it.
+            "eventos": [
+                {
+                    "nome": event.name,
+                    "criado_em": event.created_at,
+                    "detalhes": event.metadata,
+                }
+                for event in ProductEvent.objects.for_household(household).order_by("created_at")
+            ],
+            # E13. The one table that holds user-authored text on purpose.
+            "feedbacks": [
+                {"mensagem": item.message, "criado_em": item.created_at}
+                for item in Feedback.objects.for_household(household).order_by("created_at")
+            ],
+            # E13. What the AI cost. Kept for 730 days under legítimo interesse,
+            # so a person asking what we hold about them is entitled to see it.
+            "uso": [
+                {
+                    "tipo": interaction.kind,
+                    "faixa": interaction.tier,
+                    "creditos": interaction.credits_charged,
+                    "criado_em": interaction.created_at,
+                }
+                for interaction in UsageInteraction.objects.for_household(household).order_by(
+                    "created_at"
+                )
+            ],
         }
         archive.writestr(
             "ledger.json",
@@ -390,8 +491,12 @@ formas_pagamento.csv    Suas formas de pagamento e o dia de fechamento.
 orcamentos.csv          Seus orçamentos.
 despesas_sistemicas.csv Suas despesas fixas.
 ledger.json             Tudo acima, sem perder nenhum campo, mais o histórico
-                        de conversas com o assistente, as regras de memória e
-                        o registro das importações.
+                        de conversas com o assistente, as regras de memória, o
+                        registro das importações, os dados da sua conta (quem
+                        está na casa, quais versões dos documentos você aceitou,
+                        se autorizou o uso de IA), os eventos de uso do produto,
+                        os comentários que você enviou e quanto o assistente
+                        custou em créditos.
 
 Como trazer de volta
 --------------------

@@ -44,6 +44,11 @@ consistency wins. E15 may revisit that when "ir para o seu plano" needs it.
             hx-target="#account-content"
             hx-swap="innerHTML"
             @click="document.querySelectorAll('.tabs .tab').forEach(t => { t.classList.remove('tab-active'); t.setAttribute('aria-selected', 'false'); }); $el.classList.add('tab-active'); $el.setAttribute('aria-selected', 'true')">Membros</button>
+    <button type="button" role="tab" class="tab" id="tab-privacidade" aria-selected="false"
+            hx-get="{% url 'account_privacy_tab' %}"
+            hx-target="#account-content"
+            hx-swap="innerHTML"
+            @click="document.querySelectorAll('.tabs .tab').forEach(t => { t.classList.remove('tab-active'); t.setAttribute('aria-selected', 'false'); }); $el.classList.add('tab-active'); $el.setAttribute('aria-selected', 'true')">Privacidade</button>
 </div>
 
 <div id="account-content"
