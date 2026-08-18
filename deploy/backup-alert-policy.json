@@ -1,0 +1,32 @@
+{
+  "displayName": "E16 backup has not run",
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "No completed nightly backup in ~36h",
+      "conditionThreshold": {
+        "filter": "metric.type=\"logging.googleapis.com/user/ledger_backup_ran\" AND resource.type=\"cloud_run_job\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "90000s",
+            "perSeriesAligner": "ALIGN_SUM"
+          }
+        ],
+        "comparison": "COMPARISON_LT",
+        "thresholdValue": 1,
+        "duration": "41400s",
+        "evaluationMissingData": "EVALUATION_MISSING_DATA_ACTIVE",
+        "trigger": {
+          "count": 1
+        }
+      }
+    }
+  ],
+  "notificationChannels": [
+    "projects/expense-tracker-482807/notificationChannels/5857707555791637518"
+  ],
+  "documentation": {
+    "mimeType": "text/markdown",
+    "content": "The nightly `ledger-backup` job has not logged a completed backup in 36 hours.\n\nThis is the backup we own (E16 D11). Supabase's own backups are a second line, not the first \u2014 a retention set by someone else's pricing page is not something you can state an RPO from. Every night this job writes `pg_dump -Fc` to `gs://ledger-backups-expense-tracker-482807` and the bucket deletes objects at 30 days, so a sweep that stopped silently means the window is quietly closing on every recoverable point in time.\n\n36h rather than 24h so one late run is not a page.\n\n**A threshold condition, not `conditionAbsent`** \u2014 the absent form is capped at 23h30m by the API, which would have paged on a single late run. `evaluationMissingData: ACTIVE` is what makes it fire on silence; without it a metric with no data points simply never evaluates, and the alert would be decorative. The 25h-trailing-sum-plus-11.5h-duration shape is an API constraint, not a preference \u2014 it is copied from `purge-alert-policy.json` for exactly that reason.\n\n**Check the executions, not the Scheduler.** `gcloud run jobs executions list --job ledger-backup` \u2014 the Scheduler reports success as soon as the execution is *created*, so its green tick proves nothing.\n\n**The two failures seen so far, both on the first day:** the dump was rejected by the size floor (`ledger_backup_ran: FAILED \u2014 dump is only N bytes`), which means either the database really shrank or `MIN_DUMP_BYTES` is miscalibrated; and the upload failed authentication, which reads as `You do not currently have an active account selected`. See `docs/runbook.md` \u00a7 *Backups*.\n\nSee `docs/runbook.md` \u00a7 *Backups* and \u00a7 *Restoring from backup*."
+  }
+}

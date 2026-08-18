@@ -38,3 +38,19 @@ the generator is in `docs/runbook.md` § *Retenção de dados (E13) → Provisio
   dilute the ratio below any usable threshold. A `_staging` pair exists with the
   same filters against `expense-tracker-staging`, so the shape can be rehearsed
   without breaking production.
+
+- `backup-alert-policy.json` — the *E16 backup has not run* policy,
+  `10901368719388244388`. Same 25h-sum-plus-11.5h-duration shape as the purge
+  policy, and for the same API reasons — read its `documentation` block before
+  simplifying the condition.
+
+- `backup/Dockerfile`, `backup/backup.sh` — the `ledger-backup` Job's image.
+  `FROM postgres:17` because Supabase runs 17.6 and an older client refuses to
+  talk to it. It uploads to GCS with a **metadata-server token**, not the gcloud
+  SDK: an SDK installed into this image could not see Cloud Run's credentials and
+  failed with "You do not currently have an active account selected", and dropping
+  it cut the build from 4m35s to 45s.
+
+**The `ledger-drift-check` and `ledger-backup` Job specs are deliberately NOT
+committed here**, for the same reason as `ledger-purge`: they embed the service's
+whole `env` array, including `ADMIN_URL_PATH`, and this repository is public.

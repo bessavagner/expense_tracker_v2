@@ -1188,6 +1188,136 @@ will say so.
 
 ---
 
+## Backups
+
+**The RTO and RPO are in § *Restoring from backup*.** This section is about the
+backups existing; that one is about getting the data back.
+
+### What Supabase gives us
+
+> **TO BE FILLED IN FROM THE DASHBOARD.** *Project → Database → Backups* on the
+> **production** project, recording verbatim: the plan tier, the backup
+> frequency, the retention in days, and whether Point-in-Time Recovery is
+> available and at what price. E16 Task 10 Step 1 requires these facts and they
+> could not be read from the CLI. **If the free tier turns out to keep nothing,
+> that is the single most important sentence in this runbook** and it belongs
+> here in those words.
+
+Whatever it says, Supabase's backups are now the **second** line, not the first.
+A retention set by someone else's pricing page is not something an RPO can be
+stated from — which is why the job below exists (E16 D11).
+
+### The backup we own
+
+Cloud Run Job **`ledger-backup`**, triggered by Cloud Scheduler
+**`ledger-backup-nightly`** at **03:00 America/Sao_Paulo** — deliberately
+*before* `ledger-purge` at 03:20, so the day's data is captured before retention
+deletes anything and a purge bug is recoverable from that night's dump.
+
+It writes `pg_dump --no-owner --no-acl -Fc` to
+**`gs://ledger-backups-expense-tracker-482807`**, which has a **30-day delete
+lifecycle rule** — a full billing-month cycle plus margin, which is the unit this
+product's data is organised in.
+
+The image is built from `deploy/backup/Dockerfile` off `postgres:17`, because
+Supabase runs PostgreSQL 17.6 and a client 16 refuses to talk to it (§ *Applying
+a migration to Supabase*, failure #1). Credentials come from Secret Manager as
+libpq parts — `ledger-pghost`, `ledger-pguser`, `ledger-pgpassword` — never as a
+URL, because the production password contains a space (failure #2). `PGHOST` is
+the **session pooler (5432)**: `pg_dump` needs session-level features pgbouncer
+in transaction mode does not provide.
+
+```bash
+P=expense-tracker-482807
+R=southamerica-east1
+
+# Run one now.
+gcloud run jobs execute ledger-backup --project "$P" --region "$R" --wait
+
+# What is in the bucket.
+gcloud storage ls -l "gs://ledger-backups-${P}"
+```
+
+A good run logs exactly this, and the alert fires on its absence:
+
+```
+ledger_backup_ran: ok 557478 bytes -> gs://ledger-backups-expense-tracker-482807/ledger-2026-08-18T17-27-12Z.dump
+```
+
+**Verify contents, not existence.** An object of the right size that cannot be
+read is not a backup:
+
+```bash
+gcloud storage cp "$(gcloud storage ls "gs://ledger-backups-${P}" | tail -1)" /tmp/verify.dump
+docker run --rm -v /tmp:/work postgres:17 pg_restore --list /work/verify.dump | grep -c 'TABLE DATA'
+rm -f /tmp/verify.dump          # production data — delete it
+```
+
+Expect ~77 `TABLE DATA` entries, including `public finances_entry`,
+`public assistant_chatmessage` and `public accounts_household`.
+
+### The size floor, and what it can actually catch
+
+The job refuses to upload a dump smaller than `MIN_DUMP_BYTES` (default
+**350,000**), because a dump that is suspiciously small is worse than no dump —
+it looks like one.
+
+The number is measured, not guessed. On 2026-08-18:
+
+| | bytes |
+|---|---|
+| full dump (`-Fc`, compressed) | 557,478 |
+| schema-only dump (`-Fc`) | 319,467 |
+
+**This database is small, so size is a weak signal** — a schema-only dump is 57%
+the size of a real one. The floor catches a truncated, empty or schema-only dump
+and nothing subtler. The real verification is restoring it and diffing
+`manage.py dump_ledger_totals --json`; see § *Restoring from backup*.
+
+`MIN_DUMP_BYTES` is an environment variable precisely so it can be retuned
+without rebuilding the image:
+
+```bash
+gcloud run jobs update ledger-backup --project "$P" --region "$R" \
+  --update-env-vars MIN_DUMP_BYTES=400000
+```
+
+**Common failure: `ledger_backup_ran: FAILED — dump is only N bytes, floor is M`.**
+Either the database really shrank, or the floor is miscalibrated. Take a
+schema-only dump (command above) and compare: if `N` is near the schema-only
+size, the dump genuinely lost its data and this is an incident. If `N` is
+comfortably above it, lower the floor.
+
+**Common failure: `ERROR: (gcloud.storage.cp) You do not currently have an active
+account selected`.** Historical — the first version of this image installed the
+Google Cloud SDK and it could not see Cloud Run's metadata credentials. The image
+now uploads straight to the GCS JSON API with a metadata-server token and carries
+no SDK. If you ever see this again, someone has reintroduced `gcloud` into
+`deploy/backup/Dockerfile`.
+
+**Common failure: `password authentication failed`.** The database password was
+rotated and Secret Manager was not. Add a new version to `ledger-pgpassword` and
+re-run — see § *Rotating a secret*, which lists everything one password rotation
+touches.
+
+**Common failure: a `pg_dump` version mismatch** if anyone rebuilds the image off
+a non-17 base. `pg_dump` refuses to talk to a newer server; keep `FROM postgres:17`
+until Supabase moves.
+
+### What the job can and cannot do to the bucket
+
+The Job runs as the service's runtime account, which holds
+`roles/storage.objectCreator` on the bucket — write, not delete. Deletion is the
+lifecycle rule's job.
+
+> **This protection is currently weaker than it looks.** The runtime account is
+> the default compute service account and it also holds project-level
+> `roles/editor`, which already includes `storage.objects.delete`. So the
+> bucket-level grant does not, today, stop a compromised service from erasing its
+> own backups. Closing this properly means a dedicated service account holding
+> only `objectCreator` plus `secretmanager.secretAccessor`, and pointing the Job
+> at it — recorded here rather than quietly left implied.
+
 ## Applying a migration to Supabase
 
 Migrations go through the **direct/session connection on port 5432**, never the
