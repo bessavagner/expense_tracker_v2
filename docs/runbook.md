@@ -2074,11 +2074,13 @@ three ways before being left alone: a manual `jobs execute`, a manual
 `succeededCount: 1`. Written up in *Import and export jobs (E12)*, which is the
 section that asked to be told.
 
-**`emit_usage_metrics` is still an orphan.** Same pattern, `ledger-usage-metrics`
-daily at 03:40; the generated spec exists and the job has not been created. Do it
-with the generator above, then **record the choice in *Usage, credits and cost
-(E07)***, which explicitly asks for that. Until then E06's two missing
-golden-signal tiles stay missing.
+**`emit_usage_metrics` was adopted the same day.** Cloud Run Job
+`ledger-usage-metrics`, Scheduler `ledger-usage-metrics-daily` at 03:40, proved
+by a manual execute and a manual trigger before the cron was left to itself. The
+choice is recorded in *Usage, credits and cost (E07)*, which is the section that
+asked for it. **Neither orphan is an orphan any more** — but E06's two
+golden-signal tiles are still absent: the job that feeds them now runs, and the
+log-based metrics and the dashboard edit have not been done.
 
 **Note for whoever adds the third:** `*/15 * * * *` is 96 executions a day, each
 a cold start of a 1 vCPU / 1 GiB container — roughly a dollar a month, and worth
@@ -2342,9 +2344,32 @@ gcloud logging metrics create assistant_cost_daily \
 
 Then add two tiles to dashboard `450cfbfa-635f-487b-9893-83947ab91b9b`
 (`expense-tracker — golden signals`) and **delete the note on its face saying
-those two tiles are impossible** — true for E06, stale now. Schedule the daily
-run with Cloud Scheduler against a Cloud Run job, or as a step in the existing
-cron path; record whichever you pick here.
+those two tiles are impossible** — true for E06, stale now. **Scheduled, since 2026-08-18** — the rail that was picked, recorded here
+because this section asked for it. A Cloud Run Job, `ledger-usage-metrics`,
+triggered by Cloud Scheduler `ledger-usage-metrics-daily` at 03:40
+America/Sao_Paulo (clear of the 03:20 retention sweep), on the pattern in
+§ *Retenção de dados (E13)*. Verified by a manual execute and a manual Scheduler
+trigger, both `succeededCount: 1`; the second wrote
+`{"cost_usd": "0", "day": "2026-08-17", "metric": "assistant_usage_daily",
+"turns": 0}` — zeroes because nobody used the assistant yesterday, which is the
+designed output and not a fault.
+
+```bash
+gcloud run jobs executions list --job ledger-usage-metrics \
+  --project expense-tracker-482807 --region southamerica-east1 --limit 5
+```
+
+**The job now runs but the two tiles still do not exist.** Creating them is
+what is left of this section: the two `gcloud logging metrics create` commands
+above, then the dashboard edit. The line they read is being written nightly
+from today, so the metrics will have history waiting for them.
+
+Note the payload shape when you build them: the fields sit at the **top level**
+of `jsonPayload` (`metric`, `turns`, `cost_usd`, `day`) with no `message` key,
+which is why the filter above is `jsonPayload.metric=` and not the
+`jsonPayload.message=~` that `ledger_purge_ran` uses. The two jobs log in
+different shapes and a filter copied from one will silently count nothing on the
+other.
 
 Common failure: the metric flatlines at zero after a deploy. Check the value
 extractors first — they read the literal keys `turns` and `cost_usd`, and
