@@ -1,0 +1,182 @@
+name: Deploy
+
+# Staging on every merge to main; production only on a v* tag (E16 D3).
+# A deliberate trigger recorded in git history, rather than in an Actions log.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+# No long-lived service-account key exists anywhere in this repository or its
+# secrets. `id-token: write` is what lets the job mint a short-lived OIDC token
+# that Google exchanges for credentials, scoped by the provider's attribute
+# condition to this repository alone (E16 S16-3).
+permissions:
+  contents: read
+  id-token: write
+
+# A second push while a deploy is running would race two revisions of the same
+# service. Queue instead, and never cancel a run that may have already migrated.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT: expense-tracker-482807
+  GCP_REGION: southamerica-east1
+
+jobs:
+  staging:
+    if: startsWith(github.ref, 'refs/heads/')
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.12
+      - run: uv sync
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      # Migrations run BEFORE the new revision exists, against the DIRECT
+      # (session-pooler, 5432) connection — the transaction pooler is pgbouncer
+      # in transaction mode and does not support everything a migration needs.
+      #
+      # Passed as libpq parts rather than as a DATABASE_URL: the production
+      # password contains a space, and a URL carrying one is rejected by
+      # pg_dump 17 and mangled by Django's URL parser. Staging's may too.
+      # See docs/runbook.md, "Applying a migration to Supabase", failure #2.
+      #
+      # This step failing aborts the job, so a failed migration can never leave
+      # a half-migrated database serving traffic.
+      - name: Migrate staging
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.prod
+          SECRET_KEY: migration-step-only-never-serves-a-request
+          ALLOWED_HOSTS: localhost
+          POSTGRES_HOST: ${{ secrets.STAGING_POSTGRES_HOST }}
+          POSTGRES_PORT: ${{ secrets.STAGING_POSTGRES_PORT }}
+          POSTGRES_USER: ${{ secrets.STAGING_POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.STAGING_POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ secrets.STAGING_POSTGRES_DB }}
+          PRIVACY_CONTROLLER_NAME: Staging
+          PRIVACY_CONTROLLER_CNPJ: 00.000.000/0001-91
+          PRIVACY_CONTROLLER_ADDRESS: Staging
+          PRIVACY_CONTACT_EMAIL: staging@example.com
+        run: uv run python src/backend/manage.py migrate --no-input
+
+      # A bare deploy: no --set-env-vars, no --set-secrets, so the revision
+      # inherits the environment Task 4 set. --set-env-vars would REPLACE the
+      # whole list and wipe DATABASE_URL.
+      - name: Deploy staging
+        run: |
+          gcloud run deploy expense-tracker-staging --source . \
+            --project "$GCP_PROJECT" --region "$GCP_REGION" --quiet
+
+      # The revision only became ready because the container started, which
+      # after E16 Task 3 is NOT by itself proof that migrations are applied —
+      # the startup probe is a TCP check on 8080, not an HTTP check on
+      # /healthz/. This step is therefore the real gate: it reads the health
+      # body from outside and fails the job loudly if the service is degraded.
+      - name: Smoke test
+        run: |
+          URL=$(gcloud run services describe expense-tracker-staging \
+            --project "$GCP_PROJECT" --region "$GCP_REGION" --format='value(status.url)')
+          BODY=$(curl -sf -m 60 "$URL/healthz/")
+          echo "$BODY"
+          echo "$BODY" | grep -q '"status": "ok"' \
+            || { echo "::error::staging /healthz/ is not ok: $BODY"; exit 1; }
+          code=$(curl -s -o /dev/null -w '%{http_code}' -m 60 "$URL/")
+          [ "$code" = "302" ] || { echo "::error::/ returned $code, expected 302"; exit 1; }
+
+  production:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    # A GitHub Environment, so a required-reviewer protection rule can be added
+    # later without touching this file. Not enabled now: with one maintainer you
+    # would be approving your own deploy, which only trains you to click through
+    # the gate (E16 D3).
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.12
+      - run: uv sync
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      # Report the drift the deploy is about to fix, or prove there is none.
+      # Informational — the migrate step is what acts — but it turns a surprise
+      # into a line in the log naming exactly what will change.
+      - name: Report schema drift before migrating
+        continue-on-error: true
+        env: &prod_db
+          DJANGO_SETTINGS_MODULE: config.settings.prod
+          SECRET_KEY: migration-step-only-never-serves-a-request
+          ALLOWED_HOSTS: localhost
+          POSTGRES_HOST: ${{ secrets.PROD_POSTGRES_HOST }}
+          POSTGRES_PORT: ${{ secrets.PROD_POSTGRES_PORT }}
+          POSTGRES_USER: ${{ secrets.PROD_POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.PROD_POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ secrets.PROD_POSTGRES_DB }}
+          PRIVACY_CONTROLLER_NAME: Migration step
+          PRIVACY_CONTROLLER_CNPJ: 00.000.000/0001-91
+          PRIVACY_CONTROLLER_ADDRESS: Migration step
+          PRIVACY_CONTACT_EMAIL: migration@example.com
+        run: uv run python src/backend/manage.py check_migration_drift || true
+
+      # Direct connection (session pooler, 5432), before the revision exists.
+      # Failing here aborts the job with the previous revision still serving.
+      - name: Migrate production
+        env: *prod_db
+        run: uv run python src/backend/manage.py migrate --no-input
+
+      - name: Deploy production
+        run: |
+          gcloud run deploy expense-tracker --source . \
+            --project "$GCP_PROJECT" --region "$GCP_REGION" --quiet
+
+      - name: Smoke test
+        run: |
+          URL=$(gcloud run services describe expense-tracker \
+            --project "$GCP_PROJECT" --region "$GCP_REGION" --format='value(status.url)')
+          BODY=$(curl -sf -m 60 "$URL/healthz/")
+          echo "$BODY"
+          echo "$BODY" | grep -q '"status": "ok"' \
+            || { echo "::error::production /healthz/ is not ok: $BODY"; exit 1; }
+          for p in / /.well-known/assetlinks.json; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -m 60 "$URL$p")
+            echo "$p -> $code"
+          done
+
+      # `--source` deploys push untagged digests, so ledger-purge keeps running
+      # the image it was created with until told otherwise — and a stale sweep
+      # still exits 0 and still logs, so E13's silence alert cannot catch it.
+      # Nothing can. This was a manual step in the runbook; a manual step that
+      # nothing verifies is a step that gets skipped (E16 D13).
+      #
+      # --image replaces ONLY the image. A deploy that also changed the
+      # service's env must regenerate the whole Job spec by hand — see
+      # docs/runbook.md, "Retenção de dados (E13) -> Provisioning".
+      - name: Re-point the ledger-purge job at the new image
+        run: |
+          IMAGE=$(gcloud run services describe expense-tracker \
+            --project "$GCP_PROJECT" --region "$GCP_REGION" \
+            --format='value(spec.template.spec.containers[0].image)')
+          echo "$IMAGE"
+          gcloud run jobs update ledger-purge \
+            --project "$GCP_PROJECT" --region "$GCP_REGION" --image "$IMAGE"

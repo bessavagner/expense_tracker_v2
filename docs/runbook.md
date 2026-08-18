@@ -15,6 +15,10 @@ Production is Cloud Run service `expense-tracker`, GCP project
 
 ## Deploy a new revision
 
+> **The normal path is a `v*` tag** — see § *The deploy pipeline*. What follows
+> is the manual procedure, for when the pipeline is unavailable. It is still
+> correct, and migrations still come first.
+
 ```bash
 gcloud run deploy expense-tracker --source . \
   --project expense-tracker-482807 \
@@ -76,11 +80,17 @@ gcloud run services describe expense-tracker \
       for e in json.load(sys.stdin)['spec']['template']['spec']['containers'][0]['env']]"
 ```
 
-### Re-point the purge job at the new image — every time
+### Re-point the purge job at the new image
 
-`--source` deploys push untagged digests, so `ledger-purge` keeps running the
-image it was created with until told otherwise. A stale sweep still exits 0 and
-still logs, so the alert will not catch this; nothing will.
+**The pipeline does this automatically** on every tagged production deploy —
+`.github/workflows/deploy.yml`, step *Re-point the ledger-purge job at the new
+image*. Do it by hand only after a manual `gcloud run deploy`, which is now the
+exception rather than the rule.
+
+The reason it must happen at all is unchanged: `--source` deploys push untagged
+digests, so `ledger-purge` keeps running the image it was created with. A stale
+sweep still exits 0 and still logs, so the E13 silence alert will not catch this;
+nothing will.
 
 ```bash
 gcloud run jobs update ledger-purge \
@@ -151,6 +161,72 @@ Full procedure in `docs/superpowers/plans/2026-08-18-E16-operations-staging-depl
 Task 4. In summary: create the Supabase project, `manage.py migrate` against its
 session pooler (port 5432), `gcloud run deploy expense-tracker-staging --source .`
 with the environment block from that task, then seed it.
+
+## The deploy pipeline
+
+`.github/workflows/deploy.yml`. **Merge to `main` → staging. Push a `v*` tag →
+production.** Nothing else deploys anything.
+
+Authentication is Workload Identity Federation: the job mints a short-lived OIDC
+token and Google exchanges it for credentials. **There is no service-account key
+in this repository or its secrets, and there must never be one.** Two repository
+*variables* (not secrets — they are public identifiers, and masking them only
+makes a `PERMISSION_DENIED` undebuggable) name the provider and the identity:
+
+```bash
+gh variable list --repo bessavagner/expense_tracker_v2
+```
+
+Expect two rows, `GCP_DEPLOY_SERVICE_ACCOUNT` and
+`GCP_WORKLOAD_IDENTITY_PROVIDER`, with their values shown in the clear.
+
+### Deploying to production
+
+```bash
+git tag -a v0.1.0 -m "what shipped"
+git push origin v0.1.0
+gh run watch --repo bessavagner/expense_tracker_v2
+```
+
+The job migrates first, deploys second, smoke-tests third, and re-points the
+`ledger-purge` job at the new image last. **Migrating first is load-bearing**,
+not tidiness: `/healthz/` returns 503 when the database is behind the image, and
+the startup probe is an HTTP GET against `/healthz/`, so an image deployed ahead
+of its migrations never becomes ready and the deploy aborts with the previous
+revision still serving.
+
+> The startup probe was a **TCP check on port 8080** until E16 changed it. A TCP
+> probe cannot see a 503, so under it a drifted revision would have gone live and
+> served errors. If you ever see a probe reported as `tcpSocket` on either
+> service, that safety property is off — see § *Schema drift*.
+
+**Common failure: the job fails at `Migrate production` and nothing deployed.**
+That is the design working. The previous revision is still serving; fix the
+migration and push a new tag. Do not deploy around it.
+
+**Common failure: `PERMISSION_DENIED: ... iam.serviceaccounts.actAs`.** The
+deployer service account lost `roles/iam.serviceAccountUser`. Re-grant it; see
+the E16 plan's Task 5, Step 1 for the full role list and why each is there.
+
+**Common failure: the deploy hangs, then reports the revision failed to become
+ready, and the logs show `Invalid HTTP_HOST header: '127.0.0.1'`.** The startup
+probe sends `Host: 127.0.0.1`, so **`127.0.0.1` must be in `ALLOWED_HOSTS`** on
+any service using the HTTP probe. This is exactly what bit while provisioning
+staging: every probe got a Django 400 and Cloud Run reported it as a timeout.
+
+**Common failure: the deploy hangs for another reason.** Read the health body —
+it names the cause:
+
+```bash
+gcloud run services logs read expense-tracker \
+  --project expense-tracker-482807 --region southamerica-east1 --limit 50
+```
+
+### Deploying by hand, when the pipeline is down
+
+The manual procedure in § *Deploy a new revision* still works and is still
+correct. Run `manage.py migrate` against the session pooler **first**, then
+deploy, then re-point `ledger-purge`.
 
 ## When something breaks
 

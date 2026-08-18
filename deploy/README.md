@@ -15,3 +15,10 @@ commas, spaces and `@` survive — and that array includes `ADMIN_URL_PATH`, who
 only protection is that it is not published. **This repository is public.**
 Generate the spec at apply time from `gcloud run services describe --format=json`;
 the generator is in `docs/runbook.md` § *Retenção de dados (E13) → Provisioning*.
+
+- **Workload Identity Federation** for the deploy pipeline is provisioned by
+  `gcloud`, not from a file here — the pool, provider, attribute condition and
+  `principalSet` binding are in the E16 plan's Task 5, and the runbook's
+  § *The deploy pipeline* explains operating them. The two GitHub repository
+  variables that name them are **not secrets**: they are public identifiers, and
+  the authorisation is the attribute condition, not their obscurity.
