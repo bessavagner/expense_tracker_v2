@@ -193,6 +193,24 @@ def _capture_identity(request) -> None:
 
 @sync_and_async_middleware
 def log_context_middleware(get_response):
+    """E16 S16-8 ALERT REHEARSAL — TEMPORARY, staging only, never merged.
+
+    Raises on every path except /healthz/, which reproduces the shape the ratio
+    policy exists to catch: a total failure at low request volume, while the
+    health endpoint keeps answering 200 so the uptime check stays quiet and the
+    metric pair's /healthz/ exclusion is exercised for real.
+
+    Reverted immediately after the rehearsal.
+    """
+    def middleware(request):
+        if request.path != "/healthz/":
+            raise RuntimeError("E16 S16-8 alert rehearsal")
+        return get_response(request)
+
+    return middleware
+
+
+def _log_context_middleware_real(get_response):
     """Add the acting user and household to the logging context.
 
     Separate from ``request_id_middleware`` because it needs a different
