@@ -1318,6 +1318,140 @@ lifecycle rule's job.
 > only `objectCreator` plus `secretmanager.secretAccessor`, and pointing the Job
 > at it — recorded here rather than quietly left implied.
 
+## Restoring from backup
+
+**Measured, not estimated.** On 2026-08-18 a real nightly backup was restored
+into a scratch database and verified: **1 min 45 s to recover the data**, with a
+**zero-line diff** on every household's balances and every month's acumulado.
+Full breakdown: `docs/superpowers/evidence/e16-restore/`.
+
+**The two numbers you need in an incident:**
+
+| | |
+|---|---|
+| **RTO — data recovered and verified** | **~2 minutes** (measured: 1 min 45 s) |
+| **RTO — product serving users again** | **~15 minutes** (the above plus a deploy; the deploy half is *not* rehearsed) |
+| **RPO** | **up to ~24 hours** — one backup at 03:00 America/Sao_Paulo |
+
+The RPO is the schedule, not a technical limit. A failure at 02:55 loses
+everything entered since the previous 03:00.
+
+### Restoring into a scratch database (the rehearsed path)
+
+```bash
+P=expense-tracker-482807
+SP=/tmp/e16-restore                     # anything outside the repo
+mkdir -p "$SP"
+
+# 1. The most recent backup.
+LATEST=$(gcloud storage ls "gs://ledger-backups-${P}" | sort | tail -1)
+echo "$LATEST"
+gcloud storage cp "$LATEST" "$SP/restore.dump"
+
+# 2. Scratch database in the STAGING project — never production's, and never
+#    staging's own `postgres` database.
+export PGHOST=<staging session pooler host> PGPORT=5432 \
+       PGUSER=<staging user> PGPASSWORD='<staging password>' \
+       PGDATABASE=postgres PGSSLMODE=require
+
+docker run --rm -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD -e PGDATABASE -e PGSSLMODE \
+  postgres:17 psql -c 'CREATE DATABASE ledger_restore_rehearsal;'
+
+docker run --rm -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD -e PGSSLMODE \
+  -e PGDATABASE=ledger_restore_rehearsal postgres:17 \
+  psql -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+
+# 3. Restore. ~47 s for a 545 KiB dump.
+docker run --rm -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD -e PGSSLMODE \
+  -e PGDATABASE=ledger_restore_rehearsal -v "$SP:/work" postgres:17 \
+  pg_restore --no-owner --no-acl -d ledger_restore_rehearsal /work/restore.dump
+```
+
+**4. Verify the money, not the row counts.** This is the step that decides
+whether the restore worked:
+
+```bash
+POSTGRES_HOST="$PGHOST" POSTGRES_PORT=5432 \
+POSTGRES_USER="$PGUSER" POSTGRES_PASSWORD="$PGPASSWORD" \
+POSTGRES_DB=ledger_restore_rehearsal \
+DJANGO_SETTINGS_MODULE=config.settings.prod SECRET_KEY=readonly ALLOWED_HOSTS=localhost \
+  uv run python src/backend/manage.py dump_ledger_totals --json > "$SP/after.json"
+
+# Compare against the same command run against production.
+diff <(python3 -m json.tool "$SP/before.json") <(python3 -m json.tool "$SP/after.json") \
+  && echo "IDENTICAL — entry counts, sums, and every month's acumulado"
+```
+
+**Do not change `FIXED_TODAY = date(2026, 8, 12)`** in `dump_ledger_totals`. The
+past/future split in `build_projection` depends on `today`, and a drifting clock
+produces a spurious diff — which is the command's own docstring's warning.
+
+**5. Confirm the app starts against it:**
+
+```bash
+POSTGRES_DB=ledger_restore_rehearsal ... uv run python src/backend/manage.py check_migration_drift
+```
+
+Expect `ledger_drift_check_ran: no drift`.
+
+**6. Clean up — every artefact is production data:**
+
+```bash
+docker run --rm -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD -e PGDATABASE=postgres -e PGSSLMODE \
+  postgres:17 psql -c 'DROP DATABASE IF EXISTS ledger_restore_rehearsal WITH (FORCE);'
+rm -rf "$SP"
+```
+
+#### The four expected failures
+
+1. **`pg_restore: error: ... permission denied for table secrets`, `errors ignored
+   on restore: 2`, exit code 0.** Supabase's internal `vault` schema, which the
+   pooler user cannot write. It does not affect application data. **Neither the
+   error count nor the exit code is the verdict — step 4 is.** This happened during
+   the rehearsal and the diff was still empty.
+2. **`extension "vector" is not available`.** The dump references pgvector, used
+   by `MemoryEmbedding`. Run the `CREATE EXTENSION` in step 2 first. It succeeded
+   in under a second on the staging project; if it ever fails because the plan
+   does not offer pgvector, **that is a real RTO finding** — recovery then requires
+   a project where pgvector is enabled, and that changes these numbers.
+3. **`DROP DATABASE ... is being accessed by other users` while
+   `pg_stat_activity` shows nobody.** The pooler holds the connection.
+   `WITH (FORCE)` is required, not optional.
+4. **`pg_dump`/`pg_restore` version mismatch.** Use the `postgres:17` Docker
+   image. Supabase runs 17.6 and Ubuntu's client 16 refuses to talk to it.
+
+### Cutting production over to a restored database
+
+> **This sequence is written down and has NOT been rehearsed.** Everything above
+> it has. The distinction is deliberate: a runbook that implies more proof than
+> exists is worse than one that admits the gap.
+
+In order:
+
+1. Restore into a **new** database, following the steps above but naming it
+   something you intend to keep (`ledger_recovered_YYYYMMDD`), and verify it with
+   `dump_ledger_totals` **before** anything points at it.
+2. Point the service at it — `--update-env-vars`, never `--set-env-vars`, which
+   replaces the whole list:
+   ```bash
+   gcloud run services update expense-tracker --project "$P" --region southamerica-east1 \
+     --update-env-vars "^|^DATABASE_URL=<new transaction pooler URL, port 6543>"
+   ```
+3. Confirm `/healthz/` returns `{"status": "ok", ..., "migrations": "ok"}`. If it
+   says `"migrations": "drift"`, the recovered database predates the running
+   image — migrate it before going further (§ *Schema drift*).
+4. **Re-provision all three Jobs against the new host.** `ledger-purge`,
+   `ledger-drift-check` and `ledger-backup` each embed connection settings.
+   `ledger-backup` reads `ledger-pghost` / `ledger-pguser` / `ledger-pgpassword`
+   from Secret Manager, so add new versions there (§ *Rotating a secret*). Miss
+   this and backups stop silently until the 36-hour alert fires — meaning the
+   recovered database is the one thing not being backed up.
+5. Re-check `/healthz/` and run one `ledger-backup` execution by hand to prove the
+   new path works end to end.
+
+The untimed steps are 2 and 4. Step 2 needs a deploy (~7–8 minutes on the
+measurements taken during E16); step 4 is a handful of `gcloud` calls.
+
 ## Applying a migration to Supabase
 
 Migrations go through the **direct/session connection on port 5432**, never the
