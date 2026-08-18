@@ -48,7 +48,7 @@ graph LR
 | **R1 · Multi-tenant platform** | Two people share one ledger. A stranger can sign up, verify email, and reset a password. Every LLM call has a cost record attributed to a household. Production failures page you, not the customer. |
 | **R2 · Wedge affordable & provable** | Receipt and chat quality are *scored* against real fixtures across models, and the production model mix costs a measured fraction of `gpt-5.4` with no score regression beyond an agreed threshold. |
 | **R3 · Ready for strangers — BETA OPENS** | A new user reaches the activation event unaided. Import and export are durable. A data-subject request can be fulfilled in 15 days and a deletion honoured. Activation and D7 retention are instrumented. |
-| **R4 · GA & monetization** | Someone pays in BRL, is charged correctly, hits a quota gracefully, and you can restore the database inside your stated RTO — rehearsed, not assumed. |
+| **R4 · GA & monetization** | Someone pays in BRL, is charged correctly, hits a quota gracefully, and you can restore the database inside your stated RTO — rehearsed, not assumed. **The restore half is met** (E16, 2026-08-18: rehearsed and timed at 1 min 45 s, verified on balances rather than row counts); the payment half waits on E15. |
 
 **R3's four conditions are all engineering-complete as of 2026-08-17.** *A new
 user reaches the activation event unaided* — proven by the E11 walkthrough,
@@ -101,7 +101,7 @@ pipeline) is still open inside R2 but is not named by this gate.
 | [E13](E13-lgpd-compliance.md) | LGPD compliance | R3 | | E12, E18 | **done** (2026-08-17)¹⁴ |
 | [E14](E14-product-analytics.md) | Product analytics | R3 | | E06, E11 | **done** (2026-08-16)¹ |
 | [E15](E15-billing-and-subscription.md) | Billing & subscription | R4 | | E07, E13, E18 | ready¹⁴ |
-| [E16](E16-operations-staging-deploy-recovery.md) | Operations: staging, deploy, recovery | R4 | | E06 | ready |
+| [E16](E16-operations-staging-deploy-recovery.md) | Operations: staging, deploy, recovery | R4 | | E06 | **done** (2026-08-18)¹⁵ |
 | [E17](E17-trust-surface.md) | Trust surface: audit, error UX, landing | R4 | | E11 | ready |
 | [E18](E18-account-surface.md) | Account surface (Conta) | R3 | | E05 | **done** (2026-08-16)¹³ |
 
@@ -342,7 +342,11 @@ knowingly unmeasured rather than reported as zero.
 
 **E06 is done, so E07, E10, E14 and E16 are all open.** E06 closed with three
 DoD boxes unticked — see its closing note; they need a real production error and
-a real alert, neither of which is manufacturable on demand. Two of those gaps
+a real alert, neither of which is manufacturable on demand. *(E16 partly
+disproved that on 2026-08-18: an alert **was** manufactured on demand, by
+breaking staging deliberately and driving ten requests through it. What is hard
+is manufacturing one in **production**, which is a different and correct
+scruple.)* Two of those gaps
 (assistant turns/day, LLM spend/day on the golden-signals dashboard) are
 *structurally* E07's work, not E06 debt.
 
@@ -698,3 +702,84 @@ as of 2026-08-18**) and DPAs with OpenAI, Supabase, Resend and Pydantic. The
 Pydantic one carries the most weight — `LOGFIRE_CAPTURE_CONTENT` defaults to on,
 so Logfire receives prompt *and* completion content, which is what
 `core/privacy/subprocessors.py` had to be corrected to say.
+
+---
+
+¹⁵ **E16 closed 2026-08-18 with eleven of twelve boxes ticked.** The untickable
+one is *"someone other than the author has followed the deploy section"* — there
+is no second person, so it stays open rather than being ticked on the author's
+own reading. It is the assertion that most directly tests S16-7, and it has no
+evidence behind it.
+
+**The sentence that matters: the restore is a number now.** A real
+Scheduler-written nightly backup was restored into a scratch database and
+verified in **1 minute 45 seconds**, with a **zero-line diff** on every
+household's balances and every month's acumulado across 3 households and 110
+household-months. The architecture review estimated 4 hours; the estimate was
+made without knowing the dump is 545 KiB. Two numbers are recorded rather than
+one, because they differ: recovering the *data* takes under two minutes, while
+having the *product* serve users again additionally needs a deploy and three
+Jobs re-pointed — about fifteen minutes, and **that half is written down and
+unrehearsed**. R4's gate says "you can restore the database inside your stated
+RTO — rehearsed, not assumed"; that half of the gate is now observably true, and
+the rest of R4 waits on E15 and E17.
+
+Changes reach production through `.github/workflows/deploy.yml`: merge to `main`
+deploys staging, a `v*` tag deploys production, authenticated by Workload
+Identity Federation with no long-lived key anywhere in the repository or its
+secrets. Migrations run against the session pooler *before* the revision is
+created, and that this **aborts** the deploy was proven rather than assumed — the
+host was pointed at an unreachable server, the run failed at `Migrate staging`,
+and no revision was created.
+
+**Four findings, three of which were the plan being wrong about the world:**
+
+**The startup probe was a TCP check on port 8080.** Decisions D2 and D6 both rest
+on the probe seeing `/healthz/` return 503 on drift — a TCP probe cannot see a
+status code at all, so a revision deployed ahead of its migrations would have
+become ready and served errors, which is precisely what 2026-08-15 was. Both
+services now probe `/healthz/` over HTTP. The change requires `127.0.0.1` in
+`ALLOWED_HOSTS`, because the probe sends that Host header; without it every probe
+gets a Django 400 that Cloud Run reports as a *timeout*, which sends you looking
+at cold starts instead of at the host header.
+
+**The backup's size floor was above the real backup.** The plan set 1 MiB,
+described as "far below any real size for this database". The dump is 545 KiB and
+a schema-only dump is 312 KiB, so the floor rejected the very first run. It is now
+a measured 350,000 bytes and an environment variable, and the script records both
+measurements plus the honest limit: at these sizes a size check catches a
+truncated or schema-only dump and nothing subtler.
+
+**The pipeline re-pointed `ledger-purge` but not `ledger-drift-check`.** Both run
+the application image, and untagged digests mean a Job pins whatever it was
+created with. For the drift check the consequence is sharper than staleness: it
+compares the *old* image's migration graph against the current database and can
+report "no drift" while the serving revision is drifted — the exact blindness the
+epic exists to remove.
+
+**"The backup job cannot delete its own backups" is not true yet.** The bucket
+grants the runtime account `objectCreator` only, but that account also holds
+project-level `roles/editor`, which already includes object deletion. Recorded in
+`docs/runbook.md` § *Backups* rather than left implied; closing it needs a
+dedicated service account.
+
+The 5xx ratio policy **fired in a deliberate test** — twelve errors over sixteen
+minutes on staging, ratio 1.000, violation opened 5m24s after the first. The
+count-based policy's busiest five-minute window held **5** against a threshold
+needing **6**: it would have slept through a service returning 500 to 100% of
+real traffic, which is what it did for a day on 2026-08-15. Both policies are
+kept; they catch different shapes.
+
+Schema drift is now caught three ways — `/healthz/` at any moment (≤5 min via the
+existing uptime policy), the pipeline before a revision serves, and a nightly
+`ledger-drift-check` at 03:50 for drift that arrives without a deploy. Proven
+against a genuinely drifted staging database, not a mock: 503, `"migrations":
+"drift"`, and the missing migration named.
+
+**Still outstanding:** Supabase's own backup retention is dashboard-only and
+remains a marked placeholder in the runbook — no longer load-bearing, since the
+backups are ours now, but worth filling in. And `docs/operations/credentials.md`
+records two honest gaps rather than placeholders that read as answered: the
+registrar for `cactarus.com` is not recorded anywhere, and the TWA signing key
+exists in exactly one directory on one laptop with nothing verifying a backup.
+Recovery access for a second person is written down as **genuinely unsolved**.

@@ -163,18 +163,35 @@ DJANGO_SETTINGS_MODULE=config.settings.prod uv run python src/backend/manage.py 
 
 Observable assertions:
 
-- [ ] Production hardening does not depend on `DEBUG`; a test asserts this against the production module
-- [ ] Staging exists, has its own database, and has never held production data
-- [ ] A merge to `main` deploys to staging automatically
-- [ ] Production deploy requires a deliberate trigger, and migrations run as an ordered, separate step
-- [ ] Deploy authentication uses Workload Identity Federation, with no long-lived key in CI
-- [ ] **A rollback has been performed** against staging and documented
-- [ ] **A full database restore has been performed and timed**, with the measured RTO recorded
-- [ ] Restore verification compares balances and acumulado, not just row counts
-- [ ] `docs/runbook.md` exists, covers every listed procedure, and is linked from the README quickstart
-- [ ] Someone other than the author has followed the deploy section successfully
-- [ ] A **ratio-based** 5xx policy exists alongside the count-based one, and a simulated total failure at low request volume fires it — the 2026-08-15 shape, which the count-based policy missed for a day
-- [ ] Schema drift between the serving revision and the database is detected without a user hitting it, names the missing migrations, and is re-checked on a schedule rather than only at deploy time
+- [x] Production hardening does not depend on `DEBUG`; a test asserts this against the production module — `TestProductionHardeningIsUnconditional` in `core/tests/test_deploy_settings.py`. All three cases go red against a verbatim recreation of the H7 bug.
+- [x] Staging exists, has its own database, and has never held production data — `expense-tracker-staging`, Supabase project `amysprpoexfedbqfnwzp`, seeded by `seed_data` + `seed_qa_data`. Its one household is `Casa de qa.homologacao`.
+- [x] A merge to `main` deploys to staging automatically — run `32170464187`, green through migrate → deploy → smoke test.
+- [x] Production deploy requires a deliberate trigger, and migrations run as an ordered, separate step — tag `v0.1.0`, run `32172610057`. That a failed migration *aborts* the deploy is proven, not assumed: run `32171826600` failed at `Migrate staging`, `Deploy staging` was skipped, and no revision was created.
+- [x] Deploy authentication uses Workload Identity Federation, with no long-lived key in CI — provider `github-provider` with `assertion.repository_owner == 'bessavagner'`, bound to a `principalSet` naming this repository alone. `gcloud iam service-accounts keys list --managed-by user` returns nothing; the repository holds no secret containing a key.
+- [x] **A rollback has been performed** against staging and documented — `docs/superpowers/evidence/e16-rollback/`. 9.7 s for the traffic switch, 45.5 s including verification, both directions.
+- [x] **A full database restore has been performed and timed**, with the measured RTO recorded — `docs/superpowers/evidence/e16-restore/`. **1 min 45 s** to recover and verify the data. The review's estimate was 4 hours.
+- [x] Restore verification compares balances and acumulado, not just row counts — `dump_ledger_totals --json` over 3 households and 110 household-months, zero lines of diff.
+- [x] `docs/runbook.md` exists, covers every listed procedure, and is linked from the README quickstart — all ten of S16-6's procedures; *Rotating a secret* was the one gap and is now written.
+- [ ] ~~Someone other than the author has followed the deploy section successfully~~ — **NOT DONE. Nobody else has read it.** There is no second person available, so this box stays unticked rather than being ticked on the author's own reading. It is the one assertion in this epic with no evidence behind it, and it is the one that most directly tests S16-7.
+- [x] A **ratio-based** 5xx policy exists alongside the count-based one, and a simulated total failure at low request volume fires it — `docs/superpowers/evidence/e16-alerts/`. Twelve 5xx over sixteen minutes on staging, ratio 1.000, violation opened 5m24s after the first error. The count policy's busiest 5-minute window held **5** against a threshold needing **6** — it would not have fired.
+- [x] Schema drift between the serving revision and the database is detected without a user hitting it, names the missing migrations, and is re-checked on a schedule rather than only at deploy time — `docs/superpowers/evidence/e16-drift/`. Against a genuinely drifted staging database, `/healthz/` returned **503** with `"migrations": "drift"` and the migration named. Nightly `ledger-drift-check` at 03:50.
+
+### One thing the plan assumed that was false, and had to be fixed for this epic to mean anything
+
+**The startup probe was a TCP check on port 8080, not an HTTP check on
+`/healthz/`.** Decisions D2 and D6 both rest on the probe seeing a 503 — a TCP
+probe cannot, so a revision deployed ahead of its migrations would have become
+ready and served errors, which is exactly 2026-08-15. Both services now probe
+`/healthz/` over HTTP. That change requires `127.0.0.1` in `ALLOWED_HOSTS`,
+because the probe sends that Host header; without it every probe gets a Django
+400 that Cloud Run reports as a *timeout*.
+
+Two smaller corrections, both recorded where they bite: the backup size floor of
+1 MiB was above the real dump size (545 KiB) and failed the first run — it is now
+a measured 350,000 bytes; and the pipeline now re-points `ledger-drift-check` as
+well as `ledger-purge`, because a stale drift check compares the *old* image's
+migration graph against the current database and can report "no drift" while the
+serving revision is drifted.
 
 ## Out of scope
 
@@ -185,10 +202,10 @@ Observable assertions:
 
 ## Open questions
 
-1. **What is the actual Supabase backup retention** on the current plan? The free tier's retention is limited, and it may be inadequate for the stated RPO. Verify before relying on it.
-2. **Is a separate staging Supabase project affordable,** or should staging share a project with a separate database? Sharing is cheaper and weakens isolation.
-3. **What RTO is acceptable?** The review proposed 4 hours. Confirm after S16-5 measures the real number — the measurement may make the target moot in either direction.
-4. **Does the deploy pipeline need approval gates,** given one maintainer? Probably not now, but the mechanism should exist before there is a second engineer.
+1. **What is the actual Supabase backup retention** on the current plan? — **Still unanswered, and deliberately no longer load-bearing.** The facts live only in the dashboard (*Project → Database → Backups*) and could not be read from the CLI; `docs/runbook.md` § *Backups* carries a marked placeholder for them. What changed is that the answer no longer matters much: we now take our own nightly `pg_dump -Fc` to GCS with a 30-day lifecycle rule (D11), and Supabase's backups are the second line. A retention set by someone else's pricing page is not something an RPO can be stated from. **Fill the placeholder in anyway** — knowing whether the vendor keeps anything changes what our own retention needs to be.
+2. **Is a separate staging Supabase project affordable?** — **Yes. Answered by D1: separate project, R$0** on the free tier. The cost is operational, not financial: Supabase pauses a free project after about a week of inactivity, and staging is idle by design. The runbook names that as the first thing to check when the deploy workflow times out at its migrate step.
+3. **What RTO is acceptable?** — **Answered by measurement rather than by choosing a target (D4): 1 min 45 s** to recover and verify the data, ~15 minutes to have the product serving again. The review proposed 4 hours; the estimate was made without knowing the dump is 545 KiB. The RPO is ~24 hours and is set by the 03:00 schedule, not by any technical limit — halving it costs one more Scheduler job.
+4. **Does the deploy pipeline need approval gates?** — **Not now, and the mechanism exists (D3).** A `production` GitHub Environment holds the deploy secrets, so a required-reviewer protection rule can be added without touching the workflow. It is deliberately not enabled: with one maintainer you would be approving your own deploy, which only trains you to click through the gate.
 
 ## Skill pipeline
 
