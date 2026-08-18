@@ -114,6 +114,12 @@ Key principle: **the LLM decides intent; deterministic Python does the arithmeti
 > tests, secrets, transactional email, admin access, async tasks) lives in
 > **[`docs/runbook.md`](docs/runbook.md)**.
 >
+> Deploying, rolling back, or restoring the database: `docs/runbook.md` §§
+> *The deploy pipeline*, *Rolling back*, *Restoring from backup*. **Deploys go
+> through the pipeline** — merge to `main` deploys staging, a `v*` tag deploys
+> production. Where every credential lives, and who can reissue it:
+> [`docs/operations/credentials.md`](docs/operations/credentials.md).
+>
 > Comparing models before a swap: `docs/runbook.md` → *Evaluating a model (E08)*.
 >
 > Import and export jobs (the bucket, its 7-day retention rule, investigating a

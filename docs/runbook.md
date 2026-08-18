@@ -1813,6 +1813,100 @@ Expected after the repair: zero rows.
 
 ---
 
+## Rotating a secret
+
+**The thing that catches people, first, because it catches everyone:**
+
+> **The service reads secrets and environment variables at start, so a rotation
+> does not take effect until a new revision exists.** Adding a Secret Manager
+> version changes nothing about what is currently serving. Deploy — or, if there
+> is nothing to deploy, force a new revision.
+
+Where every credential lives and who can reissue it:
+[`docs/operations/credentials.md`](operations/credentials.md).
+
+### What there is to rotate
+
+| Secret | Stored in | Also update |
+|---|---|---|
+| Database password | Supabase dashboard is the source; copies in Secret Manager `ledger-pgpassword`, GitHub env `production` secret `PROD_POSTGRES_PASSWORD`, and the service's `DATABASE_URL` | **all four**, plus one `ledger-backup` run to prove it |
+| `SECRET_KEY` | Cloud Run env / Secret Manager `django-secret-key` | nothing else — but read the warning below |
+| `RESEND_API_KEY` | Secret Manager `resend-api-key` | Resend dashboard revokes the old one |
+| `OPENAI_API_KEY` / `LLM_API_KEY` | Secret Manager `llm-api-key` | OpenAI dashboard revokes the old one |
+| `OPENROUTER_API_KEY` | Secret Manager | OpenRouter dashboard |
+| `SENTRY_DSN`, `LOGFIRE_TOKEN` | Secret Manager `sentry-dsn`, `logfire-token` | the respective project settings |
+| `ADMIN_URL_PATH` | Cloud Run env (plain) | not cryptographic, but unpublished and treated as a secret — see § *Reaching the admin* |
+| `ledger-pghost`, `ledger-pguser`, `ledger-pgpassword` | Secret Manager, read by the `ledger-backup` Job | the Job picks up `:latest` on its next execution |
+
+### Rotating a Secret Manager entry
+
+```bash
+P=expense-tracker-482807
+
+# Never echo a secret onto a command line — it lands in shell history. Pipe it
+# from a file, and for values containing a space (the database password does)
+# use printf without a trailing newline.
+printf '%s' '<the new value, exactly>' > /tmp/newsecret
+gcloud secrets versions add ledger-pgpassword --project "$P" --data-file=/tmp/newsecret
+rm -f /tmp/newsecret
+
+gcloud secrets versions list ledger-pgpassword --project "$P" --limit 3
+```
+
+Then make it take effect. The service references `:latest`, so a new revision is
+all that is needed:
+
+```bash
+gcloud run services update expense-tracker --project "$P" --region southamerica-east1 \
+  --update-env-vars "ROTATED_AT=$(date -u +%Y%m%dT%H%M%SZ)"
+```
+
+That is a deliberate no-op variable whose only job is to force a revision. Use
+`--update-env-vars`, **never `--set-env-vars`** — the latter replaces the entire
+list and would wipe `DATABASE_URL`.
+
+### Rotating a plain environment variable
+
+```bash
+gcloud run services update expense-tracker --project "$P" --region southamerica-east1 \
+  --update-env-vars "^|^ADMIN_URL_PATH=<new unguessable path>"
+```
+
+The `^|^` separator form is required whenever a value contains a comma, a space
+or an `@` — see § *Passing a value that contains a comma, a space, or an `@`*.
+
+### Rotating the database password — the one with four places to miss
+
+1. Supabase dashboard → *Database* → *Reset password*. Copy it exactly; it may
+   contain a space.
+2. `gcloud secrets versions add ledger-pgpassword --data-file=-` (as above).
+3. `printf '%s' '<new>' | gh secret set PROD_POSTGRES_PASSWORD --env production --repo bessavagner/expense_tracker_v2`
+4. The service's `DATABASE_URL` — it embeds the password:
+   ```bash
+   gcloud run services update expense-tracker --project "$P" --region southamerica-east1 \
+     --update-env-vars "^|^DATABASE_URL=<new transaction pooler URL, port 6543>"
+   ```
+5. Prove the backup path still works, because it is the one that fails silently:
+   ```bash
+   gcloud run jobs execute ledger-backup --project "$P" --region southamerica-east1 --wait
+   ```
+
+**Miss step 3** and the next tagged deploy fails at `Migrate production` — loud,
+and safe. **Miss step 2 or 5** and the nightly backup starts failing with
+`password authentication failed`, which nothing tells you about until the *E16
+backup has not run* alert fires **36 hours later**. That asymmetry is the reason
+step 5 is on this list.
+
+### Rotating `SECRET_KEY` — read this first
+
+**It invalidates every session and every password-reset and email-verification
+link in flight.** Everyone is logged out; anyone mid-signup has to start again.
+
+That is sometimes exactly what you want — § *Incidente de segurança — 72 horas*,
+step 1, calls for it deliberately. Outside an incident it is an unforced outage
+for the whole household. If you are rotating it because it leaked, rotate it. If
+you are rotating it on a schedule, don't.
+
 ## Signing in, and clearing a lockout
 
 The family's login page is **`/accounts/login/`**, and it is now the *only*
@@ -2703,6 +2797,8 @@ Contain in this order:
 ```bash
 # 1. Rotate whatever might be exposed. The service reads secrets at start, so
 #    a new revision is required for a rotation to take effect.
+#    Full per-secret procedure, including the four places a database password
+#    lives: see the "Rotating a secret" section.
 #    See "Transactional email" and "Async tasks" for the secret names.
 
 # 2. If it is an application-level leak, roll back to the last good revision.
