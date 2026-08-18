@@ -36,6 +36,46 @@ and is serving 100 percent of traffic.
 `DATABASE_URL`, `LLM_MODEL`, and friends. Use `--update-env-vars` (merge) plus
 `--remove-env-vars`.
 
+### Passing a value that contains a comma, a space, or an `@`
+
+`--update-env-vars` splits on commas, so a value containing one needs gcloud's
+alternate-separator form: a leading `^SEP^`, then `SEP` between the pairs.
+**Pick the separator against the values you are actually passing.** The `^@^`
+recommended further down under *Async tasks → Deploy variables* is fine for the
+`CLOUD_TASKS_*` set and wrong for E13's: `PRIVACY_CONTACT_EMAIL` contains an
+`@`, and gcloud splits the address in half at it, so the deploy lands a
+truncated e-mail in a document whose whole job is to be reachable. Use `^|^`
+there.
+
+Do not build the flag in the shell. E13's values live unquoted in `.env` and
+contain spaces and commas, so `export $(grep ... .env)` fails outright — the
+controller's name ends the statement at its first space. Read `.env` in Python
+and hand gcloud an argv list, which is how revision `00049-qt4` was deployed:
+
+```python
+values = {}                      # KEYS = the four PRIVACY_* names
+for line in (REPO / ".env").read_text().splitlines():
+    key, sep, val = line.partition("=")
+    if sep and key.strip() in KEYS:
+        values[key.strip()] = val.strip().strip('"').strip("'")
+assert not [k for k in KEYS if "|" in values[k]]     # separator collision
+subprocess.call(["gcloud", "run", "deploy", "expense-tracker", "--source", ".",
+                 "--project", "expense-tracker-482807",
+                 "--region", "southamerica-east1",
+                 "--update-env-vars", "^|^" + "|".join(f"{k}={values[k]}" for k in KEYS),
+                 "--quiet"], cwd=REPO)
+```
+
+**Verify the values survived** rather than trusting the exit code — a separator
+collision truncates silently and the deploy still reports success:
+
+```bash
+gcloud run services describe expense-tracker \
+  --project expense-tracker-482807 --region southamerica-east1 --format=json \
+  | python3 -c "import json,sys; [print(e['name'], len(e.get('value','')))
+      for e in json.load(sys.stdin)['spec']['template']['spec']['containers'][0]['env']]"
+```
+
 ### Smoke test after deploying
 
 ```bash
@@ -574,8 +614,10 @@ which is the failure the whole dead-letter path exists to prevent.
 
 ### Deploy variables
 
-Add to `gcloud run deploy --set-env-vars` (see *Deploy a new revision*; keep the
-`^@^` separator, these values contain no commas but the existing ones do).
+Add to `gcloud run deploy --update-env-vars` (see *Deploy a new revision*; keep
+an alternate separator, these values contain no commas but the existing ones do.
+`^@^` is safe for *these* — none of them contains an `@` — but see *Passing a
+value that contains a comma, a space, or an `@`* before reusing it elsewhere).
 
 **These are not set on the live service today.** Verified 2026-08-17 against
 revision `expense-tracker` in `southamerica-east1`: the service carries no
