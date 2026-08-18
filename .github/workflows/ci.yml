@@ -37,6 +37,18 @@ jobs:
       POSTGRES_PORT: 5432
       SECRET_KEY: test-secret-key
       DEBUG: "true"
+      # `core.checks_privacy` (E13.001) and `test_legal_pages.py` both refuse a
+      # privacy notice whose controller is blank, and CI has no `.env` to read
+      # the real one from. These stand-ins are obviously not the controller, so
+      # nobody mistakes a green CI run for a filled-in notice; what they do keep
+      # live is every assertion downstream — that the name, CNPJ and e-mail
+      # actually reach the rendered page. The real values live in `.env` locally
+      # and in the Cloud Run service's env in production; see the runbook,
+      # § Deploy a new revision.
+      PRIVACY_CONTROLLER_NAME: Controlador de Teste (CI)
+      PRIVACY_CONTROLLER_CNPJ: 00.000.000/0001-91
+      PRIVACY_CONTROLLER_ADDRESS: Rua de Teste, 1 - Fortaleza/CE
+      PRIVACY_CONTACT_EMAIL: privacidade@example.com
 
     steps:
       - uses: actions/checkout@v4
@@ -177,6 +189,18 @@ jobs:
       POSTGRES_PORT: 5432
       SECRET_KEY: test-secret-key
       DEBUG: "true"
+      # `core.checks_privacy` (E13.001) and `test_legal_pages.py` both refuse a
+      # privacy notice whose controller is blank, and CI has no `.env` to read
+      # the real one from. These stand-ins are obviously not the controller, so
+      # nobody mistakes a green CI run for a filled-in notice; what they do keep
+      # live is every assertion downstream — that the name, CNPJ and e-mail
+      # actually reach the rendered page. The real values live in `.env` locally
+      # and in the Cloud Run service's env in production; see the runbook,
+      # § Deploy a new revision.
+      PRIVACY_CONTROLLER_NAME: Controlador de Teste (CI)
+      PRIVACY_CONTROLLER_CNPJ: 00.000.000/0001-91
+      PRIVACY_CONTROLLER_ADDRESS: Rua de Teste, 1 - Fortaleza/CE
+      PRIVACY_CONTACT_EMAIL: privacidade@example.com
       TEST_CLOCK_SHIFT: ${{ matrix.shift }}
 
     steps:
