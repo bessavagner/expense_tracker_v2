@@ -1,0 +1,32 @@
+{
+  "displayName": "E13 retention sweep has not run",
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "No completed retention sweep in ~36h",
+      "conditionThreshold": {
+        "filter": "metric.type=\"logging.googleapis.com/user/ledger_purge_ran\" AND resource.type=\"cloud_run_job\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "90000s",
+            "perSeriesAligner": "ALIGN_SUM"
+          }
+        ],
+        "comparison": "COMPARISON_LT",
+        "thresholdValue": 1,
+        "duration": "41400s",
+        "evaluationMissingData": "EVALUATION_MISSING_DATA_ACTIVE",
+        "trigger": {
+          "count": 1
+        }
+      }
+    }
+  ],
+  "notificationChannels": [
+    "projects/expense-tracker-482807/notificationChannels/5857707555791637518"
+  ],
+  "documentation": {
+    "mimeType": "text/markdown",
+    "content": "The nightly `ledger-purge` job has not logged a completed sweep in 36 hours.\n\nDatabase rows have no bucket lifecycle rule, so E13's retention is enforced by this cron and nothing else — a stopped sweep means data is kept past the period the privacy notice promises.\n\n36h rather than 24h so one late run is not a page.\n\n**A threshold condition, not `conditionAbsent`** — the absent form is capped at 23h30m by the API, which would have paged on a single late run. `evaluationMissingData: ACTIVE` is what makes it fire on silence; without it a metric with no data points simply never evaluates, and the alert would be decorative.\n\nSee `docs/runbook.md` § *Retenção de dados (E13)*. Check `gcloud run jobs executions list --job ledger-purge` first; the Scheduler reports success as soon as the execution is *created*, so its green tick proves nothing.\n\n**How the 36h is built.** The API caps an alignment period at 25h and a `conditionAbsent` duration at 23h30m, so neither expresses 36h on its own. This is a 25h trailing sum that must stay below 1 for a further 11.5h — silence since the last sweep of about 36.5h. `evaluationMissingData: ACTIVE` is what makes it fire on silence at all; without it a metric with no data points never evaluates and the alert would be decorative.\n\nThe filter pins `resource.type=\"cloud_run_job\"` — the API requires a resource restriction, and this is the right one: it watches the *scheduled* sweep specifically. A hand-run sweep from a laptop logs under a different resource and deliberately does not silence this alert."
+  }
+}

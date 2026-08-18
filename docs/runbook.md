@@ -76,6 +76,25 @@ gcloud run services describe expense-tracker \
       for e in json.load(sys.stdin)['spec']['template']['spec']['containers'][0]['env']]"
 ```
 
+### Re-point the purge job at the new image — every time
+
+`--source` deploys push untagged digests, so `ledger-purge` keeps running the
+image it was created with until told otherwise. A stale sweep still exits 0 and
+still logs, so the alert will not catch this; nothing will.
+
+```bash
+gcloud run jobs update ledger-purge \
+  --project expense-tracker-482807 --region southamerica-east1 \
+  --image "$(gcloud run services describe expense-tracker \
+      --project expense-tracker-482807 --region southamerica-east1 \
+      --format='value(spec.template.spec.containers[0].image)')"
+```
+
+Env vars and secrets are **not** carried over by this — `--image` only replaces
+the image. If a deploy also changed the service's env (as the E13 deploy did,
+adding the four `PRIVACY_*`), regenerate the Job spec instead and
+`gcloud run jobs replace` it; see § *Retenção de dados (E13) → Provisioning*.
+
 ### Smoke test after deploying
 
 ```bash
@@ -1842,10 +1861,60 @@ not fire — check it before assuming the data was already clean.
 
 ### Provisioning the scheduled run (one-off, per environment)
 
-**Not yet provisioned.** Everything from here to the end of this section is the
-procedure, not a description of running infrastructure. E13 shipped the command
-and its tests; creating the job, the trigger and the alert is a separate,
-deliberate act against the live project.
+**Provisioned 2026-08-18.** `ledger-purge` (Cloud Run Job), `ledger-purge-daily`
+(Scheduler, next fire 03:20 America/Sao_Paulo), the `ledger_purge_ran` log
+metric and the *E13 retention sweep has not run* alert policy all exist. The
+first execution — `ledger-purge-tck4f`, run by hand before the trigger was
+armed — deleted 29 expired sessions and left `TaskRun` `done` with no error.
+The command block below is what was actually run. **Three things in the
+original procedure were wrong; they are corrected here, so do not reconstruct
+it from an older copy.**
+
+**Correction 1 — the args path.** The procedure said
+`--args src/backend/manage.py,purge_expired_data`. The Dockerfile's final
+`WORKDIR` is `/app/src/backend` (Dockerfile:76), not `/app`, so that resolves to
+`/app/src/backend/src/backend/manage.py` and the job dies on its first
+execution. It is `--args manage.py,purge_expired_data`.
+
+**Correction 2 — do not retype the env.** "`--set-env-vars <same as the
+service>`" means 24 entries, six of them secret references, and among the plain
+ones `DEFAULT_FROM_EMAIL` carries a space, an `@` and angle brackets while
+`ALLOWED_HOSTS` and `PRIVACY_CONTROLLER_ADDRESS` carry commas — every one of
+them a separator hazard (see § *Passing a value that contains a comma, a space,
+or an `@`*). Generate a Job spec that copies the service's `env` array
+**verbatim** and apply it with `gcloud run jobs replace`. Nothing is re-encoded,
+so nothing can be truncated. **Generate it at apply time and do not commit it** —
+the array it copies includes `ADMIN_URL_PATH`, whose only protection is not being
+published, and this repository is public:
+
+```python
+svc = json.load(...)                      # gcloud run services describe --format=json
+c = svc["spec"]["template"]["spec"]["containers"][0]
+job = {"apiVersion": "run.googleapis.com/v1", "kind": "Job",
+       "metadata": {"name": "ledger-purge",
+                    "labels": {"cloud.googleapis.com/location": "southamerica-east1"}},
+       "spec": {"template": {"spec": {
+           "parallelism": 1, "taskCount": 1,
+           "template": {"spec": {
+               "serviceAccountName": svc["spec"]["template"]["spec"]["serviceAccountName"],
+               "maxRetries": 1, "timeoutSeconds": 600,
+               "containers": [{"image": c["image"],
+                               "command": ["python"],
+                               "args": ["manage.py", "purge_expired_data"],
+                               "env": c["env"],          # <- verbatim, secrets included
+                               "resources": {"limits": {"cpu": "1000m", "memory": "1Gi"}}}]}}}}}}
+```
+
+**Correction 3 — the image goes stale, silently.** `gcloud run deploy --source`
+pushes *untagged* digests; there is no `:latest` in the Artifact Registry repo to
+follow. So the job pins whatever digest it was created with, and every future
+deploy leaves the sweep running older code — with nothing to notice, because a
+stale sweep still succeeds and still logs. **Re-point it on every deploy**; the
+step is in § *Deploy a new revision*.
+
+**Prove it before arming the trigger.** `gcloud run jobs execute ledger-purge
+--wait` costs one run and catches exactly the class of failure above; the
+alternative is discovering it from a missing alert 36 hours later.
 
 **This is the first scheduled job this project has.** The old
 `expense-tracker-keepalive` Scheduler job was deleted on 2026-08-14 in favour of
@@ -1924,10 +1993,36 @@ gcloud logging metrics create ledger_purge_ran \
   --log-filter='jsonPayload.message=~"Retention sweep for"'
 ```
 
-Then, in Monitoring → Alerting, add a policy on `logging/user/ledger_purge_ran`
-that fires when the count is **0 over 36 hours**, notifying the same channel as
-the two existing policies (runbook § *The alert policies*). 36 rather than 24 so
-one late run is not a page.
+The policy is **E13 retention sweep has not run**
+(`alertPolicies/13939835533058236318`), notifying *Operator email* — the same
+channel as the two existing policies (§ *The alert policies*). Its shape is
+forced by three API limits, none of them obvious, so edit it from
+`deploy/purge-alert-policy.json` rather than from the console:
+
+- **36h cannot be expressed directly.** `conditionAbsent` caps its duration at
+  23h30m and an alignment period caps at 25h. The policy is therefore a 25h
+  trailing `ALIGN_SUM` that must stay below 1 for a further 11.5h — silence of
+  about 36.5h. 36 rather than 24 so one late run is not a page.
+- **`evaluationMissingData: EVALUATION_MISSING_DATA_ACTIVE` is what makes it
+  fire at all.** A log-based metric writes no points when nothing matches, and a
+  threshold condition with no data simply never evaluates. Without this the
+  alert is decorative — which is the worst possible outcome for the one control
+  standing between us and keeping data past what the notice promises. The API
+  also rejects it alongside a zero `duration`, hence the 11.5h above doing double
+  duty.
+- **`resource.type="cloud_run_job"` is required** (the API refuses a filter
+  without a resource restriction) and is also correct: it watches the *scheduled*
+  sweep. A sweep run by hand from a laptop logs under a different resource and
+  deliberately does not silence this alert.
+
+**Verified the honest way, partly.** The log line reaching
+`jsonPayload.message` was confirmed against a real execution, not assumed — it
+only lands there because `DEBUG=False` selects `core.log_formatting.JsonFormatter`
+(settings.py:176), which emits a `message` key. Had the app logged plain text it
+would have gone to `textPayload`, the metric would have counted nothing, and the
+alert would have been silent forever. **Still outstanding: nobody has watched
+this policy fire.** Disable the Scheduler job, wait out the window, confirm the
+page arrives, re-enable.
 
 **Verify it the honest way:** disable the Scheduler job, wait for the window,
 confirm the alert fires, re-enable. An alert nobody has seen fire is an
