@@ -496,12 +496,30 @@ alert.
 
 ### The alert policies
 
-Both notify `Operator email` and auto-close after 30 minutes.
+All notify `Operator email` and auto-close after 30 minutes.
 
 | Policy | Fires when | Id |
 |---|---|---|
-| `expense-tracker is down (/healthz/ uptime check failing)` | the uptime check fails more than once in a 5-minute window | `17994738960177318338` |
+| `expense-tracker is down (/healthz/ uptime check failing)` | the uptime check fails more than once in a 5-minute window — including on schema drift, since `/healthz/` 503s then | `17994738960177318338` |
 | `expense-tracker 5xx error rate elevated` | more than 5 `5xx` responses in 5 minutes | `4509450462948742746` |
+| `expense-tracker 5xx ratio elevated` | over 30 minutes, more than half of non-`/healthz/` requests are 5xx **and** there are at least 3 of them | `18241775360706229059` |
+| `E13 retention sweep has not run` | no completed nightly purge in ~36h | `13939835533058236318` |
+| `expense-tracker-staging 5xx ratio elevated` | the staging twin, kept so the shape can be rehearsed without touching production | `8752894992987066623` |
+
+**Which one fires for which shape of failure.** The count policy sees a *burst*:
+many errors quickly, at any traffic level. The ratio policy sees a *total
+failure at low volume* — the 2026-08-15 shape, where a broken authenticated path
+produced perhaps a handful of errors a day and the count policy never tripped,
+finally firing at 17:34 UTC, four minutes after the fix had landed. Neither
+replaces the other: a ratio is blind to a burst that is small relative to
+healthy traffic, and a count is blind to an outage nobody is around to trigger.
+
+The ratio deliberately excludes `/healthz/` from both numerator and denominator.
+The uptime check polls it every five minutes, and counting those successes is
+what would dilute a 100% authenticated failure into a number no threshold could
+catch. That exclusion is why the ratio is built on the log-based metrics
+`ledger_requests_total` / `ledger_requests_5xx` rather than on Cloud Run's
+built-in `request_count`, which has no URL label.
 
 ```bash
 gcloud alpha monitoring policies list --project=expense-tracker-482807 \
@@ -511,8 +529,25 @@ gcloud alpha monitoring policies list --project=expense-tracker-482807 \
 Each policy carries its own triage steps in `documentation.content`, so the
 alert email points you at the right place without needing this file open.
 
-**Neither has ever fired.** They are hypotheses until one does — see the
-paragraph above on testing the path.
+**The ratio policy has fired in a deliberate test** — 2026-08-18, on staging, at
+a volume the count policy would have slept through. Evidence, including the
+metric series and the timing:
+`docs/superpowers/evidence/e16-alerts/`. The count policy fired for real on
+2026-08-15, four minutes after the fix had landed. **The uptime policy still
+never has**, and remains a hypothesis until it does.
+
+**Where to see that a policy fired.** There is no public Monitoring API for
+incidents; the durable record is in Cloud Logging:
+
+```bash
+gcloud logging read \
+  'logName="projects/expense-tracker-482807/logs/monitoring.googleapis.com%2FViolationOpenEventv1"' \
+  --project expense-tracker-482807 --limit 5 --freshness=3h --format=json
+```
+
+Each entry's `labels.terse_message` carries the threshold and the observed value.
+An `AND` policy opens one violation per condition, so two entries with the same
+timestamp is normal rather than a duplicate.
 
 ### The dashboard
 

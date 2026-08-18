@@ -1,0 +1,55 @@
+{
+  "displayName": "expense-tracker 5xx ratio elevated",
+  "combiner": "AND",
+  "conditions": [
+    {
+      "displayName": "More than half of non-health requests are 5xx over 30m",
+      "conditionThreshold": {
+        "filter": "metric.type=\"logging.googleapis.com/user/ledger_requests_5xx\" AND resource.type=\"cloud_run_revision\"",
+        "denominatorFilter": "metric.type=\"logging.googleapis.com/user/ledger_requests_total\" AND resource.type=\"cloud_run_revision\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "1800s",
+            "perSeriesAligner": "ALIGN_SUM",
+            "crossSeriesReducer": "REDUCE_SUM"
+          }
+        ],
+        "denominatorAggregations": [
+          {
+            "alignmentPeriod": "1800s",
+            "perSeriesAligner": "ALIGN_SUM",
+            "crossSeriesReducer": "REDUCE_SUM"
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 0.5,
+        "duration": "0s",
+        "trigger": { "count": 1 }
+      }
+    },
+    {
+      "displayName": "At least 3 non-health 5xx over 30m",
+      "conditionThreshold": {
+        "filter": "metric.type=\"logging.googleapis.com/user/ledger_requests_5xx\" AND resource.type=\"cloud_run_revision\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "1800s",
+            "perSeriesAligner": "ALIGN_SUM",
+            "crossSeriesReducer": "REDUCE_SUM"
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 2,
+        "duration": "0s",
+        "trigger": { "count": 1 }
+      }
+    }
+  ],
+  "notificationChannels": [
+    "projects/expense-tracker-482807/notificationChannels/5857707555791637518"
+  ],
+  "documentation": {
+    "mimeType": "text/markdown",
+    "content": "More than half of the non-health requests to expense-tracker returned 5xx over the last 30 minutes, and there were at least three of them.\n\n**This policy exists because the count-based one could not see the 2026-08-15 outage.** That policy is `4509450462948742746`, \"more than 5 5xx in 5 minutes\". A family-scale app with a broken authenticated path produces a handful of errors a day, so it never tripped; it finally fired at 17:34 UTC, four minutes *after* the fix had landed, on a day that had run at ~100% authenticated failure. A ratio makes a total failure at low volume page as loudly as a spike at high volume.\n\n**Both policies are kept on purpose.** They catch different shapes: a ratio is blind to a burst that is small relative to healthy traffic, and a count is blind to a total failure at low traffic. Neither replaces the other.\n\n**Why log-based metrics rather than `run.googleapis.com/request_count`.** The built-in metric carries `response_code_class` but no URL path label, so `/healthz/` cannot be excluded from the denominator — and the uptime check polls `/healthz/` every five minutes, which is exactly the healthy traffic that would dilute this ratio below any usable threshold. Cloud Logging's request log has `httpRequest.requestUrl`, so `ledger_requests_total` and `ledger_requests_5xx` both exclude it.\n\n**Why two conditions ANDed.** At family scale a quiet afternoon may hold two requests in total, so a ratio alone would page on one stray 500. The count condition is the volume floor; the ratio is what makes a total failure visible. The 2026-08-15 shape trips both.\n\nStart at Sentry for the exception, then `gcloud run services logs read expense-tracker`. If the errors are on authenticated paths only, check `/healthz/` for schema drift — see `docs/runbook.md` § *Schema drift*."
+  }
+}

@@ -22,3 +22,19 @@ the generator is in `docs/runbook.md` § *Retenção de dados (E13) → Provisio
   § *The deploy pipeline* explains operating them. The two GitHub repository
   variables that name them are **not secrets**: they are public identifiers, and
   the authorisation is the attribute condition, not their obscurity.
+
+- `fivexx-ratio-alert-policy.json` — the *expense-tracker 5xx ratio elevated*
+  policy (S16-8), `18241775360706229059`. Two conditions ANDed: the ratio of
+  non-`/healthz/` 5xx over 30 minutes above 50%, **and** at least three of them.
+  The count-based policy `4509450462948742746` is kept alongside it deliberately;
+  the two catch different shapes of failure and neither replaces the other.
+  Fired in a deliberate low-volume test — `docs/superpowers/evidence/e16-alerts/`.
+
+- `log-metrics/ledger_requests_total.json`, `log-metrics/ledger_requests_5xx.json`
+  — the numerator and denominator the ratio policy reads. They exist because
+  Cloud Run's built-in `request_count` carries `response_code_class` but **no URL
+  path label**, so `/healthz/` cannot be excluded from the denominator — and the
+  uptime check's five-minute pings are exactly the healthy traffic that would
+  dilute the ratio below any usable threshold. A `_staging` pair exists with the
+  same filters against `expense-tracker-staging`, so the shape can be rehearsed
+  without breaking production.

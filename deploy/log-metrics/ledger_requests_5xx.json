@@ -1,0 +1,10 @@
+{
+  "name": "ledger_requests_5xx",
+  "description": "5xx responses from expense-tracker excluding the health endpoint. Numerator for the 5xx ratio alert (E16 S16-8).",
+  "filter": "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"expense-tracker\" AND logName:\"run.googleapis.com%2Frequests\" AND NOT httpRequest.requestUrl:\"/healthz/\" AND httpRequest.status>=500",
+  "metricDescriptor": {
+    "metricKind": "DELTA",
+    "valueType": "INT64",
+    "unit": "1"
+  }
+}
