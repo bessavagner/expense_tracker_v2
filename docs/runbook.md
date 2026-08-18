@@ -110,6 +110,48 @@ starts showing a Chrome address bar.
 
 ---
 
+## The staging environment
+
+Cloud Run service `expense-tracker-staging`, same project and region as
+production, backed by a **separate Supabase project**. It loads
+`config.settings.prod` — the same hardened module production loads — because a
+staging module that relaxed anything would make staging a worse predictor of
+production than no staging at all (E16 D7).
+
+**Staging has never held production data and must never hold it.** It is seeded
+by `manage.py seed_data --user <username>` followed by `manage.py seed_qa_data
+--user <username>`, which fabricate households. Restore rehearsals go into a
+scratch database, never here.
+
+```bash
+S=https://expense-tracker-staging-654941182076.southamerica-east1.run.app
+curl -s "$S/healthz/" | python3 -m json.tool
+```
+
+Expect `{"status": "ok", "database": "ok", "migrations": "ok", "unapplied": []}`.
+
+**Common failure: the project is paused.** Supabase suspends a free project after
+about a week with no queries, and staging is idle by design. The symptom is a
+connection timeout in the deploy workflow's migrate step, or `"database":
+"error"` from the health endpoint. Fix it in the Supabase dashboard —
+*Project → Resume* — and re-run the workflow. Nothing is lost.
+
+**Common failure: `ADMIN_URL_PATH` copied from production.** Staging's admin path
+is deliberately different. If it ever matches, production's unguessable path has
+been published to anyone who can read staging's environment.
+
+**Common failure: `seed_qa_data` exits with "Run seed_data first to create
+categories and payment methods."** Both commands take `--user`, and `seed_data`
+has to go first — it creates the 26 categories and 6 payment methods that
+`seed_qa_data` then writes entries against.
+
+### Rebuilding staging from nothing
+
+Full procedure in `docs/superpowers/plans/2026-08-18-E16-operations-staging-deploy-recovery.md`,
+Task 4. In summary: create the Supabase project, `manage.py migrate` against its
+session pooler (port 5432), `gcloud run deploy expense-tracker-staging --source .`
+with the environment block from that task, then seed it.
+
 ## When something breaks
 
 Three vendors, each doing one job (ADR-005): **Sentry** has the exception,
