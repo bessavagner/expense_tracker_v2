@@ -1743,8 +1743,24 @@ POSTGRES_PORT=5433 uv run python src/backend/manage.py sweep_stuck_import_jobs
 
 Expected output: `Importações interrompidas marcadas como falha: N`.
 
-Schedule it next to the keepalive ping (see *Cold starts: the keepalive job*).
-Once every 15 minutes is plenty.
+**Scheduled, since 2026-08-18** — this is the rail that was picked, recorded
+here because this section asked for it. Cloud Run Job `ledger-sweep-imports`,
+triggered by Cloud Scheduler `ledger-sweep-imports-15min` on `*/15 * * * *`
+(America/Sao_Paulo), built on the pattern in § *Retenção de dados (E13)*. The
+keepalive this section used to point at was deleted on 2026-08-14.
+
+```bash
+gcloud run jobs executions list --job ledger-sweep-imports \
+  --project expense-tracker-482807 --region southamerica-east1 --limit 5
+```
+
+**There is no alert on this one, deliberately.** The retention sweep has one
+because a sweep that stops means data kept past what the privacy notice
+promises. A stopped import sweep only means a dead job keeps saying `running`
+until someone looks — the status page already reads `is_stuck` live, so the
+user is told the truth either way. If you ever want one, note that this command
+writes through `self.stdout`, so it lands in `textPayload`, not the
+`jsonPayload.message` that `ledger_purge_ran` filters on.
 
 To see what a job actually did, without the UI:
 
@@ -2020,13 +2036,21 @@ forced by three API limits, none of them obvious, so edit it from
 only lands there because `DEBUG=False` selects `core.log_formatting.JsonFormatter`
 (settings.py:176), which emits a `message` key. Had the app logged plain text it
 would have gone to `textPayload`, the metric would have counted nothing, and the
-alert would have been silent forever. **Still outstanding: nobody has watched
-this policy fire.** Disable the Scheduler job, wait out the window, confirm the
-page arrives, re-enable.
+alert would have been silent forever. **It has now been seen to fire, and nobody had to wait 36 hours for it.**
+Creating the policy before the metric had any data was itself the test: it
+opened at 13:31Z on 2026-08-18 and auto-resolved at 13:32Z when the first
+sweep's log line landed. Both events are in Cloud Logging as
+`ViolationOpenEventv1` and `ViolationAutoResolveEventv1`, and the page arrived
+in the operator's inbox with this section's documentation rendered in it.
 
-**Verify it the honest way:** disable the Scheduler job, wait for the window,
-confirm the alert fires, re-enable. An alert nobody has seen fire is an
-assumption.
+What that proves is the part that could have failed silently:
+`evaluationMissingData: ACTIVE` really does make a metric with no data points
+evaluate, the channel delivers, and a sweep closes the incident. What it does
+**not** prove is the 36.5h interval — it fired on start-up silence within half
+an hour of creation, not after a real cron outage. Confirming the timing means
+disabling the Scheduler for a day and a half of not sweeping, which buys
+little now that the decorative-alert failure mode is ruled out. Recorded as a
+known gap rather than chased.
 
 ### The two orphans, adopted
 
@@ -2040,12 +2064,25 @@ two commands have been documenting one they never had:
   Cloud Run job, or as a step in the existing cron path; **record whichever you
   pick here**" (*Usage, credits and cost (E07)*). Never picked.
 
-Both now have a rail. Create one Cloud Run Job each, on the pattern above —
-`ledger-sweep-imports` on `*/15 * * * *`, `ledger-usage-metrics` daily at 03:40
-— and **update those two runbook sections to say which was chosen**, since both
-explicitly ask for that to be written down. Adopting them is not E13's
-deliverable; leaving a rail behind that nobody knows exists would be the same
-mistake twice.
+**`sweep_stuck_import_jobs` was adopted on 2026-08-18.** Cloud Run Job
+`ledger-sweep-imports`, Scheduler `ledger-sweep-imports-15min` on
+`*/15 * * * *`, generated from the live service exactly as the purge job is —
+same image digest, same 24 env entries copied verbatim, `args` without the
+`src/backend/` prefix because the container's WORKDIR already is it. Proved
+three ways before being left alone: a manual `jobs execute`, a manual
+`scheduler jobs run`, and then the cron's own 14:00 firing, all three
+`succeededCount: 1`. Written up in *Import and export jobs (E12)*, which is the
+section that asked to be told.
+
+**`emit_usage_metrics` is still an orphan.** Same pattern, `ledger-usage-metrics`
+daily at 03:40; the generated spec exists and the job has not been created. Do it
+with the generator above, then **record the choice in *Usage, credits and cost
+(E07)***, which explicitly asks for that. Until then E06's two missing
+golden-signal tiles stay missing.
+
+**Note for whoever adds the third:** `*/15 * * * *` is 96 executions a day, each
+a cold start of a 1 vCPU / 1 GiB container — roughly a dollar a month, and worth
+knowing before this pattern gets copied to something ten times as chatty.
 
 ## Pedido de titular (LGPD) — 15 dias
 

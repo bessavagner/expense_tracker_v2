@@ -667,8 +667,34 @@ Four findings worth keeping:
   their account never looked there — their chat messages survived, readable.
   Fixed, with a regression test and a whole-database sweep for the address.
 
-**Still outstanding, and none of it is code:** the legal review; DPAs with
-OpenAI, Supabase, Resend and Pydantic; and the **provisioning of the purge job** —
-the Cloud Run Job, the Scheduler trigger and the `ledger_purge_ran` alert exist
-as a procedure in `docs/runbook.md` § "Retenção de dados (E13)" and have not been
-created. Until they are, retention is enforced by a command nobody runs.
+**Deployed 2026-08-18** as revision `expense-tracker-00049-qt4`, and
+`/privacidade/` and `/termos/` answer 200 on the live service with the
+controller rendered from the environment rather than typed into a template.
+
+**The retention sweep is provisioned and running** (`cbd72b3`): the
+`ledger-purge` Cloud Run Job, the `ledger-purge-daily` Scheduler trigger at
+03:20 America/Sao_Paulo, the `ledger_purge_ran` log metric, and the alert policy
+*E13 retention sweep has not run*. The job pins the same image digest the
+service runs, which is why § *Deploy a new revision* now carries a mandatory
+re-point step — an untagged digest means every future deploy would otherwise
+leave the sweep on older code, and a stale sweep still exits 0 and still logs.
+First execution deleted 29 expired sessions, matching its own dry run.
+
+**The alert has been seen to fire, which was the one thing nobody had watched.**
+It opened at 13:31Z on the silence that preceded the first sweep and
+auto-resolved at 13:32Z when that sweep's log line landed
+(`ViolationOpenEventv1` → `ViolationAutoResolveEventv1`). That is real evidence
+for the part that could have failed silently: `evaluationMissingData: ACTIVE`
+does make a log-based metric with no data points evaluate, so the policy is not
+decorative, the notification channel delivers, and the documentation renders in
+the page. **Unproven, and deliberately not chased:** the 36.5h timing itself —
+the alert fired on start-up silence within half an hour of being created, not
+after a real cron outage. Confirming the interval costs a day and a half of not
+sweeping, and the mechanism that would have made this alert useless has already
+demonstrated itself working.
+
+**Still outstanding, and none of it is code:** the legal review (**in progress
+as of 2026-08-18**) and DPAs with OpenAI, Supabase, Resend and Pydantic. The
+Pydantic one carries the most weight — `LOGFIRE_CAPTURE_CONTENT` defaults to on,
+so Logfire receives prompt *and* completion content, which is what
+`core/privacy/subprocessors.py` had to be corrected to say.
