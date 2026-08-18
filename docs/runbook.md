@@ -290,6 +290,30 @@ Then re-check `/healthz/`. **No redeploy is needed** — the code was always
 correct; only the database was behind. The service recovers on its own once the
 endpoint returns 200, and Cloud Run puts the instance back in rotation.
 
+### The nightly check
+
+Cloud Run Job **`ledger-drift-check`**, triggered by Cloud Scheduler
+**`ledger-drift-check-nightly`** at **03:50 America/Sao_Paulo** — after
+`ledger-backup` (03:00), `ledger-purge` (03:20) and `ledger-usage-metrics-daily`
+(03:40), so nothing contends for a cold start. `--max-retries 0`, deliberately: a
+drifted database is drifted, and three retries produce three identical failures
+and three identical alerts.
+
+It runs the **application image** with the service's own environment, so it asks
+the same question the serving revision would.
+
+```bash
+gcloud run jobs execute ledger-drift-check \
+  --project expense-tracker-482807 --region southamerica-east1 --wait
+```
+
+Logs `ledger_drift_check_ran: no drift` on a good night. The alert *E16
+schema-drift check has not run* (`18431338427365827134`) fires on the **absence**
+of that line, so a quiet success is data.
+
+Proven against a genuinely drifted staging database rather than a mock —
+`docs/superpowers/evidence/e16-drift/`.
+
 ### The startup probe, and why it matters here
 
 Both services use an **HTTP startup probe against `/healthz/`**:
@@ -621,6 +645,8 @@ All notify `Operator email` and auto-close after 30 minutes.
 | `expense-tracker 5xx error rate elevated` | more than 5 `5xx` responses in 5 minutes | `4509450462948742746` |
 | `expense-tracker 5xx ratio elevated` | over 30 minutes, more than half of non-`/healthz/` requests are 5xx **and** there are at least 3 of them | `18241775360706229059` |
 | `E13 retention sweep has not run` | no completed nightly purge in ~36h | `13939835533058236318` |
+| `E16 schema-drift check has not run` | no completed nightly drift check in ~36h | `18431338427365827134` |
+| `E16 backup has not run` | no completed nightly backup in ~36h | `10901368719388244388` |
 | `expense-tracker-staging 5xx ratio elevated` | the staging twin, kept so the shape can be rehearsed without touching production | `8752894992987066623` |
 
 **Which one fires for which shape of failure.** The count policy sees a *burst*:
