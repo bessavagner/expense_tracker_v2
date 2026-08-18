@@ -54,3 +54,9 @@ the generator is in `docs/runbook.md` § *Retenção de dados (E13) → Provisio
 **The `ledger-drift-check` and `ledger-backup` Job specs are deliberately NOT
 committed here**, for the same reason as `ledger-purge`: they embed the service's
 whole `env` array, including `ADMIN_URL_PATH`, and this repository is public.
+
+- `drift-alert-policy.json` — the *E16 schema-drift check has not run* policy. It
+  watches the checker's silence, not the database; drift itself surfaces through
+  `/healthz/` and the uptime policy. Same 25h-sum-plus-11.5h-duration shape as
+  the purge policy, and for the same API reasons — read its `documentation` block
+  before simplifying the condition.

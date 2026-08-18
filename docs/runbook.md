@@ -228,6 +228,123 @@ The manual procedure in § *Deploy a new revision* still works and is still
 correct. Run `manage.py migrate` against the session pooler **first**, then
 deploy, then re-point `ledger-purge`.
 
+## Schema drift
+
+**The failure this exists for.** On 2026-08-15, revision `00046-l64` carried
+`accounts.0005`'s `Household.plan` while the database sat at `accounts.0004`.
+The household resolver selects `plan_id` in middleware on every request, so
+every route 500'd for every logged-in user from the 2026-08-14 deploy until the
+migration was applied — about a day. Anonymous requests mostly passed, which is
+why it presented as "server error after login" rather than as an outage.
+
+Three things now watch for it:
+
+| Where | Catches | Latency |
+|---|---|---|
+| `/healthz/` returns 503, naming the migrations | drift at any moment, including after a rollback | ≤5 min, via uptime policy `17994738960177318338` |
+| The deploy pipeline's `Migrate production` step, plus the HTTP startup probe | drift a deploy would create | before the revision serves |
+| `ledger-drift-check` nightly Cloud Run Job | drift that arrived without a deploy | ≤24h |
+
+### Is it drifted right now?
+
+```bash
+curl -s https://expense-tracker-654941182076.southamerica-east1.run.app/healthz/ \
+  | python3 -m json.tool
+```
+
+`{"status": "ok", "database": "ok", "migrations": "ok", "unapplied": []}` is
+healthy. `"migrations": "drift"` lists exactly what is missing. `"migrations":
+"unknown"` means the question could not be asked — read `database` in the same
+body, because an unreachable database and a drifted one are different outages
+with different fixes.
+
+Or ask the database directly, without going through the service:
+
+```bash
+POSTGRES_HOST=<prod session pooler host> POSTGRES_PORT=5432 \
+POSTGRES_USER=<prod user> POSTGRES_PASSWORD='<prod password>' POSTGRES_DB=postgres \
+DJANGO_SETTINGS_MODULE=config.settings.prod SECRET_KEY=check-only ALLOWED_HOSTS=localhost \
+  uv run python src/backend/manage.py check_migration_drift
+```
+
+Prints `ledger_drift_check_ran: no drift` and exits 0, or names every unapplied
+migration and exits 1. `--json` gives `{"drift": false, "unapplied": []}`.
+
+**This compares the migrations in *your checkout* against that database.** Run it
+from the commit that is deployed, or the answer is about a different image.
+
+### Fixing it
+
+The `unapplied` list names the fix. Migrations go through the **direct/session
+connection on port 5432**, never the transaction pooler — see § *Applying a
+migration to Supabase*:
+
+```bash
+POSTGRES_HOST=<prod session pooler host> POSTGRES_PORT=5432 \
+POSTGRES_USER=<prod user> POSTGRES_PASSWORD='<prod password>' POSTGRES_DB=postgres \
+DJANGO_SETTINGS_MODULE=config.settings.prod SECRET_KEY=fix-only ALLOWED_HOSTS=localhost \
+  uv run python src/backend/manage.py migrate
+```
+
+Then re-check `/healthz/`. **No redeploy is needed** — the code was always
+correct; only the database was behind. The service recovers on its own once the
+endpoint returns 200, and Cloud Run puts the instance back in rotation.
+
+### The startup probe, and why it matters here
+
+Both services use an **HTTP startup probe against `/healthz/`**:
+
+```bash
+gcloud run services describe expense-tracker \
+  --project expense-tracker-482807 --region southamerica-east1 \
+  --format='value(spec.template.spec.containers[0].startupProbe)'
+```
+
+Expect `httpGet={'path': '/healthz/', 'port': 8080}`. **If it ever reads
+`tcpSocket`, the safety property is off** — a TCP probe cannot see a 503, so a
+revision deployed ahead of its migrations would go live and serve errors. It was
+`tcpSocket` until 2026-08-18; E16 changed it in both environments.
+
+**The probe sends `Host: 127.0.0.1`, so `127.0.0.1` must stay in
+`ALLOWED_HOSTS`.** Remove it and every probe gets a Django 400, the revision
+never becomes ready, and Cloud Run reports it as a *timeout* — which sends you
+looking at cold starts instead of at the host header. The logs say
+`Invalid HTTP_HOST header: '127.0.0.1'`.
+
+**Common failure: `/healthz/` 503s during a deploy and the deploy hangs.** By
+design. Run the migration, then re-tag. The previous revision keeps serving
+throughout.
+
+**Common failure: the alert `E16 schema-drift check has not run` fires but
+`/healthz/` is fine.** That is the alert working as designed — it watches the
+*checker*, not the database. Look at the Job, not the service:
+
+```bash
+gcloud run jobs executions list --job ledger-drift-check \
+  --project expense-tracker-482807 --region southamerica-east1 --limit 5
+```
+
+The usual causes are a deploy that changed the service's env without
+regenerating the Job spec, or a stale image — see the next paragraph.
+
+**Common failure, and the nastiest: a stale `ledger-drift-check` image.** The Job
+runs the application image, and `--source` deploys push untagged digests, so the
+Job pins whatever digest it was created with. A stale drift check does not merely
+lag — it compares the **old** image's migration graph against the current
+database and answers the wrong question, so it can report "no drift" while the
+serving revision is drifted. The tagged-deploy pipeline re-points it (and
+`ledger-purge`) automatically; a manual `gcloud run deploy` does not. After any
+manual deploy:
+
+```bash
+P=expense-tracker-482807; R=southamerica-east1
+IMAGE=$(gcloud run services describe expense-tracker --project "$P" --region "$R" \
+  --format='value(spec.template.spec.containers[0].image)')
+for job in ledger-purge ledger-drift-check; do
+  gcloud run jobs update "$job" --project "$P" --region "$R" --image "$IMAGE"
+done
+```
+
 ## Rolling back
 
 **Reach for this first.** Shifting traffic to the previous revision is a

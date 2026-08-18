@@ -1,0 +1,32 @@
+{
+  "displayName": "E16 schema-drift check has not run",
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "No completed drift check in ~36h",
+      "conditionThreshold": {
+        "filter": "metric.type=\"logging.googleapis.com/user/ledger_drift_check_ran\" AND resource.type=\"cloud_run_job\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "90000s",
+            "perSeriesAligner": "ALIGN_SUM"
+          }
+        ],
+        "comparison": "COMPARISON_LT",
+        "thresholdValue": 1,
+        "duration": "41400s",
+        "evaluationMissingData": "EVALUATION_MISSING_DATA_ACTIVE",
+        "trigger": {
+          "count": 1
+        }
+      }
+    }
+  ],
+  "notificationChannels": [
+    "projects/expense-tracker-482807/notificationChannels/5857707555791637518"
+  ],
+  "documentation": {
+    "mimeType": "text/markdown",
+    "content": "The nightly `ledger-drift-check` job has not logged a completed check in 36 hours.\n\nThis alert is about the *check*, not about drift. Drift itself surfaces twice already — the job execution fails, and `/healthz/` returns 503 so the uptime policy fires. What nothing else can see is a check that quietly stopped running, which is how the 2026-08-15 window stayed open for a day.\n\n**Shape copied deliberately from `deploy/purge-alert-policy.json`.** The API caps an alignment period at 25h and a `conditionAbsent` duration at 23h30m, so neither expresses 36h alone. This is a 25h trailing sum that must stay below 1 for a further 11.5h. `evaluationMissingData: ACTIVE` is what makes it fire on silence at all; without it a metric with no data points never evaluates and the alert is decorative.\n\nCheck `gcloud run jobs executions list --job ledger-drift-check` first — the Scheduler reports success as soon as the execution is *created*, so its green tick proves nothing.\n\n**The most likely cause of a silent stop is a stale image.** This Job runs the application image, and `gcloud run deploy --source` pushes untagged digests, so the Job pins whatever digest it was created with. A stale drift check is worse than a stale retention sweep: it compares the OLD image's migration graph against the current database and answers the wrong question, so it can report \"no drift\" while the serving revision is drifted. The deploy pipeline re-points it on every tagged production deploy; a manual `gcloud run deploy` does not.\n\nSee `docs/runbook.md` § *Schema drift*."
+  }
+}

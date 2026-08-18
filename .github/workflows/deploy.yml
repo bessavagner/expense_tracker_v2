@@ -172,11 +172,24 @@ jobs:
       # --image replaces ONLY the image. A deploy that also changed the
       # service's env must regenerate the whole Job spec by hand — see
       # docs/runbook.md, "Retenção de dados (E13) -> Provisioning".
-      - name: Re-point the ledger-purge job at the new image
+      #
+      # ledger-drift-check runs the SAME image and must be re-pointed too, for a
+      # sharper reason: a stale purge merely sweeps with old code, but a stale
+      # drift check compares the OLD image's migration graph against the current
+      # database and therefore answers the wrong question — it can report "no
+      # drift" while the serving image is drifted, which is the exact blindness
+      # E16 exists to remove.
+      #
+      # ledger-backup is deliberately NOT here: it runs its own postgres:17
+      # image built from deploy/backup/, on its own lifecycle.
+      - name: Re-point the ledger-purge and ledger-drift-check jobs at the new image
         run: |
           IMAGE=$(gcloud run services describe expense-tracker \
             --project "$GCP_PROJECT" --region "$GCP_REGION" \
             --format='value(spec.template.spec.containers[0].image)')
           echo "$IMAGE"
-          gcloud run jobs update ledger-purge \
-            --project "$GCP_PROJECT" --region "$GCP_REGION" --image "$IMAGE"
+          for job in ledger-purge ledger-drift-check; do
+            gcloud run jobs update "$job" \
+              --project "$GCP_PROJECT" --region "$GCP_REGION" --image "$IMAGE" \
+              || echo "::warning::$job not found — provision it, see docs/runbook.md"
+          done
