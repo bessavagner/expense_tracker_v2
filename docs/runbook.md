@@ -228,6 +228,101 @@ The manual procedure in § *Deploy a new revision* still works and is still
 correct. Run `manage.py migrate` against the session pooler **first**, then
 deploy, then re-point `ledger-purge`.
 
+## Rolling back
+
+**Reach for this first.** Shifting traffic to the previous revision is a
+control-plane change with no build and no migration — it took **46 seconds** end
+to end when rehearsed against staging on 2026-08-18, of which the traffic switch
+itself was **10 seconds** and the rest was confirming the change from outside
+(`docs/superpowers/evidence/e16-rollback/`). Debugging forward under pressure
+takes longer and is how a five-minute outage becomes an hour.
+
+```bash
+P=expense-tracker-482807
+R=southamerica-east1
+
+# What is serving, and what came before it. Only READY revisions are rollback
+# targets — see the first common failure below.
+gcloud run revisions list --service expense-tracker \
+  --project "$P" --region "$R" \
+  --filter='status.conditions[0].status=True' \
+  --format='value(name,creationTimestamp)' --sort-by='~creationTimestamp' | head -5
+
+# Send all traffic to the previous revision.
+gcloud run services update-traffic expense-tracker \
+  --project "$P" --region "$R" --to-revisions "expense-tracker-000NN-xxx=100"
+```
+
+Prints a traffic table. Verify, do not assume:
+
+```bash
+B=https://expense-tracker-654941182076.southamerica-east1.run.app
+curl -s "$B/healthz/" | python3 -m json.tool
+```
+
+Going forward again once the fix is tagged:
+
+```bash
+gcloud run services update-traffic expense-tracker \
+  --project "$P" --region "$R" --to-latest
+```
+
+**Common failure: rolling traffic onto a revision that never became healthy.**
+A failed deploy leaves a revision behind, and it is the *newest* one — so "the
+previous revision" by creation time can be a revision that failed its startup
+probe and has never served a request. This happened during the E16 provisioning
+itself: `expense-tracker-staging-00002` failed its probe and sat between two
+healthy revisions. **Always filter on `status.conditions[0].status=True`**, as
+the command above does. Taking the second line of an unfiltered
+`revisions list` is how you roll back into an outage.
+
+**Common failure: `--to-revisions` with a revision that no longer exists.**
+Cloud Run keeps revisions but the console hides inactive ones; always take the
+name from `revisions list`, not from memory.
+
+**Common failure: the rollback succeeds and the service still 503s.** Read
+`/healthz/`. If it says `"migrations": "drift"`, you have rolled back *past* an
+applied migration — see the next section.
+
+### The hard case: rolling back after a migration has applied
+
+This is the one that will happen under pressure, so decide it now rather than
+then.
+
+**A rollback does not undo a migration.** Traffic moves to the old image; the
+database keeps the new schema. Whether that is survivable depends entirely on
+whether the migration was backward-compatible with the previous revision:
+
+| Migration shape | Rolling back is | Why |
+|---|---|---|
+| Added a nullable column, a new table, a new index | **Safe.** Just roll back. | The old code does not know the column exists and never selects it. |
+| Added a non-nullable column with a default | **Safe.** | Same — the old code does not select it, and inserts get the default. |
+| Renamed or dropped a column the old code still selects | **Not safe.** | The old revision queries a column that is gone; every affected path 500s. This is 2026-08-15 in reverse. |
+| Changed a column's type incompatibly | **Not safe.** | The old code writes values the new type rejects. |
+
+**So the rule that makes rollback possible at all: write migrations that are
+backward-compatible with the revision currently serving.** A rename is two
+deploys — add the new column and write to both, deploy, backfill, then drop the
+old one in a *later* release once no serving revision reads it. A drop is the
+second half of a change whose first half shipped earlier.
+
+**When you are already in the unsafe case**, you have two options and neither is
+quick:
+
+1. **Roll the migration back too**, if it is reversible:
+   ```bash
+   POSTGRES_HOST=<prod session pooler host> POSTGRES_PORT=5432 \
+   POSTGRES_USER=<prod user> POSTGRES_PASSWORD='<prod password>' POSTGRES_DB=postgres \
+   DJANGO_SETTINGS_MODULE=config.settings.prod SECRET_KEY=rollback-only ALLOWED_HOSTS=localhost \
+     uv run python src/backend/manage.py migrate <app> <previous_migration_number>
+   ```
+   Global constraint 9 says migrations are reversible or the epic states why not,
+   so this usually works. `/healthz/` will then report drift against the *new*
+   image and be correct to.
+2. **Fix forward.** Tag a new release. Slower, but it is the only option when the
+   migration destroyed data a reverse cannot restore — and when data is gone,
+   you are in § *Restoring from backup*, not here.
+
 ## When something breaks
 
 Three vendors, each doing one job (ADR-005): **Sentry** has the exception,
