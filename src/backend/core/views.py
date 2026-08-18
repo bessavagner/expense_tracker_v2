@@ -6,21 +6,59 @@ from django.views import View
 from django.views.generic import TemplateView
 
 from core.auth_backends import identifier_from
+from core.migration_drift import unapplied_migrations
 from core.security import client_ip, is_locked
 
 
 def health_check(request):
-    """Health check endpoint for Cloud Run startup/liveness probes."""
+    """Health check endpoint for Cloud Run startup/liveness probes.
+
+    Reports *two* independent things, because they are two different outages
+    with two different fixes: whether the database answers, and whether it has
+    applied the migrations the running image expects.
+
+    Drift returns 503 deliberately (E16 D2). The trade-off is explicit: a
+    drifted revision is taken out of rotation. It is the right trade here
+    because a drifted revision is *already* broken for every logged-in user —
+    that is what 2026-08-15 was — and 503 is what makes the existing uptime
+    check (policy 17994738960177318338) notice within five minutes instead of
+    within a day.
+
+    The consequence for deploys: Cloud Run's startup probe hits this endpoint,
+    so an image deployed ahead of its migrations never becomes ready and the
+    deploy aborts with the previous revision still serving. That is why the
+    pipeline migrates first — see `.github/workflows/deploy.yml`.
+    """
     db_status = "ok"
+    migrations_status = "ok"
+    unapplied: list[str] = []
+
     try:
         connection.ensure_connection()
     except Exception:
         db_status = "error"
+        migrations_status = "unknown"
+    else:
+        try:
+            unapplied = unapplied_migrations()
+        except Exception:
+            # The probe must still answer. A health endpoint that raises is
+            # indistinguishable from a dead container, and the operator loses
+            # the last signal that was working.
+            migrations_status = "unknown"
+        else:
+            migrations_status = "drift" if unapplied else "ok"
 
-    status = "ok" if db_status == "ok" else "degraded"
-    status_code = 200 if status == "ok" else 503
-
-    return JsonResponse({"status": status, "database": db_status}, status=status_code)
+    healthy = db_status == "ok" and migrations_status == "ok"
+    return JsonResponse(
+        {
+            "status": "ok" if healthy else "degraded",
+            "database": db_status,
+            "migrations": migrations_status,
+            "unapplied": unapplied,
+        },
+        status=200 if healthy else 503,
+    )
 
 
 class AppLoginView(LoginView):
