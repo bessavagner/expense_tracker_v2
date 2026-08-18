@@ -30,7 +30,7 @@ dependencies = [
 ]
 
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "config.settings"
+DJANGO_SETTINGS_MODULE = "config.settings.dev"
 pythonpath = ["src/backend"]
 testpaths = ["src/backend"]
 python_files = ["test_*.py"]

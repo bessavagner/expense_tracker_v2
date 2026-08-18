@@ -40,7 +40,7 @@ COPY src/backend/ ./src/backend/
 RUN cd src/backend && uv run python manage.py tailwind build
 
 # Collect static files (WhiteNoise will serve these)
-ENV DJANGO_SETTINGS_MODULE=config.settings \
+ENV DJANGO_SETTINGS_MODULE=config.settings.prod \
     SECRET_KEY=build-only-not-used-at-runtime \
     DEBUG=False \
     POSTGRES_HOST=localhost

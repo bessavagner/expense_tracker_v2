@@ -1,9 +1,9 @@
 """Tests for production-readiness: ASGI wiring and deploy security settings.
 
-The security settings live inside an ``if not DEBUG:`` block in
-``config/settings.py``. They are therefore exercised by importing the settings
-in a subprocess with ``DEBUG=False`` and running Django's ``check --deploy``,
-which is the closest thing to how the settings behave in production.
+The security settings live in ``config/settings/prod.py``, unconditionally.
+They are exercised by importing that module in a subprocess and running
+Django's ``check --deploy``, which is the closest thing to how the settings
+behave in production.
 """
 
 import os
@@ -63,7 +63,7 @@ class TestAsgiWarmUp:
             "print('PRELOADED', 'url_patterns' in get_resolver().__dict__)"
         )
         env = dict(os.environ)
-        env["DJANGO_SETTINGS_MODULE"] = "config.settings"
+        env["DJANGO_SETTINGS_MODULE"] = "config.settings.dev"
         result = subprocess.run(  # noqa: S603 — fixed argv, trusted input
             [sys.executable, "-c", code],
             cwd=BACKEND_DIR,
@@ -76,22 +76,21 @@ class TestAsgiWarmUp:
         )
 
 
-def _run_deploy_check(extra_env):
-    """Run ``manage.py check --deploy`` in a subprocess with DEBUG=False."""
+def _run_deploy_check(extra_env=None, settings_module="config.settings.prod"):
+    """Run ``manage.py check --deploy`` in a subprocess against a named settings module."""
     env = dict(os.environ)
     # python-dotenv (load_dotenv) does NOT override existing env vars, so these win
-    # over the dev .env that ships DEBUG=True.
+    # over the dev .env.
     env.update(
         {
-            "DEBUG": "False",
             # Long, varied key so security.W009 doesn't add noise to the output.
             "SECRET_KEY": "aZ9_kQ2w-pR7x!mN4tB6vC8yE0sG1hJ3lD5fH7uI9oP2qW4eR6tY8u0",
             "ALLOWED_HOSTS": "example.com",
             "CSRF_TRUSTED_ORIGINS": "https://example.com",
-            "DJANGO_SETTINGS_MODULE": "config.settings",
+            "DJANGO_SETTINGS_MODULE": settings_module,
         }
     )
-    env.update(extra_env)
+    env.update(extra_env or {})
     return subprocess.run(  # noqa: S603 — fixed argv, trusted input (sys.executable)
         [sys.executable, "manage.py", "check", "--deploy"],
         cwd=BACKEND_DIR,
@@ -102,20 +101,68 @@ def _run_deploy_check(extra_env):
 
 
 class TestDeploySecurityChecks:
-    """``check --deploy`` must not flag HSTS / cookie / SSL security issues in prod."""
+    """``check --deploy`` must not flag HSTS / cookie / SSL issues under prod settings."""
 
     def test_no_hsts_warnings(self):
-        result = _run_deploy_check({})
+        result = _run_deploy_check()
         output = result.stdout + result.stderr
-        # HSTS-related deploy warnings must be absent once configured.
         for code in ("security.W004", "security.W005", "security.W021"):
             assert code not in output, f"{code} present:\n{output}"
 
     def test_no_cookie_or_ssl_warnings(self):
-        result = _run_deploy_check({})
+        result = _run_deploy_check()
         output = result.stdout + result.stderr
         for code in ("security.W008", "security.W012", "security.W016"):
             assert code not in output, f"{code} present:\n{output}"
+
+
+class TestProductionHardeningIsUnconditional:
+    """Review finding H7: a stray ``DEBUG=True`` must not be able to unharden production.
+
+    Before the settings split, every one of SSL redirect, secure cookies, HSTS and
+    nosniff lived inside a single ``if not DEBUG:`` block, so one environment
+    variable disabled all four at once and ``check --deploy`` went quiet about it.
+    These assertions are the reason the split exists; they cannot pass against a
+    settings module that decides its own posture from the environment.
+    """
+
+    def test_debug_env_var_cannot_turn_debug_on_in_prod(self):
+        result = _run_deploy_check({"DEBUG": "True"})
+        output = result.stdout + result.stderr
+        # security.W018 is "DEBUG must not be True in deployment".
+        assert "security.W018" not in output, f"DEBUG leaked into prod settings:\n{output}"
+
+    def test_debug_env_var_cannot_disable_the_security_settings(self):
+        result = _run_deploy_check({"DEBUG": "True"})
+        output = result.stdout + result.stderr
+        for code in ("security.W004", "security.W008", "security.W012", "security.W016"):
+            assert code not in output, f"{code} returned under DEBUG=True:\n{output}"
+
+    def test_prod_states_debug_as_a_literal_not_from_the_environment(self):
+        """Source-level guard, for the same reason the SameSite one exists below.
+
+        The two assertions above would keep passing if ``prod.py`` read DEBUG from
+        the environment and the test environment happened to be clean. Only reading
+        the module's own source distinguishes "stated" from "currently happens to be
+        False".
+        """
+        prod_source = (BACKEND_DIR / "config" / "settings" / "prod.py").read_text(encoding="utf-8")
+        assert "DEBUG = False" in prod_source
+        assert "os.environ" not in prod_source.split("DEBUG = False")[0].split("\n")[-1]
+
+
+class TestDevIsNotProduction:
+    """The dev module must not be silently hardened, or nobody could work locally."""
+
+    def test_dev_settings_have_debug_on(self):
+        result = subprocess.run(  # noqa: S603 — fixed argv, trusted input
+            [sys.executable, "-c", "from django.conf import settings; print(settings.DEBUG)"],
+            cwd=BACKEND_DIR,
+            env={**os.environ, "DJANGO_SETTINGS_MODULE": "config.settings.dev"},
+            capture_output=True,
+            text=True,
+        )
+        assert "True" in result.stdout, f"stdout={result.stdout!r} stderr={result.stderr!r}"
 
 
 class TestCookieSameSite:
@@ -142,6 +189,8 @@ class TestCookieSameSite:
         settings module's own source text distinguishes "stated" from
         "inherited".
         """
-        settings_source = (BACKEND_DIR / "config" / "settings.py").read_text(encoding="utf-8")
+        settings_source = (BACKEND_DIR / "config" / "settings" / "base.py").read_text(
+            encoding="utf-8"
+        )
         assert 'SESSION_COOKIE_SAMESITE = "Lax"' in settings_source
         assert 'CSRF_COOKIE_SAMESITE = "Lax"' in settings_source

@@ -6,13 +6,17 @@ from dotenv import load_dotenv
 
 from core.observability import init_sentry
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+# Two parents now that settings is a package: settings/base.py -> settings/ -> config/ -> backend/
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-# Load .env from project root (two levels above src/backend/config/)
+# Load .env from project root (three levels above src/backend/config/settings/)
 load_dotenv(BASE_DIR.parent.parent / ".env")
 
 # Environment
-DEBUG = os.environ.get("DEBUG", "True").lower() in ("true", "1", "yes")
+# DEBUG is NOT defined here. It is stated by dev.py and prod.py, because review
+# finding H7 was that one environment variable silently disabled SSL redirect,
+# secure cookies, HSTS and nosniff together. A module that reads DEBUG from the
+# environment is a module that can be deployed unhardened by accident.
 SECRET_KEY = os.environ.get("SECRET_KEY", "django-insecure-change-me-in-production")
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 CSRF_TRUSTED_ORIGINS = os.environ.get("CSRF_TRUSTED_ORIGINS", "http://localhost:8000").split(",")
@@ -150,11 +154,6 @@ else:
         }
     }
 
-# Connection settings for serverless (Cloud Run)
-if not DEBUG:
-    DATABASES["default"]["CONN_MAX_AGE"] = 0
-    DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
-
 # Logging: por padrão o Django só manda erros 500 (django.request) para
 # mail_admins quando DEBUG=False — sem backend de e-mail, o traceback some.
 # Em Cloud Run, stdout/stderr é coletado, então enviamos para o console.
@@ -173,7 +172,9 @@ LOGGING = {
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
-            "formatter": "plain" if DEBUG else "json",
+            # dev default; prod.py swaps this for the JSON formatter that Cloud
+            # Logging parses into queryable fields.
+            "formatter": "plain",
         }
     },
     "root": {"handlers": ["console"], "level": "INFO"},
@@ -219,10 +220,9 @@ STORAGES = {
     "default": {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
     },
+    # dev default; prod.py swaps in WhiteNoise's manifest storage.
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
-        if not DEBUG
-        else "django.contrib.staticfiles.storage.StaticFilesStorage",
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
     },
 }
 
@@ -624,16 +624,3 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ],
 }
-
-# Production security
-if not DEBUG:
-    SECURE_SSL_REDIRECT = True
-    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
-    # HTTP Strict Transport Security: tell browsers to only use HTTPS for a year,
-    # including subdomains, and allow preload-list inclusion.
-    SECURE_HSTS_SECONDS = 31536000
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_PRELOAD = True
-    SECURE_CONTENT_TYPE_NOSNIFF = True

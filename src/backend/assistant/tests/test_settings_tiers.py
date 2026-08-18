@@ -33,9 +33,19 @@ def test_the_escalation_threshold_is_independent_of_the_review_threshold(setting
 
 
 def _reloaded():
-    from django.conf import settings as django_settings
+    """Reload the module that actually *reads* these environment variables.
 
-    return importlib.reload(importlib.import_module(django_settings.SETTINGS_MODULE))
+    Deliberately `config.settings.base` rather than `settings.SETTINGS_MODULE`.
+    Since E16 split settings into a package, `SETTINGS_MODULE` is
+    `config.settings.dev`, and reloading it re-runs `from .base import *` —
+    which copies names out of the already-imported `base` module without
+    re-executing it, so no `os.environ.get` call ever runs again and the
+    override is invisible. Same reason `core/tests/test_email_config.py`
+    reloads `base`.
+    """
+    import config.settings.base as module
+
+    return importlib.reload(module)
 
 
 def test_both_are_env_overridable(monkeypatch):

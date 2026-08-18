@@ -12,8 +12,8 @@ from django.conf import settings
 
 
 def _settings_with(monkeypatch, **env):
-    """Re-import config.settings under a patched environment."""
-    import config.settings as module
+    """Re-import config.settings.base under a patched environment."""
+    import config.settings.base as module
 
     for key, value in env.items():
         monkeypatch.setenv(key, value)
